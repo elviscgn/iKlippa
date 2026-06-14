@@ -230,7 +230,11 @@ fn apply_color_grade(pool: &mut FramePool, grade: &ColorGrade) {
     let h  = pool.height as f32;
     let cx = w * 0.5;
     let cy = h * 0.5;
+    
+    // Pre-calculate reciprocals to turn division into multiplication
     let max_dist_sq = cx * cx + cy * cy;
+    let inv_max_dist_sq = 1.0 / max_dist_sq;
+    let inv_255 = 1.0 / 255.0;
 
     // Pre-compute grade constants outside the pixel loop
     let exposure_mul    = (2.0_f32).powf(grade.exposure);
@@ -244,75 +248,75 @@ fn apply_color_grade(pool: &mut FramePool, grade: &ColorGrade) {
     let grain_str       = grade.grain;
     let vignette_str    = grade.vignette;
 
-    let total_pixels = (pool.width * pool.height) as usize;
-
-    for i in 0..total_pixels {
-        let base = i * 4;
-        // Safety: base + 3 < buf.len() by construction (width * height * 4)
-        let r = pool.buf[base]     as f32 / 255.0;
-        let g = pool.buf[base + 1] as f32 / 255.0;
-        let b = pool.buf[base + 2] as f32 / 255.0;
-        // Alpha byte is left untouched throughout.
-
-        // 1. Exposure (EV stops)
-        let mut r = r * exposure_mul;
-        let mut g = g * exposure_mul;
-        let mut b = b * exposure_mul;
-
-        // 2. Temperature
-        r *= temp_r;
-        b *= temp_b;
-
-        // 3. Luminance for luma-dependent ops
-        let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-        // 4. Highlights / Shadows (smooth roll-off via smoothstep on luma)
-        let hi_mask = smooth_step(0.5, 1.0, luma);
-        let sh_mask = smooth_step(0.5, 0.0, luma);
-        r += hi * hi_mask * 0.3 + sh * sh_mask * 0.3;
-        g += hi * hi_mask * 0.3 + sh * sh_mask * 0.3;
-        b += hi * hi_mask * 0.3 + sh * sh_mask * 0.3;
-
-        // 5. Contrast (S-curve pivot around 0.5)
-        r = contrast_pivot + (r - contrast_pivot) * contrast_scale;
-        g = contrast_pivot + (g - contrast_pivot) * contrast_scale;
-        b = contrast_pivot + (b - contrast_pivot) * contrast_scale;
-
-        // 6. Saturation (luma-preserving)
-        let luma2 = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        r = luma2 + (r - luma2) * sat;
-        g = luma2 + (g - luma2) * sat;
-        b = luma2 + (b - luma2) * sat;
-
-        // 7. Analytic LUT
-        let (r, g, b) = apply_lut(grade.lut_id, r, g, b);
-
-        // 8. Vignette (circular, distance-based darkening)
-        let (r, g, b) = if vignette_str > 0.001 {
-            let px      = (i as u32 % pool.width) as f32 - cx;
-            let py      = (i as u32 / pool.width) as f32 - cy;
-            let dist_sq = px * px + py * py;
+    // Outer row loop
+    for y in 0..pool.height {
+        let py = y as f32 - cy;
+        let py_sq = py * py;
+        let row_base = (y * pool.width * 4) as usize;
+        
+        // Inner pixel column loop (completely flat, simple, and vectorizable)
+        for x in 0..pool.width {
+            let base = row_base + (x * 4) as usize;
             
-            // REMOVED .powf(0.8) - simple division is hundreds of times faster
-            let dist_norm = dist_sq / max_dist_sq; 
-            let vig     = 1.0 - vignette_str * dist_norm;
-            
-            (r * vig, g * vig, b * vig)
-        } else {
-            (r, g, b)
-        };
+            // Convert to floats via multiplication (much faster than division)
+            let r = pool.buf[base]     as f32 * inv_255;
+            let g = pool.buf[base + 1] as f32 * inv_255;
+            let b = pool.buf[base + 2] as f32 * inv_255;
 
-        // 9. Film grain (additive noise, luminance-dependent strength)
-        let noise = (pool.next_rand() as f32 / 255.0 - 0.5) * grain_str * 0.12;
-        let r = r + noise;
-        let g = g + noise * 0.8; // slightly less green — film characteristic
-        let b = b + noise * 0.9;
+            // 1. Exposure (EV stops)
+            let mut r = r * exposure_mul;
+            let mut g = g * exposure_mul;
+            let mut b = b * exposure_mul;
 
-        // 10. Clamp & write back
-        pool.buf[base]     = clamp_u8(r);
-        pool.buf[base + 1] = clamp_u8(g);
-        pool.buf[base + 2] = clamp_u8(b);
-        // buf[base + 3] (alpha) intentionally untouched
+            // 2. Temperature
+            r *= temp_r;
+            b *= temp_b;
+
+            // 3. Luminance for luma-dependent ops
+            let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+            // 4. Highlights / Shadows (smooth roll-off via smoothstep on luma)
+            let hi_mask = smooth_step(0.5, 1.0, luma);
+            let sh_mask = smooth_step(0.5, 0.0, luma);
+            r += hi * hi_mask * 0.3 + sh * sh_mask * 0.3;
+            g += hi * hi_mask * 0.3 + sh * sh_mask * 0.3;
+            b += hi * hi_mask * 0.3 + sh * sh_mask * 0.3;
+
+            // 5. Contrast (S-curve pivot around 0.5)
+            r = contrast_pivot + (r - contrast_pivot) * contrast_scale;
+            g = contrast_pivot + (g - contrast_pivot) * contrast_scale;
+            b = contrast_pivot + (b - contrast_pivot) * contrast_scale;
+
+            // 6. Saturation (luma-preserving)
+            let luma2 = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            r = luma2 + (r - luma2) * sat;
+            g = luma2 + (g - luma2) * sat;
+            b = luma2 + (b - luma2) * sat;
+
+            // 7. Analytic LUT
+            let (mut r, mut g, mut b) = apply_lut(grade.lut_id, r, g, b);
+
+            // 8. Vignette (circular, distance-based darkening)
+            if vignette_str > 0.001 {
+                let px = x as f32 - cx;
+                let dist_sq = px * px + py_sq;
+                let vig = 1.0 - vignette_str * (dist_sq * inv_max_dist_sq);
+                r *= vig;
+                g *= vig;
+                b *= vig;
+            }
+
+            // 9. Film grain (additive noise, luminance-dependent strength)
+            let noise = (pool.next_rand() as f32 * inv_255 - 0.5) * grain_str * 0.12;
+            let r = r + noise;
+            let g = g + noise * 0.8; 
+            let b = b + noise * 0.9;
+
+            // 10. Clamp & write back
+            pool.buf[base]     = clamp_u8(r);
+            pool.buf[base + 1] = clamp_u8(g);
+            pool.buf[base + 2] = clamp_u8(b);
+        }
     }
 }
 

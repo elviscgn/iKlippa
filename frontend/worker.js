@@ -12,6 +12,10 @@ let isDecodingNext = false;
 let lastDecodedSampleIdx = -1;
 let decoderSeeded = false;
 
+// Persistent offscreen canvas for opaque hardware textures (e.g. HEVC on M1)
+let offscreenCanvas = null;
+let offscreenCtx = null;
+
 const MAX_DECODE_QUEUE = 8;
 
 self.onmessage = async (e) => {
@@ -34,6 +38,9 @@ self.onmessage = async (e) => {
 
         frameView = new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), wasmModule.frame_len());
         clips = [{ file, codecConfig, samples }];
+
+        // Initialize our persistent conversion canvas
+        setupOffscreenCanvas(width, height);
 
         setupDecoder(codecConfig, width, height);
         await seekAndDecodeFrame(0);
@@ -67,6 +74,12 @@ self.onmessage = async (e) => {
     }
 };
 
+function setupOffscreenCanvas(width, height) {
+    offscreenCanvas = new OffscreenCanvas(width, height);
+    // willReadFrequently forces system RAM storage, optimized for fast CPU readback on M1
+    offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+}
+
 function setupDecoder(codecConfig, width, height) {
     if (decoder && decoder.state !== 'closed') decoder.close();
 
@@ -74,9 +87,20 @@ function setupDecoder(codecConfig, width, height) {
         output: async (videoFrame) => {
             const tsMs = Math.round(videoFrame.timestamp / 1000);
 
-            // The slow NV12 to RGBA conversion happens here, safely off the main thread!
-            await videoFrame.copyTo(frameView, { format: 'RGBA' });
-            videoFrame.close();
+            // WebCodecs HEVC 10-bit opaque hardware check
+            if (videoFrame.format === null) {
+                // Draw the opaque frame onto our canvas to let the GPU resolve colorspace
+                offscreenCtx.drawImage(videoFrame, 0, 0);
+                videoFrame.close();
+
+                // Grab the converted RGBA pixels
+                const imgData = offscreenCtx.getImageData(0, 0, width, height);
+                frameView.set(imgData.data);
+            } else {
+                // Standard H.264 fast-path
+                await videoFrame.copyTo(frameView, { format: 'RGBA' });
+                videoFrame.close();
+            }
 
             const gradeStart = performance.now();
             wasmModule.process_frame();
