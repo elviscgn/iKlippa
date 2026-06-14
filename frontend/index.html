@@ -1551,6 +1551,7 @@
             src="logo.png"
             alt="iKlippa"
             class="topnav-logo"
+            crossorigin="anonymous"
             onerror="
               this.src =
                 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMzAiPjx0ZXh0IHk9IjI0IiBmb250LWZhbWlseT0iUGx1cyBKYWthcnRhIFNhbnMiIGZvbnQtc2l6ZT0iMjYiIGZvbnQtd2VpZ2h0PSI4MDAiIGZpbGw9IiNmZmYiPmlLbGlwcGE8L3RleHQ+PC9zdmc+'
@@ -2447,7 +2448,7 @@
           data.forEach((item) => {
             const el = document.createElement("div");
             el.className = "media-item";
-            el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}"><div class="media-label">${item.name}</div>`;
+            el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
             el.draggable = true;
             el.ondragstart = (e) =>
               e.dataTransfer.setData(
@@ -2565,7 +2566,7 @@
           const count = Math.max(1, Math.floor(w / 60));
           let thumbs = '<div class="tl-clip-thumbs">';
           for (let j = 0; j < count; j++)
-            thumbs += `<img src="${picUrl(clip.picId, 100, 60)}" draggable="false">`;
+            thumbs += `<img src="${picUrl(clip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
           thumbs += "</div>";
           el.innerHTML =
             thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
