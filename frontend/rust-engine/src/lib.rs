@@ -292,7 +292,11 @@ fn apply_color_grade(pool: &mut FramePool, grade: &ColorGrade) {
             let px      = (i as u32 % pool.width) as f32 - cx;
             let py      = (i as u32 / pool.width) as f32 - cy;
             let dist_sq = px * px + py * py;
-            let vig     = 1.0 - vignette_str * (dist_sq / max_dist_sq).powf(0.8);
+            
+            // REMOVED .powf(0.8) - simple division is hundreds of times faster
+            let dist_norm = dist_sq / max_dist_sq; 
+            let vig     = 1.0 - vignette_str * dist_norm;
+            
             (r * vig, g * vig, b * vig)
         } else {
             (r, g, b)
