@@ -24,7 +24,7 @@ parser.add_argument(
         "-g", "--genre",
         type=str,
         choices=["gaming", "music", "comedy", "science", "horror", "crime"],
-        default="action",
+        default="comedy",
         help="Filter results by a specific genre. (default: %(default)s)"
     )
 
@@ -43,7 +43,7 @@ try:
     response = request.execute()
     
     for item in response.get("items", []):
-        video_id.append(item["videoId"])
+        video_id.append(item["id"]["videoId"])
         
 except Exception as e:
     print(f"An error occurred: {e}")
@@ -59,14 +59,17 @@ try:
     response = video_request.execute()
     
     for item in response.get("items", []):
-        model_variables.append(item["videoId"])
-        model_variables.append(item["title"])
-        model_variables.append(item["description"])
-        model_variables.append(item.get("tags", {}))
-        model_variables.append(item["duration"])
-        model_variables.append(item["viewCount"])
-        model_variables.append(item["likeCount"])
-        model_variables.append(item["commentCount"])
+        model_variables.append({
+            "videoId":item["id"],
+            "title":item["snippet"]["title"],
+            "description": item["snippet"]["description"],
+            "tags": item["snippet"].get("tags", {}),
+            "duration":item["contentDetails"]["duration"],
+           "viewCount": item["statistics"].get("viewCount", 0),
+            "likeCount": item["statistics"].get("likeCount", 0),
+            "commentCount": item["statistics"].get("commentCount", 0)
+
+        })
         
 except Exception as e:
     print(f"An error occurred: {e}")
