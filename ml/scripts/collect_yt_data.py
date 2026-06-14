@@ -77,4 +77,4 @@ except Exception as e:
 
 df = pd.DataFrame(model_variables)
 
-df.to_csv(f"../data/{args.genre}_videos.csv", index=False)
+df.to_csv(f"data/{args.genre}_videos.csv", index=False)
