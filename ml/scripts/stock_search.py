@@ -30,32 +30,20 @@ def search_stock_videos(query, min_duration=5, orientation="landscape"):
         print(f"Error: Pexels API returned status code {response.status_code}")
         return []
         
-    # TODO 3: Parse the response into a JSON dictionary
-    # data = ...
+    data = response.json()
 
     videos = []
-
     
-    
-    
-    
-    
-    
-    # TODO 4: Iterate over the "videos" list inside `data`
-    # Hint: data.get("videos", [])
-    # Inside the loop, check if the video's "duration" is >= min_duration.
-    # If it is, use the provided helper function below to extract the HD link!
-
-    # Example loop structure:
-    # for vid in data.get("videos", []):
-    #     if vid.get("duration", 0) >= min_duration:
-    #         hd_link = get_hd_link(vid)
-    #         if hd_link:
-    #             videos.append({
-    #                 "id": vid.get("id"),
-    #                 "duration": vid.get("duration"),
-    #                 "link": hd_link
-    #             })
+     
+    for vid in data.get("videos", []):
+        if vid.get("duration", 0) >= min_duration:
+            hd_link = get_hd_link(vid)
+            if hd_link:
+                videos.append({
+                    "id": vid.get("id"),
+                    "duration": vid.get("duration"),
+                    "link": hd_link
+                })
 
     return videos
 
