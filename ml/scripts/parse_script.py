@@ -54,11 +54,7 @@ def estimate_pacing(script_text):
     doc = nlp(script_text)
     sentences = list(doc.sents)
 
-    # TODO 2: Calculate the average number of words per sentence.
-    # Hints:
-    #   - len(sentences) gives you the number of sentences
-    #   - len(sentence) gives you the number of tokens in a sentence
-    #   - Watch out for division by zero if there are no sentences!
+    
     avg_words = 0 if len(sentences) == 0 else sum(len(sentence) for sentence in sentences) / len(sentences)
 
     # TODO 3: Assign a pacing_label based on avg_words.
