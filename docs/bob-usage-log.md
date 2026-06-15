@@ -25,7 +25,7 @@ To maximize our development speed during this sprint, we divided the engineering
     *   In `engine.js`, we wrapped this pointer in a `Uint8ClampedArray` view. By calling WebCodecs' `copyTo()` directly onto this view, the hardware-decoded frame is written straight into WASM memory. 
 *   **Result:** Reduced JavaScript-to-WASM memory copies to **exactly zero**, completely eliminating GC thrashing.
 
-### 🔌 Backend & API Gateway (Mphele with IBM Bob)
+### Backend & API Gateway (Mphele with IBM Bob)
 *   **The Challenge:** The NLE needs to call IBM watsonx / Granite APIs for our "AI Director" features (smart subtitle generation, semantic cut suggestions). We had to securely scaffold the API gateway so that our private API keys were never exposed to the client browser.
 *   **The Collaboration:**
     *   Mphele worked with Bob to scaffold a lightweight Node.js/Express gateway. 
