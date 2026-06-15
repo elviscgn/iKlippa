@@ -25,10 +25,12 @@ let exportFrames = [];
 let audioCtx = null;
 let pendingAudio = new Map();     // Caches raw audio chunks ahead of the playhead
 let scheduledAudioNodes = [];     // Tracks currently playing soundwaves so we can pause them
+let nextAudioScheduleTime = 0;    // Precise hardware-based timing tracker
 
-// ── Performance Monitor ──────────────────────────────────────────────────────
+// ── Performance Monitor (Smart Auto-Detection) ───────────────────────────────
 export class PerformanceMonitor {
   constructor() { this.reset(); }
+
   reset() {
     this._frameTimes = [];
     this._gradeTimes = [];
@@ -38,19 +40,27 @@ export class PerformanceMonitor {
     this._lastRaf = null;
     this._pendingDecodes = new Map();
   }
+
   recordRaf(ts) {
     if (this._lastRaf !== null) {
       const dt = ts - this._lastRaf;
       this._frameTimes.push(dt);
+
       const avgFrameMs = this._frameTimes.reduce((a, b) => a + b, 0) / this._frameTimes.length;
       const targetMs = (this._frameTimes.length > 10 && avgFrameMs > 25) ? 33.33 : 16.67;
-      if (dt > targetMs * 1.25) this._droppedFrames++;
+      const threshold = targetMs * 1.25;
+
+      if (dt > threshold) this._droppedFrames++;
       this._totalFrames++;
       if (this._frameTimes.length > 120) this._frameTimes.shift();
     }
     this._lastRaf = ts;
   }
-  recordDecodeSubmit(tsMs) { this._pendingDecodes.set(tsMs, performance.now()); }
+
+  recordDecodeSubmit(tsMs) {
+    this._pendingDecodes.set(tsMs, performance.now());
+  }
+
   recordFrameArrival(tsMs, gradeMs) {
     if (this._pendingDecodes.has(tsMs)) {
       this._decodeTimes.push(performance.now() - this._pendingDecodes.get(tsMs));
@@ -60,20 +70,28 @@ export class PerformanceMonitor {
     this._gradeTimes.push(gradeMs);
     if (this._gradeTimes.length > 120) this._gradeTimes.shift();
   }
+
   score() {
     const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
     const avgFrameMs = avg(this._frameTimes);
     const avgGradeMs = avg(this._gradeTimes);
     const avgDecodeMs = avg(this._decodeTimes);
     const dropRate = this._totalFrames > 0 ? this._droppedFrames / this._totalFrames : 0;
     const targetMs = avgFrameMs > 25 ? 33.33 : 16.67;
+
     const smoothness = Math.max(0, Math.min(100, 100 - (Math.abs(avgFrameMs - targetMs) / targetMs) * 100));
     const gradePerf = Math.max(0, Math.min(100, 100 - (avgGradeMs / 4) * 100));
     const decodePerf = Math.max(0, Math.min(100, 100 - ((avgDecodeMs - 33) / 67) * 100));
     const dropScore = Math.max(0, Math.min(100, (1 - dropRate * 10) * 100));
+
     const composite = Math.round(smoothness * 0.40 + dropScore * 0.30 + decodePerf * 0.20 + gradePerf * 0.10);
-    return { composite, smoothness: Math.round(smoothness), gradePerf: Math.round(gradePerf), decodePerf: Math.round(decodePerf), dropScore: Math.round(dropScore), avgFrameMs: avgFrameMs.toFixed(2), avgGradeMs: avgGradeMs.toFixed(2), avgDecodeMs: avgDecodeMs.toFixed(2), dropRatePct: (dropRate * 100).toFixed(1), totalFrames: this._totalFrames, targetFps: Math.round(1000 / targetMs) };
+
+    return {
+      composite, smoothness: Math.round(smoothness), gradePerf: Math.round(gradePerf), decodePerf: Math.round(decodePerf), dropScore: Math.round(dropScore), avgFrameMs: avgFrameMs.toFixed(2), avgGradeMs: avgGradeMs.toFixed(2), avgDecodeMs: avgDecodeMs.toFixed(2), dropRatePct: (dropRate * 100).toFixed(1), totalFrames: this._totalFrames, targetFps: Math.round(1000 / targetMs)
+    };
   }
+
   report() {
     const s = this.score();
     console.group('%ciKlippa Performance Report', 'color:#0d9488;font-weight:700;font-size:14px');
@@ -83,6 +101,7 @@ export class PerformanceMonitor {
     return s.composite;
   }
 }
+
 export const perf = new PerformanceMonitor();
 window.iklippaScore = () => perf.report();
 
@@ -122,7 +141,6 @@ function handleWorkerMessage(e) {
     if (!isPlaying) paintFrameAtTime(playheadMs);
   }
 
-  // --- AUDIO CHUNK RECEIVED FROM WORKER ---
   if (type === 'audio_chunk') {
     if (!audioCtx) return;
     const audioBuffer = audioCtx.createBuffer(data.channels, data.length, data.sampleRate);
@@ -131,8 +149,6 @@ function handleWorkerMessage(e) {
     }
 
     pendingAudio.set(data.ms, audioBuffer);
-
-    // If we are actively playing, schedule it to play immediately
     if (isPlaying) scheduleAudioNode(data.ms, audioBuffer);
   }
 }
@@ -140,7 +156,7 @@ function handleWorkerMessage(e) {
 // ── Demux (Main Thread) ──────────────────────────────────────────────────────
 export async function importFile(file) {
   logStatus(`Importing: ${file.name}`);
-  initAudio(); // Initialize audio context on first user interaction
+  initAudio();
   if (!window.MP4Box) await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
 
   const payload = await new Promise((resolve, reject) => {
@@ -158,7 +174,6 @@ export async function importFile(file) {
       codecConfigResult = { codec: track.codec, codedWidth: track.track_width, codedHeight: track.track_height, description: getDecoderDescription(mp4, track) };
       mp4.setExtractionOptions(track.id, null, { nbSamples: Infinity });
 
-      // Demux Audio Track
       if (aTrack) {
         audioConfigResult = {
           codec: aTrack.codec,
@@ -173,7 +188,7 @@ export async function importFile(file) {
 
     mp4.onSamples = (id, user, s) => {
       if (trackInfo && id === trackInfo.id) samplesArray.push(...s);
-      else audioSamplesArray.push(...s); // Must be audio
+      else audioSamplesArray.push(...s);
     };
 
     mp4.onError = (err) => reject(new Error('MP4Box error: ' + err));
@@ -253,22 +268,28 @@ function paintFrameAtTime(ms) {
   for (const [audioMs] of pendingAudio) if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs);
 }
 
-// Schedules a raw audio buffer to play at exactly the right time
+// SAMPLE-ACCURATE WEBAUDIO CLOCK SCHEDULER: Stitches 23ms buffers back-to-back perfectly
 function scheduleAudioNode(chunkMs, audioBuffer) {
+  if (!audioCtx) return;
+
+  // If this chunk has already played, skip it
   const timeAheadMs = chunkMs - playheadMs;
-  if (timeAheadMs < -(audioBuffer.duration * 1000)) return; // Too far in the past to play
+  if (timeAheadMs < -(audioBuffer.duration * 1000)) return;
+
+  // If starting fresh or we fell behind, lock our timing to the hardware audio clock with a 100ms cushion
+  if (nextAudioScheduleTime === 0 || nextAudioScheduleTime < audioCtx.currentTime) {
+    nextAudioScheduleTime = audioCtx.currentTime + 0.10;
+  }
 
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(audioCtx.destination);
 
-  let offset = 0;
-  let delay = timeAheadMs / 1000;
-
-  if (delay < 0) { offset = -delay; delay = 0; }
-
-  source.start(audioCtx.currentTime + delay, offset);
+  source.start(nextAudioScheduleTime);
   scheduledAudioNodes.push(source);
+
+  // Advance the schedule clock by the EXACT duration of this soundwave
+  nextAudioScheduleTime += audioBuffer.duration;
 }
 
 function syncWorkerState() {
@@ -281,8 +302,13 @@ export function startPlayback() {
   lastRafTs = null;
   initAudio();
 
-  // Kickstart the scheduled audio buffers
-  for (const [ms, buffer] of pendingAudio.entries()) scheduleAudioNode(ms, buffer);
+  nextAudioScheduleTime = 0; // Reset hardware schedule clock
+
+  // Sort pending buffers chronologically and schedule them back-to-back
+  const sortedAudio = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
+  for (const [ms, buffer] of sortedAudio) {
+    if (ms >= playheadMs) scheduleAudioNode(ms, buffer);
+  }
 
   syncWorkerState();
   rafHandle = requestAnimationFrame(renderLoop);
@@ -293,9 +319,9 @@ export function pausePlayback() {
   lastRafTs = null;
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
 
-  // Stop all currently playing audio
   scheduledAudioNodes.forEach(node => { try { node.stop(); } catch (e) { } });
   scheduledAudioNodes = [];
+  nextAudioScheduleTime = 0;
 
   syncWorkerState();
   if (window.onPlaybackPaused) window.onPlaybackPaused();
@@ -313,6 +339,7 @@ export async function seekTo(ms) {
 
   scheduledAudioNodes.forEach(node => { try { node.stop(); } catch (e) { } });
   scheduledAudioNodes = [];
+  nextAudioScheduleTime = 0;
 
   worker.postMessage({ type: 'seek', ms });
   syncWorkerState();
