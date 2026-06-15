@@ -1,19 +1,30 @@
-// worker.js
+// worker.js (Final, Audited, Synchronized)
 import init, { IklippaEngine } from './pkg/iklippa_engine.js';
 
 let wasmModule = null;
 let wasmMemory = null;
 let frameView = null;
 let decoder = null;
+let audioDecoder = null;
 
 let clips = [];
+let audioConfig = null;
+let audioSamples = [];
+
 let isSeeking = false;
 let pendingSeekMs = null;
 let isDecodingNext = false;
-let lastDecodedSampleIdx = -1;
-let decoderSeeded = false;
 
+let lastDecodedSampleIdx = -1;
+let lastDecodedAudioIdx = -1;
+let decoderSeeded = false;
 let decodeSessionId = 0;
+let audioConfigVersion = 0;
+
+// --- THE DISCOVERY FIX ---
+// The actual start time of the DECODED audio stream, discovered on the fly.
+let discoveredAudioOffsetUs = -1;
+let discoveredVideoOffsetUs = -1;
 
 // Sync State from Main Thread
 let currentPlayheadMs = 0;
@@ -41,8 +52,18 @@ self.onmessage = async (e) => {
         frameView = new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), wasmModule.frame_len());
         clips = [{ file, codecConfig, samples }];
 
+        audioConfig = data.audioConfig;
+        audioSamples = data.audioSamples || [];
+        audioConfigVersion = data.audioConfigVersion || 0;
+
+        // Reset discovery on new file load
+        discoveredAudioOffsetUs = -1;
+        discoveredVideoOffsetUs = -1;
+
         setupOffscreenCanvas(width, height);
         setupDecoder(codecConfig, width, height);
+        if (audioConfig) setupAudioDecoder(audioConfig);
+
         await seekAndDecodeFrame(0);
         self.postMessage({ type: 'ready', durationMs, width, height });
     }
@@ -58,6 +79,10 @@ self.onmessage = async (e) => {
         if (isWorkerPlaying && data.framesAhead < 15) {
             await decodeNextSamples();
         }
+    }
+
+    else if (type === 'set_audio_version') {
+        audioConfigVersion = data.version;
     }
 
     else if (type === 'set_grade') {
@@ -84,17 +109,81 @@ function setupOffscreenCanvas(width, height) {
     offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
 }
 
+function setupAudioDecoder(config) {
+    if (audioDecoder && audioDecoder.state !== 'closed') audioDecoder.close();
+
+    audioDecoder = new AudioDecoder({
+        output: (audioData) => {
+            // Discover the true start time of the audio stream on the first frame
+            if (discoveredAudioOffsetUs === -1) {
+                discoveredAudioOffsetUs = audioData.timestamp;
+            }
+
+            const normalizedTsUs = audioData.timestamp - discoveredAudioOffsetUs;
+            const tsMs = Math.round(normalizedTsUs / 1000);
+
+            if (isWorkerPlaying && tsMs < currentPlayheadMs - 200) {
+                audioData.close();
+                return;
+            }
+
+            const channels = audioData.numberOfChannels;
+            const sampleRate = audioData.sampleRate;
+            const length = audioData.numberOfFrames;
+            const format = audioData.format;
+
+            const isPlanar = format.endsWith('-planar');
+            const buffers = [];
+
+            if (isPlanar) {
+                for (let c = 0; c < channels; c++) {
+                    const size = audioData.allocationSize({ planeIndex: c, format: 'f32-planar' });
+                    const buf = new ArrayBuffer(size);
+                    audioData.copyTo(buf, { planeIndex: c, format: 'f32-planar' });
+                    buffers.push(buf);
+                }
+            } else {
+                const size = audioData.allocationSize({ planeIndex: 0, format: 'f32' });
+                const buf = new ArrayBuffer(size);
+                audioData.copyTo(buf, { planeIndex: 0, format: 'f32' });
+
+                const interleaved = new Float32Array(buf);
+                for (let c = 0; c < channels; c++) {
+                    const chanBuf = new ArrayBuffer(length * 4);
+                    const chanArr = new Float32Array(chanBuf);
+                    for (let i = 0; i < length; i++) {
+                        chanArr[i] = interleaved[i * channels + c];
+                    }
+                    buffers.push(chanBuf);
+                }
+            }
+
+            audioData.close();
+
+            self.postMessage({
+                type: 'audio_chunk', ms: tsMs, channels, sampleRate, length, buffers, configVersion: audioConfigVersion
+            }, buffers);
+        },
+        error: e => console.error('[AudioDecoder]', e)
+    });
+
+    audioDecoder.configure(config);
+}
+
 function setupDecoder(codecConfig, width, height) {
     if (decoder && decoder.state !== 'closed') decoder.close();
 
     decoder = new VideoDecoder({
         output: async (videoFrame) => {
-            const tsMs = Math.round(videoFrame.timestamp / 1000);
+            // Discover the true start time of the video stream on the first frame
+            if (discoveredVideoOffsetUs === -1) {
+                discoveredVideoOffsetUs = videoFrame.timestamp;
+            }
 
-            // 1. MONITOR THE STUTTER: Track if the worker has to drop frames
+            const normalizedTsUs = videoFrame.timestamp - discoveredVideoOffsetUs;
+            const tsMs = Math.round(normalizedTsUs / 1000);
+
             if (isWorkerPlaying && tsMs < currentPlayheadMs - 66) {
-                // Send a message to the console so you can SEE it happening
-                console.warn(`[Worker] Dropped late frame at ${tsMs}ms to maintain sync`);
                 videoFrame.close();
                 return;
             }
@@ -109,8 +198,6 @@ function setupDecoder(codecConfig, width, height) {
                 videoFrame.close();
             }
 
-            // 2. DRAFT MODE: Only run the heavy 66ms color grade if we are PAUSED or seeking.
-            // If we are actively playing, skip it so we can hit 60 FPS!
             let gradeMs = 0;
             if (!isWorkerPlaying) {
                 const gradeStart = performance.now();
@@ -142,35 +229,32 @@ async function seekAndDecodeFrame(targetMs) {
     }
 
     isSeeking = true;
-    decodeSessionId++; // INVALIDATE ANY ONGOING BACKGROUND DECODES
+    decodeSessionId++;
     decoderSeeded = false;
 
-    const { samples, file, codecConfig } = clips[0];
-    let keyframeIdx = 0;
+    const { samples, file } = clips[0];
+
+    let vKeyIdx = 0;
     for (let i = 0; i < samples.length; i++) {
-        const sMs = Math.round((samples[i].cts / samples[i].timescale) * 1000);
-        if (sMs <= targetMs && samples[i].is_sync) keyframeIdx = i;
+        // We seek on the RAW file timestamps here
+        const sMs = Math.round((samples[i].cts * 1000) / samples[i].timescale);
+        if (sMs <= targetMs && samples[i].is_sync) vKeyIdx = i;
         if (sMs > targetMs) break;
     }
 
     decoder.reset();
-    decoder.configure({
-        codec: codecConfig.codec, codedWidth: codecConfig.codedWidth, codedHeight: codecConfig.codedHeight,
-        description: codecConfig.description, hardwareAcceleration: 'prefer-hardware', optimizeForLatency: true,
-    });
+    decoder.configure(clips[0].codecConfig);
 
-    for (let i = keyframeIdx; i < samples.length; i++) {
-        // BLAZING FAST SCRUB: If user scrubs again while we are decoding this seek, abort instantly!
+    for (let i = vKeyIdx; i < samples.length; i++) {
         if (pendingSeekMs !== null) break;
 
         const s = samples[i];
-        const sMs = Math.round((s.cts / s.timescale) * 1000);
+        const sMs = Math.round((s.cts * 1000) / s.timescale);
         const data = await readSampleData(file, s);
-        const tsUs = s.cts * (1_000_000 / s.timescale);
 
-        self.postMessage({ type: 'decode_submit', ms: Math.round(tsUs / 1000) });
+        self.postMessage({ type: 'decode_submit', ms: sMs });
         decoder.decode(new EncodedVideoChunk({
-            type: s.is_sync ? 'key' : 'delta', timestamp: tsUs, duration: s.duration * (1_000_000 / s.timescale), data,
+            type: s.is_sync ? 'key' : 'delta', timestamp: s.cts * 1_000_000 / s.timescale, duration: s.duration * 1_000_000 / s.timescale, data,
         }));
 
         if (sMs >= targetMs) {
@@ -179,13 +263,28 @@ async function seekAndDecodeFrame(targetMs) {
         }
     }
 
+    if (audioDecoder && audioSamples.length > 0) {
+        audioDecoder.reset();
+        audioDecoder.configure(audioConfig);
+
+        let targetIdx = 0;
+        for (let i = 0; i < audioSamples.length; i++) {
+            const sMs = Math.round((audioSamples[i].cts * 1000) / audioSamples[i].timescale);
+            if (sMs >= targetMs) {
+                targetIdx = i;
+                break;
+            }
+        }
+        lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
+    }
+
     decoderSeeded = true;
     isSeeking = false;
 
     if (pendingSeekMs !== null) {
         const nextMs = pendingSeekMs;
         pendingSeekMs = null;
-        seekAndDecodeFrame(nextMs); // Execute the newest scrub position
+        seekAndDecodeFrame(nextMs);
     }
 }
 
@@ -194,7 +293,7 @@ async function decodeNextSamples() {
     if (!decoderSeeded || isSeeking || isDecodingNext) return;
 
     isDecodingNext = true;
-    const session = decodeSessionId; // Snapshot the current session token
+    const session = decodeSessionId;
     const { samples, file } = clips[0];
 
     while (decoder.decodeQueueSize < MAX_DECODE_QUEUE) {
@@ -202,26 +301,34 @@ async function decodeNextSamples() {
         if (startIdx >= samples.length) break;
 
         const s = samples[startIdx];
-
-        // This 'await' releases the JS event loop. A 'seek' message can sneak in right here!
         const data = await readSampleData(file, s);
+        if (session !== decodeSessionId) { isDecodingNext = false; return; }
 
-        // THE RACE CONDITION FIX: If a seek wiped the decoder while we were reading the file, ABORT!
-        if (session !== decodeSessionId) {
-            isDecodingNext = false;
-            return;
-        }
-
-        const tsUs = s.cts * (1_000_000 / s.timescale);
-
-        self.postMessage({ type: 'decode_submit', ms: Math.round(tsUs / 1000) });
-
+        self.postMessage({ type: 'decode_submit', ms: Math.round((s.cts * 1000) / s.timescale) });
         decoder.decode(new EncodedVideoChunk({
-            type: s.is_sync ? 'key' : 'delta', timestamp: tsUs, duration: s.duration * (1_000_000 / s.timescale), data,
+            type: s.is_sync ? 'key' : 'delta', timestamp: s.cts * 1_000_000 / s.timescale, duration: s.duration * 1_000_000 / s.timescale, data,
         }));
 
         lastDecodedSampleIdx = startIdx;
     }
+
+    if (audioDecoder && audioSamples.length > 0) {
+        while (audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE) {
+            const startIdx = lastDecodedAudioIdx + 1;
+            if (startIdx >= audioSamples.length) break;
+
+            const s = audioSamples[startIdx];
+            const data = await readSampleData(file, s);
+            if (session !== decodeSessionId) { isDecodingNext = false; return; }
+
+            audioDecoder.decode(new EncodedAudioChunk({
+                type: 'key', timestamp: s.cts * 1_000_000 / s.timescale, duration: s.duration * 1_000_000 / s.timescale, data,
+            }));
+
+            lastDecodedAudioIdx = startIdx;
+        }
+    }
+
     isDecodingNext = false;
 }
 
