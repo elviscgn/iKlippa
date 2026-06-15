@@ -3,7 +3,6 @@ import spacy
 # pyrefly: ignore [missing-import]
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# --- NLP Setup (Hard part - provided) ---
 nlp = spacy.load("en_core_web_sm")
 vader = SentimentIntensityAnalyzer()
 
