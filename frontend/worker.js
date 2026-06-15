@@ -13,8 +13,7 @@ let isDecodingNext = false;
 let lastDecodedSampleIdx = -1;
 let decoderSeeded = false;
 
-// Concurrency Shield: Prevents stale async decodes from feeding reset decoders
-let decoderGeneration = 0;
+let decodeSessionId = 0;
 
 // Sync State from Main Thread
 let currentPlayheadMs = 0;
@@ -86,15 +85,16 @@ function setupOffscreenCanvas(width, height) {
 }
 
 function setupDecoder(codecConfig, width, height) {
-    decoderGeneration++; // Invalidate any running tasks
     if (decoder && decoder.state !== 'closed') decoder.close();
 
     decoder = new VideoDecoder({
         output: async (videoFrame) => {
             const tsMs = Math.round(videoFrame.timestamp / 1000);
 
-            // Drop late frames during normal playback
+            // 1. MONITOR THE STUTTER: Track if the worker has to drop frames
             if (isWorkerPlaying && tsMs < currentPlayheadMs - 66) {
+                // Send a message to the console so you can SEE it happening
+                console.warn(`[Worker] Dropped late frame at ${tsMs}ms to maintain sync`);
                 videoFrame.close();
                 return;
             }
@@ -109,9 +109,14 @@ function setupDecoder(codecConfig, width, height) {
                 videoFrame.close();
             }
 
-            const gradeStart = performance.now();
-            wasmModule.process_frame();
-            const gradeMs = performance.now() - gradeStart;
+            // 2. DRAFT MODE: Only run the heavy 66ms color grade if we are PAUSED or seeking.
+            // If we are actively playing, skip it so we can hit 60 FPS!
+            let gradeMs = 0;
+            if (!isWorkerPlaying) {
+                const gradeStart = performance.now();
+                wasmModule.process_frame();
+                gradeMs = performance.now() - gradeStart;
+            }
 
             const len = wasmModule.frame_len();
             const ownedPixels = new Uint8ClampedArray(len);
@@ -137,8 +142,8 @@ async function seekAndDecodeFrame(targetMs) {
     }
 
     isSeeking = true;
+    decodeSessionId++; // INVALIDATE ANY ONGOING BACKGROUND DECODES
     decoderSeeded = false;
-    decoderGeneration++; // Increment generation to kill any active decodeNextSamples tasks
 
     const { samples, file, codecConfig } = clips[0];
     let keyframeIdx = 0;
@@ -154,19 +159,13 @@ async function seekAndDecodeFrame(targetMs) {
         description: codecConfig.description, hardwareAcceleration: 'prefer-hardware', optimizeForLatency: true,
     });
 
-    const myGeneration = decoderGeneration;
-
     for (let i = keyframeIdx; i < samples.length; i++) {
+        // BLAZING FAST SCRUB: If user scrubs again while we are decoding this seek, abort instantly!
+        if (pendingSeekMs !== null) break;
+
         const s = samples[i];
         const sMs = Math.round((s.cts / s.timescale) * 1000);
         const data = await readSampleData(file, s);
-
-        // Concurrency Check: If a newer seek was triggered while we were reading disk, abort!
-        if (myGeneration !== decoderGeneration) {
-            isSeeking = false;
-            return;
-        }
-
         const tsUs = s.cts * (1_000_000 / s.timescale);
 
         self.postMessage({ type: 'decode_submit', ms: Math.round(tsUs / 1000) });
@@ -179,13 +178,14 @@ async function seekAndDecodeFrame(targetMs) {
             break;
         }
     }
+
     decoderSeeded = true;
     isSeeking = false;
 
     if (pendingSeekMs !== null) {
         const nextMs = pendingSeekMs;
         pendingSeekMs = null;
-        seekAndDecodeFrame(nextMs);
+        seekAndDecodeFrame(nextMs); // Execute the newest scrub position
     }
 }
 
@@ -194,7 +194,7 @@ async function decodeNextSamples() {
     if (!decoderSeeded || isSeeking || isDecodingNext) return;
 
     isDecodingNext = true;
-    const myGeneration = decoderGeneration; // Capture the generation at the start of this batch
+    const session = decodeSessionId; // Snapshot the current session token
     const { samples, file } = clips[0];
 
     while (decoder.decodeQueueSize < MAX_DECODE_QUEUE) {
@@ -202,10 +202,12 @@ async function decodeNextSamples() {
         if (startIdx >= samples.length) break;
 
         const s = samples[startIdx];
+
+        // This 'await' releases the JS event loop. A 'seek' message can sneak in right here!
         const data = await readSampleData(file, s);
 
-        // Concurrency Check: If a seek occurred while we were awaiting file data, discard this stale chunk!
-        if (myGeneration !== decoderGeneration) {
+        // THE RACE CONDITION FIX: If a seek wiped the decoder while we were reading the file, ABORT!
+        if (session !== decodeSessionId) {
             isDecodingNext = false;
             return;
         }
@@ -213,6 +215,7 @@ async function decodeNextSamples() {
         const tsUs = s.cts * (1_000_000 / s.timescale);
 
         self.postMessage({ type: 'decode_submit', ms: Math.round(tsUs / 1000) });
+
         decoder.decode(new EncodedVideoChunk({
             type: s.is_sync ? 'key' : 'delta', timestamp: tsUs, duration: s.duration * (1_000_000 / s.timescale), data,
         }));
