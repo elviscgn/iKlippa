@@ -26,13 +26,20 @@ def search_stock_videos(query, min_duration=5, orientation="landscape"):
    
     response = requests.get(url, headers=headers, params=params)
 
-    # TODO 2: Check if the response was successful (status code 200). 
-    # If not, print an error message with the status code and return an empty list `[]`.
-    
+    if response.status_code != 200:
+        print(f"Error: Pexels API returned status code {response.status_code}")
+        return []
+        
     # TODO 3: Parse the response into a JSON dictionary
     # data = ...
 
     videos = []
+
+    
+    
+    
+    
+    
     
     # TODO 4: Iterate over the "videos" list inside `data`
     # Hint: data.get("videos", [])
