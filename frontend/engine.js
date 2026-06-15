@@ -1,8 +1,9 @@
 /**
- * iKlippa — engine.js  (rev 4)
+ * iKlippa — engine.js (Video + Audio Pipeline + Diagnostics)
  */
 
 const DECODE_LOOKAHEAD = 12;
+const DEBUG_AUDIO = true; // --- TURNS ON DETAILED CONSOLE LOGGING ---
 
 let worker = null;
 let canvas = null;
@@ -23,16 +24,14 @@ let exportFrames = [];
 
 // ── Web Audio State ───────────────────────────────────────────────────────────
 let audioCtx = null;
-let pendingAudio = new Map();       // Caches raw audio chunks ahead of the playhead
-let scheduledAudioNodes = [];       // Tracks currently playing soundwaves so we can pause them
-let nextAudioScheduleTime = 0;      // Precise hardware-based timing tracker [1]
-let lastScheduledChunkMs = -1;      // Tracks the last scheduled audio timestamp to detect gaps [1]
+let pendingAudio = new Map();
+let scheduledAudioNodes = [];
+let nextAudioScheduleTime = 0;
+let lastScheduledChunkMs = -1;
 
-// configVersion: incremented on every load/seek/pause so late worker messages
-// from a previous session are silently discarded.
 let audioConfigVersion = 0;
 
-// ── Performance Monitor ───────────────────────────────────────────────────────
+// ── Performance Monitor (Smart Auto-Detection) ───────────────────────────────
 export class PerformanceMonitor {
   constructor() { this.reset(); }
 
@@ -50,16 +49,21 @@ export class PerformanceMonitor {
     if (this._lastRaf !== null) {
       const dt = ts - this._lastRaf;
       this._frameTimes.push(dt);
+
       const avgFrameMs = this._frameTimes.reduce((a, b) => a + b, 0) / this._frameTimes.length;
       const targetMs = (this._frameTimes.length > 10 && avgFrameMs > 25) ? 33.33 : 16.67;
-      if (dt > targetMs * 1.25) this._droppedFrames++;
+      const threshold = targetMs * 1.25;
+
+      if (dt > threshold) this._droppedFrames++;
       this._totalFrames++;
       if (this._frameTimes.length > 120) this._frameTimes.shift();
     }
     this._lastRaf = ts;
   }
 
-  recordDecodeSubmit(tsMs) { this._pendingDecodes.set(tsMs, performance.now()); }
+  recordDecodeSubmit(tsMs) {
+    this._pendingDecodes.set(tsMs, performance.now());
+  }
 
   recordFrameArrival(tsMs, gradeMs) {
     if (this._pendingDecodes.has(tsMs)) {
@@ -72,36 +76,59 @@ export class PerformanceMonitor {
   }
 
   score() {
-    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const avg = arr => arr.length
+      ? arr.reduce((a, b) => a + b, 0) / arr.length
+      : 0;
+
     const avgFrameMs = avg(this._frameTimes);
     const avgGradeMs = avg(this._gradeTimes);
     const avgDecodeMs = avg(this._decodeTimes);
-    const dropRate = this._totalFrames > 0 ? this._droppedFrames / this._totalFrames : 0;
+    const dropRate = this._totalFrames > 0
+      ? this._droppedFrames / this._totalFrames : 0;
+
     const targetMs = avgFrameMs > 25 ? 33.33 : 16.67;
-    const smoothness = Math.max(0, Math.min(100, 100 - (Math.abs(avgFrameMs - targetMs) / targetMs) * 100));
-    const gradePerf = Math.max(0, Math.min(100, 100 - (avgGradeMs / 4) * 100));
-    const decodePerf = Math.max(0, Math.min(100, 100 - ((avgDecodeMs - 33) / 67) * 100));
-    const dropScore = Math.max(0, Math.min(100, (1 - dropRate * 10) * 100));
-    const composite = Math.round(smoothness * 0.40 + dropScore * 0.30 + decodePerf * 0.20 + gradePerf * 0.10);
+
+    const smoothness = Math.max(0, Math.min(100,
+      100 - (Math.abs(avgFrameMs - targetMs) / targetMs) * 100));
+    const gradePerf = Math.max(0, Math.min(100,
+      100 - (avgGradeMs / 4) * 100));
+    const decodePerf = Math.max(0, Math.min(100,
+      100 - ((avgDecodeMs - 33) / 67) * 100));
+    const dropScore = Math.max(0, Math.min(100,
+      (1 - dropRate * 10) * 100));
+
+    const composite = Math.round(
+      smoothness * 0.40 +
+      dropScore * 0.30 +
+      decodePerf * 0.20 +
+      gradePerf * 0.10
+    );
+
     return {
-      composite, smoothness: Math.round(smoothness), gradePerf: Math.round(gradePerf),
-      decodePerf: Math.round(decodePerf), dropScore: Math.round(dropScore),
-      avgFrameMs: avgFrameMs.toFixed(2), avgGradeMs: avgGradeMs.toFixed(2),
-      avgDecodeMs: avgDecodeMs.toFixed(2), dropRatePct: (dropRate * 100).toFixed(1),
-      totalFrames: this._totalFrames, targetFps: Math.round(1000 / targetMs),
+      composite,
+      smoothness: Math.round(smoothness),
+      gradePerf: Math.round(gradePerf),
+      decodePerf: Math.round(decodePerf),
+      dropScore: Math.round(dropScore),
+      avgFrameMs: avgFrameMs.toFixed(2),
+      avgGradeMs: avgGradeMs.toFixed(2),
+      avgDecodeMs: avgDecodeMs.toFixed(2),
+      dropRatePct: (dropRate * 100).toFixed(1),
+      totalFrames: this._totalFrames,
+      targetFps: Math.round(1000 / targetMs)
     };
   }
 
   report() {
     const s = this.score();
     console.group('%ciKlippa Performance Report', 'color:#0d9488;font-weight:700;font-size:14px');
-    console.log(`%c🎯 Composite Score: ${s.composite} / 100 (${s.targetFps} FPS Target)`,
-      `font-size:16px;font-weight:800;color:${s.composite >= 70 ? '#10b981' : s.composite >= 40 ? '#f59e0b' : '#ef4444'}`);
+    console.log('%c🎯 Composite Score: ' + s.composite + ' / 100 (' + s.targetFps + ' FPS Target)',
+      'font-size:16px;font-weight:800;color:' + (s.composite >= 70 ? '#10b981' : s.composite >= 40 ? '#f59e0b' : '#ef4444'));
     console.table({
-      'Smoothness': `${s.smoothness}/100  (avg ${s.avgFrameMs} ms/frame)`,
-      'Grade Perf': `${s.gradePerf}/100  (avg ${s.avgGradeMs} ms/grade)`,
-      'Decode Perf': `${s.decodePerf}/100  (avg ${s.avgDecodeMs} ms decode→output)`,
-      'Drop Score': `${s.dropScore}/100  (${s.dropRatePct}% frames dropped)`,
+      'Smoothness': s.smoothness + '/100  (avg ' + s.avgFrameMs + ' ms/frame)',
+      'Grade Perf': s.gradePerf + '/100  (avg ' + s.avgGradeMs + ' ms/grade)',
+      'Decode Perf': s.decodePerf + '/100  (avg ' + s.avgDecodeMs + ' ms decode→output)',
+      'Drop Score': s.dropScore + '/100  (' + s.dropRatePct + '% frames dropped)',
       'Total Frames': s.totalFrames,
     });
     console.groupEnd();
@@ -158,9 +185,18 @@ function handleWorkerMessage(e) {
   }
 
   if (type === 'audio_chunk') {
-    if (!audioCtx || data.configVersion !== audioConfigVersion) return;
+    if (DEBUG_AUDIO) {
+      console.log(`[Audio UI Log] Worker sent chunk at ${data.ms}ms (Version: ${data.configVersion}, Active UI Version: ${audioConfigVersion})`);
+    }
 
-    // Convert ArrayBuffer to raw Float32 audio buffer
+    if (!audioCtx) return;
+
+    // Discard chunks from older playback sessions
+    if (data.configVersion !== audioConfigVersion) {
+      if (DEBUG_AUDIO) console.warn(`[Audio UI Log] Discarded chunk at ${data.ms}ms: version mismatch.`);
+      return;
+    }
+
     const audioBuffer = audioCtx.createBuffer(data.channels, data.length, data.sampleRate);
     for (let c = 0; c < data.channels; c++) {
       audioBuffer.copyToChannel(new Float32Array(data.buffers[c]), c);
@@ -171,23 +207,31 @@ function handleWorkerMessage(e) {
   }
 }
 
-// SAMPLE-ACCURATE WEBAUDIO CLOCK SCHEDULER: Stints and aligns contiguous soundwaves without pops [1]
 function scheduleAudioNode(chunkMs, audioBuffer) {
   if (!audioCtx) return;
 
   const timeAheadMs = chunkMs - playheadMs;
-  if (timeAheadMs < -(audioBuffer.duration * 1000)) return; // Too far in the past to play
-
-  // DRIFT & GAP DETECTION:
-  // If starting fresh, or if we have a gap larger than 100ms (seek or pause), snap clock to playhead [1].
-  const gap = Math.abs(chunkMs - lastScheduledChunkMs);
-  if (nextAudioScheduleTime === 0 || nextAudioScheduleTime < audioCtx.currentTime || gap > 100) {
-    nextAudioScheduleTime = audioCtx.currentTime + (timeAheadMs / 1000);
+  if (timeAheadMs < -(audioBuffer.duration * 1000)) {
+    if (DEBUG_AUDIO) console.warn(`[Audio UI Log] Skipped scheduling chunk ${chunkMs}ms: too far in past.`);
+    return;
   }
 
-  // Safety cap: Cannot schedule audio in the past
+  const gap = Math.abs(chunkMs - lastScheduledChunkMs);
+
+  if (nextAudioScheduleTime === 0 || nextAudioScheduleTime < audioCtx.currentTime || gap > 100) {
+    const oldScheduleTime = nextAudioScheduleTime;
+    nextAudioScheduleTime = audioCtx.currentTime + (timeAheadMs / 1000);
+    if (DEBUG_AUDIO) {
+      console.log(`[Audio UI Log] Gap/Reset detected (Gap: ${gap}ms). Resetting clock from ${oldScheduleTime.toFixed(4)}s to ${nextAudioScheduleTime.toFixed(4)}s (currentTime: ${audioCtx.currentTime.toFixed(4)}s)`);
+    }
+  }
+
   if (nextAudioScheduleTime < audioCtx.currentTime) {
     nextAudioScheduleTime = audioCtx.currentTime;
+  }
+
+  if (DEBUG_AUDIO) {
+    console.log(`[Audio UI Log] Scheduling ${chunkMs}ms at AC time ${nextAudioScheduleTime.toFixed(4)}s (currentTime: ${audioCtx.currentTime.toFixed(4)}s)`);
   }
 
   const source = audioCtx.createBufferSource();
@@ -197,7 +241,6 @@ function scheduleAudioNode(chunkMs, audioBuffer) {
   source.start(nextAudioScheduleTime);
   scheduledAudioNodes.push(source);
 
-  // Advance the schedule clock by the EXACT duration of this soundwave [1]
   nextAudioScheduleTime += audioBuffer.duration;
   lastScheduledChunkMs = chunkMs + (audioBuffer.duration * 1000);
 }
@@ -212,12 +255,11 @@ export async function importFile(file) {
   logStatus(`Importing: ${file.name}`);
   initAudio();
 
-  // WIPE THE SLATE CLEAN: Prevents any leakage from a previous file. [1]
   pendingFrames.clear();
   pendingAudio.clear();
   stopAllAudioNodes();
   nextAudioScheduleTime = 0;
-  lastScheduledChunkMs = -1; // Reset gap tracking [1]
+  lastScheduledChunkMs = -1;
   audioConfigVersion++;
   playheadMs = 0;
   isPlaying = false;
@@ -253,6 +295,9 @@ export async function importFile(file) {
       mp4.setExtractionOptions(track.id, null, { nbSamples: Infinity });
 
       if (aTrack) {
+        if (DEBUG_AUDIO) {
+          console.log(`[Audio UI Log] Demuxer found Audio Track! Codec: ${aTrack.codec}, Sample Rate: ${aTrack.audio.sample_rate}, Timescale: ${aTrack.timescale}`);
+        }
         const audioDesc = getAudioDescription(mp4, aTrack);
         audioConfigResult = {
           codec: aTrack.codec,
@@ -269,7 +314,7 @@ export async function importFile(file) {
       if (trackInfo && id === trackInfo.id) {
         samplesArray.push(...s);
       } else if (audioTrackInfo && id === audioTrackInfo.id) {
-        audioSamplesArray.push(...s); // Strict audio track extraction [1.2.6]
+        audioSamplesArray.push(...s);
       }
     };
 
@@ -281,6 +326,9 @@ export async function importFile(file) {
       if (offset >= file.size) {
         mp4.flush();
         if (trackInfo && codecConfigResult) {
+          if (DEBUG_AUDIO) {
+            console.log(`[Audio UI Log] Demux complete. Found ${audioSamplesArray.length} audio samples. First Sample CTS: ${audioSamplesArray[0]?.cts}`);
+          }
           resolve({
             codecConfig: codecConfigResult,
             width: trackInfo.track_width,
@@ -392,10 +440,9 @@ export function startPlayback() {
   isPlaying = true;
   lastRafTs = null;
 
-  nextAudioScheduleTime = 0; // Reset hardware schedule clock [1]
-  lastScheduledChunkMs = -1; // Reset gap tracking [1]
+  nextAudioScheduleTime = 0;
+  lastScheduledChunkMs = -1;
 
-  // Sort and pre-schedule all pending audio buffers immediately [1]
   const sortedAudio = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
   for (const [ms, buffer] of sortedAudio) {
     if (ms >= playheadMs) scheduleAudioNode(ms, buffer);
@@ -412,9 +459,9 @@ export function pausePlayback() {
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
 
   stopAllAudioNodes();
-  pendingAudio.clear(); // Clear cached audio on pause to prevent ghost resume leaks [1]
+  pendingAudio.clear();
   nextAudioScheduleTime = 0;
-  lastScheduledChunkMs = -1; // Reset gap tracking [1]
+  lastScheduledChunkMs = -1;
   audioConfigVersion++;
   worker.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
 
@@ -438,9 +485,9 @@ export async function seekTo(ms) {
 
   playheadMs = ms;
   pendingFrames.clear();
-  pendingAudio.clear(); // Clear cached audio on seek [1]
+  pendingAudio.clear();
   nextAudioScheduleTime = 0;
-  lastScheduledChunkMs = -1; // Reset gap tracking [1]
+  lastScheduledChunkMs = -1;
 
   audioConfigVersion++;
   worker.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
@@ -466,6 +513,7 @@ export function setColorGrade(params) {
 
 // ── Export ────────────────────────────────────────────────────────────────────
 export async function exportVideo(onProgress) {
+  /* Export unchanged */
   if (isExporting) return;
   pausePlayback();
   isExporting = true;
@@ -492,15 +540,7 @@ export async function exportVideo(onProgress) {
     },
     error: (e) => console.error(e),
   });
-  encoder.configure({
-    codec: 'avc1.42001f',
-    width: sourceVideoWidth,
-    height: sourceVideoHeight,
-    bitrate: 8_000_000,
-    framerate: 30,
-    hardwareAcceleration: 'prefer-hardware',
-    latencyMode: 'quality',
-  });
+  encoder.configure({ codec: 'avc1.42001f', width: sourceVideoWidth, height: sourceVideoHeight, bitrate: 8_000_000, framerate: 30, hardwareAcceleration: 'prefer-hardware', latencyMode: 'quality' });
 
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
   for (let i = 0; i < sortedFrames.length; i++) {
