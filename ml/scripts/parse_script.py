@@ -34,11 +34,7 @@ def analyze_mood(script_text):
     scores = vader.polarity_scores(script_text)
     compound = scores["compound"]
 
-    # TODO 1: Assign a mood_label based on the compound score.
-    # Rules:
-    #   - If compound <= -0.3, mood_label = "dark"
-    #   - If compound >= 0.3, mood_label = "uplifting"
-    #   - Otherwise, mood_label = "neutral"
+   
     if compound <=-0.3:
         mood_label = "dark"
     elif compound >=0.3:
@@ -63,7 +59,7 @@ def estimate_pacing(script_text):
     #   - len(sentences) gives you the number of sentences
     #   - len(sentence) gives you the number of tokens in a sentence
     #   - Watch out for division by zero if there are no sentences!
-    avg_words = 0  # <-- Replace this
+    avg_words = 0 if len(sentences) == 0 else sum(len(sentence) for sentence in sentences) / len(sentences)
 
     # TODO 3: Assign a pacing_label based on avg_words.
     # Rules:
