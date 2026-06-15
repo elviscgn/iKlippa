@@ -15,9 +15,9 @@ To maximize our development speed during this sprint, we divided the engineering
 
 ---
 
-## 📅 Day 1: Architectural Scaffolding & The Memory Bridge
+##  Day 1: Architectural Scaffolding & The Memory Bridge
 
-### 🖥️ Systems & Render Pipeline (Elvis with IBM Bob)
+### Systems & Render Pipeline (Elvis with IBM Bob)
 *   **The Bottleneck:** Video processing requires copying raw pixel arrays across the JavaScript/WASM boundary. At 1080p/30fps, copying 8.2MB of uncompressed RGBA pixel data per frame between threads creates nearly 500MB of garbage memory every second. This thrashes the browser's Garbage Collector (GC), dropping playback below 10 FPS.
 *   **The Collaboration:**
     *   Elvis consulted Bob on WebAssembly memory layouts. Bob suggested bypass-allocation through a **stable pre-allocated memory pool** (`FramePool`) inside Rust's linear memory.
@@ -35,7 +35,7 @@ To maximize our development speed during this sprint, we divided the engineering
 
 ---
 
-## 📅 Day 2: Multithreading & Hardware Resilience
+## Day 2: Multithreading & Hardware Resilience
 
 ### Systems & Render Pipeline (Elvis with IBM Bob)
 *   **The Bottleneck:** Running colorspace conversions on the browser's Main Thread caused the UI to stutter. Furthermore, importing HEVC files on Apple Silicon (M1) threw crashes due to opaque `null` format frames blocking WebCodecs' `copyTo()` function.
@@ -54,7 +54,7 @@ To maximize our development speed during this sprint, we divided the engineering
 
 ---
 
-## 📅 Day 3: State Synchronization & Rust Optimizations
+## Day 3: State Synchronization & Rust Optimizations
 
 ### Systems & Render Pipeline (Elvis with IBM Bob)
 *   **The Bottleneck:** Rapidly scrubbing the timeline caused the player to throw an unhandled exception: `Uncaught DataError: A key frame is required after configure()`. Additionally, the Rust pixel loop was taking 65ms per frame, which was too slow.
