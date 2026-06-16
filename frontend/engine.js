@@ -32,6 +32,8 @@ let audioConfigVersion = 0;
 let audioPlayStartCtxTime = 0;  // audioCtx.currentTime when play began
 let audioPlayStartMs = 0;       // playheadMs when play began
 
+let nextAudioStartTime = 0;
+
 // ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
   constructor() { this.reset(); }
@@ -177,19 +179,35 @@ function handleWorkerMessage(e) {
 function scheduleAudioNode(chunkMs, audioBuffer) {
   if (!audioCtx) return;
 
-  // Deterministic: calculate exactly when this chunk should play
-  // relative to when play was pressed. No chaining, no clock drift.
   const idealCtxTime = audioPlayStartCtxTime + (chunkMs - audioPlayStartMs) / 1000;
 
-  // Drop if more than 250ms late (already missed its window)
-  if (idealCtxTime < audioCtx.currentTime - 0.25) return;
+  // Initialize or reset if we've fallen behind (e.g., after a pause or seek)
+  if (nextAudioStartTime === 0 || nextAudioStartTime < audioCtx.currentTime) {
+    nextAudioStartTime = Math.max(audioCtx.currentTime, idealCtxTime);
+  }
+
+  // Drop chunks that are too far in the past (>150ms) to prevent overlap cascades
+  if (idealCtxTime < audioCtx.currentTime - 0.15) {
+    return;
+  }
+
+  // If there's a gap in the decoded stream, advance time to insert silence
+  // rather than overlapping with the previous chunk.
+  if (idealCtxTime > nextAudioStartTime + 0.05) {
+    nextAudioStartTime = idealCtxTime;
+  }
 
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(audioCtx.destination);
-  source.start(Math.max(audioCtx.currentTime, idealCtxTime));
+
+  // Schedule exactly at nextAudioStartTime to guarantee no overlap and no gap
+  source.start(nextAudioStartTime);
+  nextAudioStartTime += audioBuffer.duration;
+
   scheduledAudioNodes.push(source);
 }
+
 
 function stopAllAudioNodes() {
   scheduledAudioNodes.forEach(n => { try { n.stop(); } catch { } });
