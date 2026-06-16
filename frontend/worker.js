@@ -1,4 +1,3 @@
-// worker.js (Final, Audited, Synchronized)
 import init, { IklippaEngine } from './pkg/iklippa_engine.js';
 
 let wasmModule = null;
