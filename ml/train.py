@@ -64,9 +64,14 @@ if __name__ == "__main__":
     data_dir = os.path.join(os.path.dirname(__file__), 'data')
     X, y, feature_names = load_and_preprocess_data(data_dir=data_dir)
     
-    # TODO 1: Use `train_test_split` to split X and y into:
-    # X_train, X_test, y_train, y_test
-    # Set test_size=0.2 and random_state=42
+    
+
+    X_train, X_test, y_train, y_test = train_test_split(
+    X, 
+    y, 
+    test_size=0.2,      
+    random_state=42,    
+)
     
     
     print(f"Training XGBoost Regressor...")
