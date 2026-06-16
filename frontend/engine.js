@@ -29,6 +29,9 @@ let nextAudioScheduleTime = 0;
 let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
 
+let audioPlayStartCtxTime = 0;  // audioCtx.currentTime when play began
+let audioPlayStartMs = 0;       // playheadMs when play began
+
 // ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
   constructor() { this.reset(); }
@@ -120,11 +123,13 @@ export async function initEngine(canvasEl) {
   return true;
 }
 
-function initAudio() {
+async function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state !== 'running') {
+    await audioCtx.resume();   // ← was fire-and-forget before
+  }
 }
 
 function handleWorkerMessage(e) {
