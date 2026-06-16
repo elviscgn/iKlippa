@@ -1,3 +1,4 @@
+// worker.js (Final, Audited, Synchronized)
 import init, { IklippaEngine } from './pkg/iklippa_engine.js';
 
 let wasmModule = null;
@@ -21,7 +22,9 @@ let decodeSessionId = 0;
 let audioConfigVersion = 0;
 
 // --- THE DISCOVERY FIX ---
-// The actual start time of the DECODED audio stream, discovered on the fly.
+// The baseline timestamp of the first decoded frame (audio or video).
+// This ensures both streams are normalized to the exact same timeline,
+// preventing desync if one track starts slightly later than the other.
 let globalStartOffsetUs = -1;
 
 // Sync State from Main Thread
@@ -43,7 +46,9 @@ self.onmessage = async (e) => {
     }
 
     else if (type === 'load') {
+        // Reset baseline on new file load
         globalStartOffsetUs = -1;
+
         const { file, codecConfig, width, height, samples, durationMs } = data;
         if (!wasmModule) { wasmModule = new IklippaEngine(width, height); }
         else { wasmModule.resize(width, height); }
@@ -54,10 +59,6 @@ self.onmessage = async (e) => {
         audioConfig = data.audioConfig;
         audioSamples = data.audioSamples || [];
         audioConfigVersion = data.audioConfigVersion || 0;
-
-        // Reset discovery on new file load
-        // discoveredAudioOffsetUs = -1;
-        // discoveredVideoOffsetUs = -1;
 
         setupOffscreenCanvas(width, height);
         setupDecoder(codecConfig, width, height);
@@ -115,13 +116,12 @@ function setupAudioDecoder(config) {
 
     audioDecoder = new AudioDecoder({
         output: (audioData) => {
-            // Discover the true start time of the audio stream on the first frame
+            // Establish the global baseline if this is the first decoded chunk
             if (globalStartOffsetUs === -1) {
                 globalStartOffsetUs = audioData.timestamp;
             }
 
-
-
+            // Normalize to the shared baseline
             const normalizedTsUs = audioData.timestamp - globalStartOffsetUs;
             const tsMs = Math.round(normalizedTsUs / 1000);
 
@@ -178,12 +178,13 @@ function setupDecoder(codecConfig, width, height) {
 
     decoder = new VideoDecoder({
         output: async (videoFrame) => {
-            // Discover the true start time of the video stream on the first frame
-            if (globalStartOffsetUs === -1) { // ✅ UPDATED
-                globalStartOffsetUs = videoFrame.timestamp; // ✅ UPDATED
+            // Establish the global baseline if this is the first decoded chunk
+            if (globalStartOffsetUs === -1) {
+                globalStartOffsetUs = videoFrame.timestamp;
             }
 
-            const normalizedTsUs = videoFrame.timestamp - globalStartOffsetUs; // ✅ UPDATED
+            // Normalize to the shared baseline
+            const normalizedTsUs = videoFrame.timestamp - globalStartOffsetUs;
             const tsMs = Math.round(normalizedTsUs / 1000);
 
             if (isWorkerPlaying && tsMs < currentPlayheadMs - 66) {
@@ -308,7 +309,7 @@ async function primeAudioDecode() {
 
         const data = await readSampleData(file, s);
         audioDecoder.decode(new EncodedAudioChunk({
-            type: s.is_sync ? 'key' : 'delta', // <-- FIXED: was hardcoded to 'key'
+            type: s.is_sync ? 'key' : 'delta', // FIXED: was hardcoded to 'key'
             timestamp: s.cts * 1_000_000 / s.timescale,
             duration: s.duration * 1_000_000 / s.timescale,
             data,
@@ -335,7 +336,7 @@ async function decodeNextSamples() {
             if (session !== decodeSessionId) { isDecodingNext = false; return; }
 
             audioDecoder.decode(new EncodedAudioChunk({
-                type: s.is_sync ? 'key' : 'delta',
+                type: s.is_sync ? 'key' : 'delta', // FIXED: was hardcoded to 'key'
                 timestamp: s.cts * 1_000_000 / s.timescale,
                 duration: s.duration * 1_000_000 / s.timescale,
                 data,
