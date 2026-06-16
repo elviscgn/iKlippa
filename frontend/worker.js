@@ -65,6 +65,7 @@ self.onmessage = async (e) => {
         if (audioConfig) setupAudioDecoder(audioConfig);
 
         await seekAndDecodeFrame(0);
+        await primeAudioDecode();
         self.postMessage({ type: 'ready', durationMs, width, height });
     }
 
