@@ -22,8 +22,7 @@ let audioConfigVersion = 0;
 
 // --- THE DISCOVERY FIX ---
 // The actual start time of the DECODED audio stream, discovered on the fly.
-let discoveredAudioOffsetUs = -1;
-let discoveredVideoOffsetUs = -1;
+let globalStartOffsetUs = -1;
 
 // Sync State from Main Thread
 let currentPlayheadMs = 0;
@@ -44,6 +43,7 @@ self.onmessage = async (e) => {
     }
 
     else if (type === 'load') {
+        globalStartOffsetUs = -1;
         const { file, codecConfig, width, height, samples, durationMs } = data;
         if (!wasmModule) { wasmModule = new IklippaEngine(width, height); }
         else { wasmModule.resize(width, height); }
@@ -56,8 +56,8 @@ self.onmessage = async (e) => {
         audioConfigVersion = data.audioConfigVersion || 0;
 
         // Reset discovery on new file load
-        discoveredAudioOffsetUs = -1;
-        discoveredVideoOffsetUs = -1;
+        // discoveredAudioOffsetUs = -1;
+        // discoveredVideoOffsetUs = -1;
 
         setupOffscreenCanvas(width, height);
         setupDecoder(codecConfig, width, height);
@@ -116,11 +116,13 @@ function setupAudioDecoder(config) {
     audioDecoder = new AudioDecoder({
         output: (audioData) => {
             // Discover the true start time of the audio stream on the first frame
-            if (discoveredAudioOffsetUs === -1) {
-                discoveredAudioOffsetUs = audioData.timestamp;
+            if (globalStartOffsetUs === -1) {
+                globalStartOffsetUs = audioData.timestamp;
             }
 
-            const normalizedTsUs = audioData.timestamp - discoveredAudioOffsetUs;
+
+
+            const normalizedTsUs = audioData.timestamp - globalStartOffsetUs;
             const tsMs = Math.round(normalizedTsUs / 1000);
 
             if (isWorkerPlaying && tsMs < currentPlayheadMs - 200) {
@@ -177,11 +179,11 @@ function setupDecoder(codecConfig, width, height) {
     decoder = new VideoDecoder({
         output: async (videoFrame) => {
             // Discover the true start time of the video stream on the first frame
-            if (discoveredVideoOffsetUs === -1) {
-                discoveredVideoOffsetUs = videoFrame.timestamp;
+            if (globalStartOffsetUs === -1) { // ✅ UPDATED
+                globalStartOffsetUs = videoFrame.timestamp; // ✅ UPDATED
             }
 
-            const normalizedTsUs = videoFrame.timestamp - discoveredVideoOffsetUs;
+            const normalizedTsUs = videoFrame.timestamp - globalStartOffsetUs; // ✅ UPDATED
             const tsMs = Math.round(normalizedTsUs / 1000);
 
             if (isWorkerPlaying && tsMs < currentPlayheadMs - 66) {
@@ -333,7 +335,7 @@ async function decodeNextSamples() {
             if (session !== decodeSessionId) { isDecodingNext = false; return; }
 
             audioDecoder.decode(new EncodedAudioChunk({
-                type: s.is_sync ? 'key' : 'delta', 
+                type: s.is_sync ? 'key' : 'delta',
                 timestamp: s.cts * 1_000_000 / s.timescale,
                 duration: s.duration * 1_000_000 / s.timescale,
                 data,
