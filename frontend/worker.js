@@ -1,4 +1,3 @@
-// worker.js (Final, Audited, Synchronized)
 import init, { IklippaEngine } from './pkg/iklippa_engine.js';
 
 let wasmModule = null;
@@ -21,10 +20,9 @@ let decoderSeeded = false;
 let decodeSessionId = 0;
 let audioConfigVersion = 0;
 
-// --- THE DISCOVERY FIX ---
-// The actual start time of the DECODED audio stream, discovered on the fly.
-let discoveredAudioOffsetUs = -1;
-let discoveredVideoOffsetUs = -1;
+// Robust timestamp handling
+let audioBaseTimestampUs = null;
+let videoBaseTimestampUs = null;
 
 // Sync State from Main Thread
 let currentPlayheadMs = 0;
@@ -56,9 +54,9 @@ self.onmessage = async (e) => {
         audioSamples = data.audioSamples || [];
         audioConfigVersion = data.audioConfigVersion || 0;
 
-        // Reset discovery on new file load
-        discoveredAudioOffsetUs = -1;
-        discoveredVideoOffsetUs = -1;
+        // Reset timestamp bases
+        audioBaseTimestampUs = null;
+        videoBaseTimestampUs = null;
 
         setupOffscreenCanvas(width, height);
         setupDecoder(codecConfig, width, height);
@@ -116,15 +114,16 @@ function setupAudioDecoder(config) {
 
     audioDecoder = new AudioDecoder({
         output: (audioData) => {
-            // Discover the true start time of the audio stream on the first frame
-            if (discoveredAudioOffsetUs === -1) {
-                discoveredAudioOffsetUs = audioData.timestamp;
+            // Robust base timestamp discovery
+            if (audioBaseTimestampUs === null) {
+                audioBaseTimestampUs = audioData.timestamp;
             }
 
-            const normalizedTsUs = audioData.timestamp - discoveredAudioOffsetUs;
+            const normalizedTsUs = audioData.timestamp - audioBaseTimestampUs;
             const tsMs = Math.round(normalizedTsUs / 1000);
 
-            if (isWorkerPlaying && tsMs < currentPlayheadMs - 200) {
+            // Skip frames that are too far behind, but keep some buffer
+            if (isWorkerPlaying && tsMs < currentPlayheadMs - 500) {
                 audioData.close();
                 return;
             }
@@ -134,37 +133,71 @@ function setupAudioDecoder(config) {
             const length = audioData.numberOfFrames;
             const format = audioData.format;
 
-            const isPlanar = format.endsWith('-planar');
+            // Proper format handling without premature close
             const buffers = [];
+            let transferBuffers = [];
 
-            if (isPlanar) {
-                for (let c = 0; c < channels; c++) {
-                    const size = audioData.allocationSize({ planeIndex: c, format: 'f32-planar' });
-                    const buf = new ArrayBuffer(size);
-                    audioData.copyTo(buf, { planeIndex: c, format: 'f32-planar' });
-                    buffers.push(buf);
-                }
-            } else {
-                const size = audioData.allocationSize({ planeIndex: 0, format: 'f32' });
-                const buf = new ArrayBuffer(size);
-                audioData.copyTo(buf, { planeIndex: 0, format: 'f32' });
-
-                const interleaved = new Float32Array(buf);
-                for (let c = 0; c < channels; c++) {
-                    const chanBuf = new ArrayBuffer(length * 4);
-                    const chanArr = new Float32Array(chanBuf);
-                    for (let i = 0; i < length; i++) {
-                        chanArr[i] = interleaved[i * channels + c];
+            try {
+                if (format === 'f32-planar' || format.endsWith('-planar')) {
+                    // Planar: each channel is separate
+                    for (let c = 0; c < channels; c++) {
+                        const size = audioData.allocationSize({ planeIndex: c, format: 'f32-planar' });
+                        const buf = new ArrayBuffer(size);
+                        audioData.copyTo(buf, { planeIndex: c, format: 'f32-planar' });
+                        buffers.push(buf);
+                        transferBuffers.push(buf);
                     }
-                    buffers.push(chanBuf);
+                } else if (format === 'f32') {
+                    // Interleaved: deinterleave into planar for consistent processing
+                    const size = audioData.allocationSize({ planeIndex: 0, format: 'f32' });
+                    const interleavedBuf = new ArrayBuffer(size);
+                    audioData.copyTo(interleavedBuf, { planeIndex: 0, format: 'f32' });
+
+                    const interleaved = new Float32Array(interleavedBuf);
+                    const frames = interleaved.length / channels;
+
+                    for (let c = 0; c < channels; c++) {
+                        const chanBuf = new ArrayBuffer(frames * 4);
+                        const chanArr = new Float32Array(chanBuf);
+                        for (let i = 0; i < frames; i++) {
+                            chanArr[i] = interleaved[i * channels + c];
+                        }
+                        buffers.push(chanBuf);
+                        transferBuffers.push(chanBuf);
+                    }
+                } else {
+                    // Fallback: convert via temporary buffer
+                    const tempBuf = new ArrayBuffer(length * channels * 4);
+                    // Try to copy as f32, if that fails, use the format directly
+                    try {
+                        audioData.copyTo(tempBuf, { format: 'f32' });
+                    } catch {
+                        audioData.copyTo(tempBuf, { format });
+                    }
+                    const interleaved = new Float32Array(tempBuf);
+                    for (let c = 0; c < channels; c++) {
+                        const chanBuf = new ArrayBuffer(length * 4);
+                        const chanArr = new Float32Array(chanBuf);
+                        for (let i = 0; i < length; i++) {
+                            chanArr[i] = interleaved[i * channels + c];
+                        }
+                        buffers.push(chanBuf);
+                        transferBuffers.push(chanBuf);
+                    }
                 }
+            } finally {
+                audioData.close();
             }
 
-            audioData.close();
-
             self.postMessage({
-                type: 'audio_chunk', ms: tsMs, channels, sampleRate, length, buffers, configVersion: audioConfigVersion
-            }, buffers);
+                type: 'audio_chunk',
+                ms: tsMs,
+                channels,
+                sampleRate,
+                length,
+                buffers,
+                configVersion: audioConfigVersion
+            }, transferBuffers);
         },
         error: e => console.error('[AudioDecoder]', e)
     });
@@ -177,12 +210,11 @@ function setupDecoder(codecConfig, width, height) {
 
     decoder = new VideoDecoder({
         output: async (videoFrame) => {
-            // Discover the true start time of the video stream on the first frame
-            if (discoveredVideoOffsetUs === -1) {
-                discoveredVideoOffsetUs = videoFrame.timestamp;
+            if (videoBaseTimestampUs === null) {
+                videoBaseTimestampUs = videoFrame.timestamp;
             }
 
-            const normalizedTsUs = videoFrame.timestamp - discoveredVideoOffsetUs;
+            const normalizedTsUs = videoFrame.timestamp - videoBaseTimestampUs;
             const tsMs = Math.round(normalizedTsUs / 1000);
 
             if (isWorkerPlaying && tsMs < currentPlayheadMs - 66) {
@@ -238,7 +270,6 @@ async function seekAndDecodeFrame(targetMs) {
 
     let vKeyIdx = 0;
     for (let i = 0; i < samples.length; i++) {
-        // We seek on the RAW file timestamps here
         const sMs = Math.round((samples[i].cts * 1000) / samples[i].timescale);
         if (sMs <= targetMs && samples[i].is_sync) vKeyIdx = i;
         if (sMs > targetMs) break;
@@ -246,6 +277,9 @@ async function seekAndDecodeFrame(targetMs) {
 
     decoder.reset();
     decoder.configure(clips[0].codecConfig);
+
+    // Reset video base timestamp on seek
+    videoBaseTimestampUs = null;
 
     for (let i = vKeyIdx; i < samples.length; i++) {
         if (pendingSeekMs !== null) break;
@@ -268,6 +302,7 @@ async function seekAndDecodeFrame(targetMs) {
     if (audioDecoder && audioSamples.length > 0) {
         audioDecoder.reset();
         audioDecoder.configure(audioConfig);
+        audioBaseTimestampUs = null; // Reset audio base on seek
 
         let targetIdx = 0;
         for (let i = 0; i < audioSamples.length; i++) {
@@ -290,7 +325,6 @@ async function seekAndDecodeFrame(targetMs) {
     }
 }
 
-// Add this function
 async function primeAudioDecode() {
     if (!audioDecoder || audioDecoder.state !== 'configured') return;
     if (!audioSamples.length || !clips.length) return;
@@ -326,7 +360,7 @@ async function decodeNextSamples() {
     const session = decodeSessionId;
     const { samples, file } = clips[0];
 
-    // ── Audio first (cheaper, more urgent for A/V sync) ──────────────
+    // Audio first (cheaper, more urgent for A/V sync)
     if (audioDecoder && audioDecoder.state === 'configured' && audioSamples.length > 0) {
         while (audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE) {
             const startIdx = lastDecodedAudioIdx + 1;
@@ -344,7 +378,7 @@ async function decodeNextSamples() {
         }
     }
 
-    // ── Video second ──────────────────────────────────────────────────
+    // Video second
     while (decoder.decodeQueueSize < MAX_DECODE_QUEUE) {
         const startIdx = lastDecodedSampleIdx + 1;
         if (startIdx >= samples.length) break;
