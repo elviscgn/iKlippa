@@ -415,12 +415,10 @@ export function pausePlayback() {
   isPlaying = false;
   lastRafTs = null;
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
-
   stopAllAudioNodes();
-  // Intentionally DO NOT clear pendingAudio here so it resumes instantly
-  nextAudioScheduleTime = 0;
-  lastScheduledChunkMs = -1;
 
+  nextAudioStartTime = 0;
+  lastScheduledChunkMs = -1;
   syncWorkerState();
   if (window.onPlaybackPaused) window.onPlaybackPaused();
 }
@@ -442,18 +440,17 @@ export async function seekTo(ms) {
     if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
     stopAllAudioNodes();
   }
-
   playheadMs = ms;
-  audioPlayStartMs = ms;  // ← anchor reset for when play resumes
+  audioPlayStartMs = ms;
   pendingFrames.clear();
   pendingAudio.clear();
-
   audioConfigVersion++;
   worker.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
   worker.postMessage({ type: 'seek', ms });
-
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
+
+  nextAudioStartTime = 0;
 
   if (wasPlaying) startPlayback();
 }
