@@ -1,5 +1,5 @@
 /**
- * iKlippa — engine.js (Fixed Audio & Timeline Sync)
+ * iKlippa — engine.js (Stable Audio & Catch-Up Fix)
  */
 
 const DECODE_LOOKAHEAD = 12;
@@ -29,8 +29,8 @@ let nextAudioScheduleTime = 0;
 let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
 
-let audioPlayStartCtxTime = 0;
-let audioPlayStartMs = 0;
+let audioPlayStartCtxTime = 0;  // audioCtx.currentTime when play began
+let audioPlayStartMs = 0;       // playheadMs when play began
 
 // ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
@@ -125,13 +125,10 @@ export async function initEngine(canvasEl) {
 
 async function initAudio() {
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-      sampleRate: 48000,  // Prefer 48kHz, most common for video
-      latencyHint: 'playback'
-    });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
   if (audioCtx.state !== 'running') {
-    await audioCtx.resume();
+    await audioCtx.resume();   // ← was fire-and-forget before
   }
 }
 
@@ -150,8 +147,6 @@ function handleWorkerMessage(e) {
     if (window.onClipImported) {
       window.onClipImported({ width: sourceVideoWidth, height: sourceVideoHeight, durationMs: videoDurationMs });
     }
-    // Update UI timeline with real video data
-    updateTimelineWithRealVideo(data.durationMs);
   }
 
   if (type === 'decode_submit') {
@@ -169,17 +164,9 @@ function handleWorkerMessage(e) {
   if (type === 'audio_chunk') {
     if (!audioCtx || data.configVersion !== audioConfigVersion) return;
 
-    // Resample if needed to match AudioContext sample rate
-    const targetSampleRate = audioCtx.sampleRate;
-    let audioBuffer;
-
-    if (data.sampleRate !== targetSampleRate) {
-      audioBuffer = resampleAudioBuffer(data, targetSampleRate);
-    } else {
-      audioBuffer = audioCtx.createBuffer(data.channels, data.length, data.sampleRate);
-      for (let c = 0; c < data.channels; c++) {
-        audioBuffer.copyToChannel(new Float32Array(data.buffers[c]), c);
-      }
+    const audioBuffer = audioCtx.createBuffer(data.channels, data.length, data.sampleRate);
+    for (let c = 0; c < data.channels; c++) {
+      audioBuffer.copyToChannel(new Float32Array(data.buffers[c]), c);
     }
 
     pendingAudio.set(data.ms, audioBuffer);
@@ -187,37 +174,14 @@ function handleWorkerMessage(e) {
   }
 }
 
-// ── Audio Resampling ──────────────────────────────────────────────────────────
-function resampleAudioBuffer(data, targetRate) {
-  const ratio = targetRate / data.sampleRate;
-  const newLength = Math.floor(data.length * ratio);
-  const audioBuffer = audioCtx.createBuffer(data.channels, newLength, targetRate);
-
-  for (let c = 0; c < data.channels; c++) {
-    const input = new Float32Array(data.buffers[c]);
-    const output = audioBuffer.getChannelData(c);
-
-    // Simple linear interpolation resampling
-    for (let i = 0; i < newLength; i++) {
-      const pos = i / ratio;
-      const idx = Math.floor(pos);
-      const frac = pos - idx;
-      const s0 = input[idx] || 0;
-      const s1 = input[idx + 1] || s0;
-      output[i] = s0 + frac * (s1 - s0);
-    }
-  }
-
-  return audioBuffer;
-}
-
 function scheduleAudioNode(chunkMs, audioBuffer) {
   if (!audioCtx) return;
 
   // Deterministic: calculate exactly when this chunk should play
+  // relative to when play was pressed. No chaining, no clock drift.
   const idealCtxTime = audioPlayStartCtxTime + (chunkMs - audioPlayStartMs) / 1000;
 
-  // Drop if more than 250ms late
+  // Drop if more than 250ms late (already missed its window)
   if (idealCtxTime < audioCtx.currentTime - 0.25) return;
 
   const source = audioCtx.createBufferSource();
@@ -230,42 +194,6 @@ function scheduleAudioNode(chunkMs, audioBuffer) {
 function stopAllAudioNodes() {
   scheduledAudioNodes.forEach(n => { try { n.stop(); } catch { } });
   scheduledAudioNodes = [];
-}
-
-// ── Timeline Sync: Replace demo clips with real video ────────────────────────
-function updateTimelineWithRealVideo(durationMs) {
-  const durationSec = durationMs / 1000;
-
-  // Update global state
-  window.S.dur = durationSec;
-  window.S.time = 0;
-
-  // Replace demo video clips with a single clip representing the imported video
-  window.videoClips = [{
-    id: "imported_" + Date.now(),
-    name: "Imported Video",
-    start: 0.0,
-    end: durationSec,
-    picId: 29  // fallback thumbnail
-  }];
-
-  // Update audio clip to match
-  window.audioClips = [{
-    id: "audio_" + Date.now(),
-    name: "Audio Track",
-    start: 0,
-    end: durationSec
-  }];
-
-  // Clear AI nodes (they were for demo)
-  window.aiNodes = [];
-
-  // Re-render timeline
-  if (window.renderRuler) window.renderRuler();
-  if (window.renderClips) window.renderClips();
-  if (window.updatePlayhead) window.updatePlayhead();
-
-  showToast(`Timeline updated: ${durationSec.toFixed(1)}s`, "film");
 }
 
 // ── Demux (Main Thread) ───────────────────────────────────────────────────────
@@ -445,16 +373,16 @@ function paintFrameAtTime(ms) {
 // ── Playback control ──────────────────────────────────────────────────
 export async function startPlayback() {
   if (isPlaying) return;
-  isPlaying = true;
+  isPlaying = true;     // set BEFORE await so togglePlayback() reads it correctly
   lastRafTs = null;
 
-  await initAudio();
+  await initAudio();    // now properly awaited
 
   // Anchor: sync AudioContext time to playhead position
   audioPlayStartCtxTime = audioCtx.currentTime;
   audioPlayStartMs = playheadMs;
 
-  // Schedule anything already buffered
+  // Schedule anything already buffered (from primeAudioDecode)
   const sortedAudio = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
   for (const [ms, buffer] of sortedAudio) {
     scheduleAudioNode(ms, buffer);
@@ -471,6 +399,7 @@ export function pausePlayback() {
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
 
   stopAllAudioNodes();
+  // Intentionally DO NOT clear pendingAudio here so it resumes instantly
   nextAudioScheduleTime = 0;
   lastScheduledChunkMs = -1;
 
@@ -497,7 +426,7 @@ export async function seekTo(ms) {
   }
 
   playheadMs = ms;
-  audioPlayStartMs = ms;
+  audioPlayStartMs = ms;  // ← anchor reset for when play resumes
   pendingFrames.clear();
   pendingAudio.clear();
 
