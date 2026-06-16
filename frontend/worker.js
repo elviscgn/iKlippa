@@ -1,4 +1,3 @@
-// worker.js (Final, Audited, Synchronized)
 import init, { IklippaEngine } from './pkg/iklippa_engine.js';
 
 let wasmModule = null;
@@ -290,11 +289,9 @@ async function seekAndDecodeFrame(targetMs) {
     }
 }
 
-// Add this function
 async function primeAudioDecode() {
     if (!audioDecoder || audioDecoder.state !== 'configured') return;
     if (!audioSamples.length || !clips.length) return;
-
     const { file } = clips[0];
     const startIdx = lastDecodedAudioIdx + 1;
     if (startIdx >= audioSamples.length) return;
@@ -309,7 +306,7 @@ async function primeAudioDecode() {
 
         const data = await readSampleData(file, s);
         audioDecoder.decode(new EncodedAudioChunk({
-            type: 'key',
+            type: s.is_sync ? 'key' : 'delta', // <-- FIXED: was hardcoded to 'key'
             timestamp: s.cts * 1_000_000 / s.timescale,
             duration: s.duration * 1_000_000 / s.timescale,
             data,
@@ -334,8 +331,9 @@ async function decodeNextSamples() {
             const s = audioSamples[startIdx];
             const data = await readSampleData(file, s);
             if (session !== decodeSessionId) { isDecodingNext = false; return; }
+
             audioDecoder.decode(new EncodedAudioChunk({
-                type: 'key',
+                type: s.is_sync ? 'key' : 'delta', 
                 timestamp: s.cts * 1_000_000 / s.timescale,
                 duration: s.duration * 1_000_000 / s.timescale,
                 data,
