@@ -426,10 +426,9 @@ export async function seekTo(ms) {
   }
 
   playheadMs = ms;
+  audioPlayStartMs = ms;  // ← anchor reset for when play resumes
   pendingFrames.clear();
-  pendingAudio.clear(); // Seek clears the cache
-  nextAudioScheduleTime = 0;
-  lastScheduledChunkMs = -1;
+  pendingAudio.clear();
 
   audioConfigVersion++;
   worker.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
