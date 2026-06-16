@@ -71,6 +71,7 @@ self.onmessage = async (e) => {
 
     else if (type === 'seek') {
         await seekAndDecodeFrame(data.ms);
+        await primeAudioDecode();
     }
 
     else if (type === 'sync') {
