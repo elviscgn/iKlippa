@@ -1,5 +1,4 @@
 "use strict";
-
 lucide.createIcons();
 
 // Establish core application state globally
@@ -63,7 +62,7 @@ window.showToast = function (msg, iconStr) {
     const box = $("#toast-box");
     const t = document.createElement("div");
     t.className = "toast";
-    t.innerHTML = `<i data-lucide="${iconStr}"></i> <span>${msg}</span>`;
+    t.innerHTML = `<i data-lucide="${iconStr}"></i><span>${msg}</span>`;
     box.appendChild(t);
     lucide.createIcons({ nodes: [t] });
     setTimeout(() => {
@@ -176,18 +175,18 @@ cmdInput.addEventListener("input", (e) => {
     if (lastWord.startsWith("/")) {
         acMenu.innerHTML =
             '<div class="ac-section">Commands</div>' +
-            '<div class="ac-item" onclick="insertAC(\'/trim-silence \')"><i data-lucide="scissors"></i> /trim-silence</div>' +
-            '<div class="ac-item" onclick="insertAC(\'/sync-audio \')"><i data-lucide="music"></i> /sync-audio</div>' +
-            '<div class="ac-item" onclick="insertAC(\'/auto-broll \')"><i data-lucide="sparkles"></i> /auto-broll</div>' +
-            '<div class="ac-item" onclick="insertAC(\'/add-captions \')"><i data-lucide="captions"></i> /add-captions</div>';
+            '<div class="ac-item" onclick="insertAC(\'/trim-silence\')"><i data-lucide="scissors"></i>/trim-silence</div>' +
+            '<div class="ac-item" onclick="insertAC(\'/sync-audio\')"><i data-lucide="music"></i>/sync-audio</div>' +
+            '<div class="ac-item" onclick="insertAC(\'/auto-broll\')"><i data-lucide="sparkles"></i>/auto-broll</div>' +
+            '<div class="ac-item" onclick="insertAC(\'/add-captions\')"><i data-lucide="captions"></i>/add-captions</div>';
         lucide.createIcons({ nodes: [acMenu] });
         acMenu.classList.add("active");
     } else if (lastWord.startsWith("@")) {
         acMenu.innerHTML =
             '<div class="ac-section">Clips</div>' +
-            '<div class="ac-item" onclick="insertAC(\'@Ocean_Sunrise \')"><i data-lucide="film"></i> @Ocean_Sunrise</div>' +
-            '<div class="ac-item" onclick="insertAC(\'@City_Lights \')"><i data-lucide="film"></i> @City_Lights</div>' +
-            '<div class="ac-item" onclick="insertAC(\'@Cyber_Grid_Beat \')"><i data-lucide="music"></i> @Cyber_Grid_Beat</div>';
+            '<div class="ac-item" onclick="insertAC(\'@Ocean_Sunrise\')"><i data-lucide="film"></i>@Ocean_Sunrise</div>' +
+            '<div class="ac-item" onclick="insertAC(\'@City_Lights\')"><i data-lucide="film"></i>@City_Lights</div>' +
+            '<div class="ac-item" onclick="insertAC(\'@Cyber_Grid_Beat\')"><i data-lucide="music"></i>@Cyber_Grid_Beat</div>';
         lucide.createIcons({ nodes: [acMenu] });
         acMenu.classList.add("active");
     } else {
@@ -219,6 +218,7 @@ window.resizeCanvas = function () {
         frame.style.height = "auto";
     }
 };
+
 window.addEventListener("resize", window.resizeCanvas);
 
 $("#ar-btn").onclick = (e) => {
@@ -263,6 +263,7 @@ window.renderMedia = function (type, subType = null) {
     const list = $("#media-list");
     grid.innerHTML = list.innerHTML = "";
     let data = [];
+
     if (type === "footage" || type === "audio") {
         data = window.mediaPool[type];
         $("#stock-subtabs").style.display = "none";
@@ -270,6 +271,7 @@ window.renderMedia = function (type, subType = null) {
         $("#stock-subtabs").style.display = "flex";
         data = window.mediaPool.stock[subType || "video"];
     }
+
     if (type === "audio" || (type === "stock" && subType === "music")) {
         grid.style.display = "none";
         list.style.display = "flex";
@@ -433,7 +435,7 @@ window.renderClips = function () {
         const el = document.createElement("div");
         el.className = "ai-node";
         el.style.left = (node.time / window.S.dur) * tw + "px";
-        el.innerHTML = `<i data-lucide="${node.icon}"></i> ${node.label}`;
+        el.innerHTML = `<i data-lucide="${node.icon}"></i>${node.label}`;
         el.onclick = () => showToast("AI Insight: " + node.label, node.icon);
         $("#lane-ai").appendChild(el);
     });
@@ -553,6 +555,7 @@ $("#tl-tracks").addEventListener("mousedown", (e) => {
     if (e.target.closest(".tl-clip") || e.target.closest(".track-head")) return;
     handleTimelineScrub(e, $("#tl-tracks"));
 });
+
 $("#tl-ruler").onmousedown = (e) => handleTimelineScrub(e, $("#tl-ruler"));
 
 // ── AI Copilot Chat Interface ──────────────────────────────────────────
@@ -561,7 +564,7 @@ function appendChat(text, isUser = false) {
     el.className = "chat-msg " + (isUser ? "user" : "ai");
     el.innerHTML = isUser
         ? text
-        : `<div class="msg-sender"><i data-lucide="bot"></i> Granite</div>${text}`;
+        : `<div class="msg-sender"><i data-lucide="bot"></i>Granite</div>${text}`;
     $("#chat-log").appendChild(el);
     lucide.createIcons({ nodes: [el] });
     $("#chat-log").parentElement.scrollTop =
@@ -613,6 +616,7 @@ $("#ai-cmd").onkeypress = (e) => {
 };
 
 let acts = { trim: false, cap: false, sync: false };
+
 window.applyAiAction = function (type) {
     if (type === "silence" && !acts.trim) {
         window.videoClips[1].start = 6.0;
