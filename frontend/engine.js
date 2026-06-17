@@ -1,5 +1,5 @@
 /**
- * iKlippa — engine.js (Stable Audio & Catch-Up Fix)
+ * iKlippa — engine.js (Timeline Sync Build)
  */
 const DECODE_LOOKAHEAD = 12;
 
@@ -24,22 +24,25 @@ let exportFrames = [];
 let audioCtx = null;
 let pendingAudio = new Map();
 let scheduledAudioNodes = [];
-let nextAudioStartTime = 0; // Used for chaining audio chunks
+let nextAudioStartTime = 0;
 let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
-let audioPlayStartCtxTime = 0;  // audioCtx.currentTime when play began
-let audioPlayStartMs = 0;       // playheadMs when play began
+let audioPlayStartCtxTime = 0;
+let audioPlayStartMs = 0;
+
+// ── Thumbnail Capture State ───────────────────────────────────────────────────
+let currentFileName = '';
+let timelineThumbnails = [];
+let lastThumbnailCaptureMs = -Infinity;
+const THUMBNAIL_CAPTURE_INTERVAL = 800;
+const MAX_TIMELINE_THUMBNAILS = 60;
 
 // ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
   constructor() { this.reset(); }
   reset() {
-    this._frameTimes = [];
-    this._gradeTimes = [];
-    this._decodeTimes = [];
-    this._droppedFrames = 0;
-    this._totalFrames = 0;
-    this._lastRaf = null;
+    this._frameTimes = []; this._gradeTimes = []; this._decodeTimes = [];
+    this._droppedFrames = 0; this._totalFrames = 0; this._lastRaf = null;
     this._pendingDecodes = new Map();
   }
   recordRaf(ts) {
@@ -103,6 +106,23 @@ export class PerformanceMonitor {
 export const perf = new PerformanceMonitor();
 window.iklippaScore = () => perf.report();
 
+// ── Thumbnail Capture ─────────────────────────────────────────────────────────
+function maybeCaptureThumbnail(ms) {
+  if (!canvas || canvas.width === 0 || canvas.height === 0) return;
+  if (videoDurationMs === 0) return;  // no video loaded yet
+  if (ms - lastThumbnailCaptureMs < THUMBNAIL_CAPTURE_INTERVAL) return;
+  if (timelineThumbnails.length >= MAX_TIMELINE_THUMBNAILS) return;
+  try {
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.35);
+    timelineThumbnails.push({ ms, dataUrl });
+    lastThumbnailCaptureMs = ms;
+    if (window.onThumbnailsUpdated) window.onThumbnailsUpdated(timelineThumbnails);
+  } catch (e) { /* canvas tainted — skip */ }
+}
+
+export function getThumbnails() { return timelineThumbnails; }
+export function getCurrentFileName() { return currentFileName; }
+
 // ── Init & Worker Bridge ──────────────────────────────────────────────────────
 export async function initEngine(canvasEl) {
   canvas = canvasEl;
@@ -115,12 +135,8 @@ export async function initEngine(canvasEl) {
 }
 
 async function initAudio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioCtx.state !== 'running') {
-    await audioCtx.resume();
-  }
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state !== 'running') await audioCtx.resume();
 }
 
 function handleWorkerMessage(e) {
@@ -135,13 +151,14 @@ function handleWorkerMessage(e) {
     canvas.height = sourceVideoHeight;
     logStatus(`Ready: ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s`);
     if (window.onClipImported) {
-      window.onClipImported({ width: sourceVideoWidth, height: sourceVideoHeight, durationMs: videoDurationMs });
+      window.onClipImported({
+        width: sourceVideoWidth, height: sourceVideoHeight,
+        durationMs: videoDurationMs, fileName: currentFileName
+      });
     }
   }
 
-  if (type === 'decode_submit') {
-    perf.recordDecodeSubmit(data.ms);
-  }
+  if (type === 'decode_submit') perf.recordDecodeSubmit(data.ms);
 
   if (type === 'frame') {
     perf.recordFrameArrival(data.ms, data.gradeMs);
@@ -164,33 +181,17 @@ function handleWorkerMessage(e) {
 
 function scheduleAudioNode(chunkMs, audioBuffer) {
   if (!audioCtx) return;
-
   const idealCtxTime = audioPlayStartCtxTime + (chunkMs - audioPlayStartMs) / 1000;
-
-  // Initialize or reset if we've fallen behind (e.g., after a pause or seek)
   if (nextAudioStartTime === 0 || nextAudioStartTime < audioCtx.currentTime) {
     nextAudioStartTime = Math.max(audioCtx.currentTime, idealCtxTime);
   }
-
-  // Drop chunks that are too far in the past (>150ms) to prevent overlap cascades
-  if (idealCtxTime < audioCtx.currentTime - 0.15) {
-    return;
-  }
-
-  // If there's a gap in the decoded stream, advance time to insert silence
-  // rather than overlapping with the previous chunk.
-  if (idealCtxTime > nextAudioStartTime + 0.05) {
-    nextAudioStartTime = idealCtxTime;
-  }
-
+  if (idealCtxTime < audioCtx.currentTime - 0.15) return;
+  if (idealCtxTime > nextAudioStartTime + 0.05) nextAudioStartTime = idealCtxTime;
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(audioCtx.destination);
-
-  // Schedule exactly at nextAudioStartTime to guarantee no overlap and no gap
   source.start(nextAudioStartTime);
   nextAudioStartTime += audioBuffer.duration;
-
   scheduledAudioNodes.push(source);
 }
 
@@ -199,19 +200,18 @@ function stopAllAudioNodes() {
   scheduledAudioNodes = [];
 }
 
-// ── Demux (Main Thread) ───────────────────────────────────────────────────────
+// ── Demux ─────────────────────────────────────────────────────────────────────
 export async function importFile(file) {
   logStatus(`Importing: ${file.name}`);
+  currentFileName = file.name;
+  timelineThumbnails = [];
+  lastThumbnailCaptureMs = -Infinity;
+
   initAudio();
-  pendingFrames.clear();
-  pendingAudio.clear();
-  stopAllAudioNodes();
-  nextAudioStartTime = 0;
-  lastScheduledChunkMs = -1;
+  pendingFrames.clear(); pendingAudio.clear(); stopAllAudioNodes();
+  nextAudioStartTime = 0; lastScheduledChunkMs = -1;
   audioConfigVersion++;
-  playheadMs = 0;
-  isPlaying = false;
-  lastRafTs = null;
+  playheadMs = 0; isPlaying = false; lastRafTs = null;
 
   if (!window.MP4Box) {
     await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
@@ -219,34 +219,24 @@ export async function importFile(file) {
 
   const payload = await new Promise((resolve, reject) => {
     const mp4 = MP4Box.createFile();
-    let trackInfo = null;
-    let audioTrackInfo = null;
-    let codecConfigResult = null;
-    let audioConfigResult = null;
-    const samplesArray = [];
-    const audioSamplesArray = [];
+    let trackInfo = null, audioTrackInfo = null;
+    let codecConfigResult = null, audioConfigResult = null;
+    const samplesArray = [], audioSamplesArray = [];
 
     mp4.onReady = (info) => {
       const track = info.videoTracks[0];
       const aTrack = info.audioTracks[0];
       if (!track) { reject(new Error('No video track found')); return; }
-
-      trackInfo = track;
-      audioTrackInfo = aTrack;
-
+      trackInfo = track; audioTrackInfo = aTrack;
       codecConfigResult = {
-        codec: track.codec,
-        codedWidth: track.track_width,
-        codedHeight: track.track_height,
+        codec: track.codec, codedWidth: track.track_width, codedHeight: track.track_height,
         description: getDecoderDescription(mp4, track),
       };
       mp4.setExtractionOptions(track.id, null, { nbSamples: Infinity });
-
       if (aTrack) {
         const audioDesc = getAudioDescription(mp4, aTrack);
         audioConfigResult = {
-          codec: aTrack.codec,
-          sampleRate: aTrack.audio.sample_rate,
+          codec: aTrack.codec, sampleRate: aTrack.audio.sample_rate,
           numberOfChannels: aTrack.audio.channel_count,
           ...(audioDesc ? { description: audioDesc } : {}),
         };
@@ -256,11 +246,8 @@ export async function importFile(file) {
     };
 
     mp4.onSamples = (id, user, s) => {
-      if (trackInfo && id === trackInfo.id) {
-        samplesArray.push(...s);
-      } else if (audioTrackInfo && id === audioTrackInfo.id) {
-        audioSamplesArray.push(...s);
-      }
+      if (trackInfo && id === trackInfo.id) samplesArray.push(...s);
+      else if (audioTrackInfo && id === audioTrackInfo.id) audioSamplesArray.push(...s);
     };
 
     mp4.onError = (err) => reject(new Error('MP4Box error: ' + err));
@@ -271,41 +258,26 @@ export async function importFile(file) {
       if (offset >= file.size) {
         mp4.flush();
         if (trackInfo && codecConfigResult) {
-          // FIX: Calculate duration more robustly
           let durationSec = trackInfo.duration / trackInfo.timescale;
-
-          // If duration is 0, try to calculate it from the last sample
           if (durationSec === 0 && samplesArray.length > 0) {
-            const lastSample = samplesArray[samplesArray.length - 1];
-            durationSec = (lastSample.cts + lastSample.duration) / lastSample.timescale;
+            const last = samplesArray[samplesArray.length - 1];
+            durationSec = (last.cts + last.duration) / last.timescale;
           }
-
-          // Fallback for audio if video duration is still weird
           if (durationSec === 0 && audioSamplesArray.length > 0) {
-            const lastAudio = audioSamplesArray[audioSamplesArray.length - 1];
-            durationSec = (lastAudio.cts + lastAudio.duration) / lastAudio.timescale;
+            const last = audioSamplesArray[audioSamplesArray.length - 1];
+            durationSec = (last.cts + last.duration) / last.timescale;
           }
-
           resolve({
-            codecConfig: codecConfigResult,
-            width: trackInfo.track_width,
-            height: trackInfo.track_height,
-            durationMs: Math.round(durationSec * 1000), // Use the calculated duration
-            samples: samplesArray,
-            audioConfig: audioConfigResult,
-            audioSamples: audioSamplesArray,
-            audioConfigVersion,
+            codecConfig: codecConfigResult, width: trackInfo.track_width,
+            height: trackInfo.track_height, durationMs: Math.round(durationSec * 1000),
+            samples: samplesArray, audioConfig: audioConfigResult,
+            audioSamples: audioSamplesArray, audioConfigVersion,
           });
-        } else {
-          reject(new Error('Failed to find video metadata'));
-        }
+        } else { reject(new Error('Failed to find video metadata')); }
         return;
       }
       file.slice(offset, offset + CHUNK).arrayBuffer().then(buf => {
-        buf.fileStart = offset;
-        mp4.appendBuffer(buf);
-        offset += CHUNK;
-        readNextChunk();
+        buf.fileStart = offset; mp4.appendBuffer(buf); offset += CHUNK; readNextChunk();
       }).catch(reject);
     }
     readNextChunk();
@@ -318,11 +290,7 @@ function getDecoderDescription(mp4, track) {
   const trak = mp4.getTrackById(track.id);
   for (const entry of trak.mdia.minf.stbl.stsd.entries) {
     const box = entry.avcC ?? entry.hvcC ?? entry.vpcC ?? entry.av1C;
-    if (box) {
-      const ds = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
-      box.write(ds);
-      return ds.buffer.slice(8);
-    }
+    if (box) { const ds = new DataStream(undefined, 0, DataStream.BIG_ENDIAN); box.write(ds); return ds.buffer.slice(8); }
   }
   return undefined;
 }
@@ -350,17 +318,12 @@ function renderLoop(ts) {
   if (!isPlaying) return;
   if (lastRafTs !== null) {
     playheadMs += ts - lastRafTs;
-    if (playheadMs >= videoDurationMs) {
-      playheadMs = videoDurationMs;
-      pausePlayback();
-    }
+    if (playheadMs >= videoDurationMs) { playheadMs = videoDurationMs; pausePlayback(); }
   }
   lastRafTs = ts;
   paintFrameAtTime(playheadMs);
   let framesAhead = 0;
-  for (const frameMs of pendingFrames.keys()) {
-    if (frameMs >= playheadMs) framesAhead++;
-  }
+  for (const frameMs of pendingFrames.keys()) { if (frameMs >= playheadMs) framesAhead++; }
   worker.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead });
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
   rafHandle = requestAnimationFrame(renderLoop);
@@ -373,81 +336,58 @@ function paintFrameAtTime(ms) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
   }
   if (bestMs >= 0) ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
+
+  maybeCaptureThumbnail(ms);
+
   const pruneBeforeMs = ms - 1500;
-  for (const [frameMs] of pendingFrames) {
-    if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
-  }
-  for (const [audioMs] of pendingAudio) {
-    if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs);
-  }
+  for (const [frameMs] of pendingFrames) { if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs); }
+  for (const [audioMs] of pendingAudio) { if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs); }
 }
 
 // ── Playback control ──────────────────────────────────────────────────
 export async function startPlayback() {
   if (isPlaying) return;
-  isPlaying = true;
-  lastRafTs = null;
+  isPlaying = true; lastRafTs = null;
   await initAudio();
-
-  // Anchor: sync AudioContext time to playhead position
   audioPlayStartCtxTime = audioCtx.currentTime;
   audioPlayStartMs = playheadMs;
-
-  // Reset chaining timer
   nextAudioStartTime = 0;
-
-  // Schedule anything already buffered (from primeAudioDecode)
-  const sortedAudio = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
-  for (const [ms, buffer] of sortedAudio) {
-    scheduleAudioNode(ms, buffer);
-  }
-
+  const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
+  for (const [ms, buffer] of sorted) scheduleAudioNode(ms, buffer);
   syncWorkerState();
   rafHandle = requestAnimationFrame(renderLoop);
 }
 
 export function pausePlayback() {
   if (!isPlaying && rafHandle === null) return;
-  isPlaying = false;
-  lastRafTs = null;
+  isPlaying = false; lastRafTs = null;
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
   stopAllAudioNodes();
-
-  nextAudioStartTime = 0; // Reset so it recalculates cleanly on resume
-  lastScheduledChunkMs = -1;
+  nextAudioStartTime = 0; lastScheduledChunkMs = -1;
   syncWorkerState();
   if (window.onPlaybackPaused) window.onPlaybackPaused();
 }
 
 export function togglePlayback() {
-  if (isPlaying) {
-    pausePlayback();
-  } else {
-    startPlayback().catch(console.error);
-  }
+  if (isPlaying) pausePlayback(); else startPlayback().catch(console.error);
   return isPlaying;
 }
 
 export async function seekTo(ms) {
   const wasPlaying = isPlaying;
   if (isPlaying) {
-    isPlaying = false;
-    lastRafTs = null;
+    isPlaying = false; lastRafTs = null;
     if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
     stopAllAudioNodes();
   }
-  playheadMs = ms;
-  audioPlayStartMs = ms;
-  pendingFrames.clear();
-  pendingAudio.clear();
+  playheadMs = ms; audioPlayStartMs = ms;
+  pendingFrames.clear(); pendingAudio.clear();
   audioConfigVersion++;
   worker.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
   worker.postMessage({ type: 'seek', ms });
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
-
-  nextAudioStartTime = 0; // Reset on seek
-
+  nextAudioStartTime = 0;
   if (wasPlaying) startPlayback();
 }
 
@@ -456,19 +396,13 @@ function syncWorkerState() {
 }
 
 export function setColorGrade(params) {
-  worker.postMessage({
-    type: 'set_grade',
-    params,
-    forceRenderMs: isPlaying ? undefined : playheadMs,
-  });
+  worker.postMessage({ type: 'set_grade', params, forceRenderMs: isPlaying ? undefined : playheadMs });
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
 export async function exportVideo(onProgress) {
   if (isExporting) return;
-  pausePlayback();
-  isExporting = true;
-  exportFrames = [];
+  pausePlayback(); isExporting = true; exportFrames = [];
   const frameMs = 1000 / 30;
   const totalFrames = Math.ceil(videoDurationMs / frameMs);
   logStatus('Export: collecting frames…');
@@ -481,11 +415,7 @@ export async function exportVideo(onProgress) {
   logStatus('Export: encoding…');
   const encodedChunks = [];
   const encoder = new VideoEncoder({
-    output: (chunk) => {
-      const buf = new ArrayBuffer(chunk.byteLength);
-      chunk.copyTo(buf);
-      encodedChunks.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
-    },
+    output: (chunk) => { const buf = new ArrayBuffer(chunk.byteLength); chunk.copyTo(buf); encodedChunks.push({ buf, timestamp: chunk.timestamp, type: chunk.type }); },
     error: (e) => console.error(e),
   });
   encoder.configure({ codec: 'avc1.42001f', width: sourceVideoWidth, height: sourceVideoHeight, bitrate: 8_000_000, framerate: 30, hardwareAcceleration: 'prefer-hardware', latencyMode: 'quality' });
@@ -493,26 +423,20 @@ export async function exportVideo(onProgress) {
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i];
     const frame = new VideoFrame(imageData, { timestamp: ms * 1000, duration: frameMs * 1000 });
-    encoder.encode(frame, { keyFrame: i % 60 === 0 });
-    frame.close();
+    encoder.encode(frame, { keyFrame: i % 60 === 0 }); frame.close();
     if (onProgress) onProgress(0.5 + (i / sortedFrames.length) * 0.4);
   }
-  await encoder.flush();
-  encoder.close();
+  await encoder.flush(); encoder.close();
   logStatus('Export: muxing…');
-  if (!window.Mp4Muxer) {
-    await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js');
-  }
+  if (!window.Mp4Muxer) await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js');
   const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: 'avc', width: sourceVideoWidth, height: sourceVideoHeight }, fastStart: 'in-memory' });
   for (const { buf, timestamp, type } of encodedChunks) { muxer.addVideoChunkRaw(buf, type, timestamp, frameMs * 1000); }
   if (onProgress) onProgress(0.95);
   const { buffer } = muxer.finalize();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([buffer], { type: 'video/mp4' }));
-  a.download = `iklippa-export-${Date.now()}.mp4`;
-  a.click();
-  isExporting = false;
-  exportFrames = [];
+  a.download = `iklippa-export-${Date.now()}.mp4`; a.click();
+  isExporting = false; exportFrames = [];
   logStatus('Export complete ✓');
   if (onProgress) onProgress(1);
 }
@@ -526,5 +450,3 @@ function loadScript(src) {
 }
 
 function logStatus(msg) { console.log(`[iKlippa] ${msg}`); if (window.onEngineStatus) window.onEngineStatus(msg); }
-export function wireDropTarget(dropEl) { /* omitted for brevity */ }
-export function wireFileInput(inputEl) { /* omitted for brevity */ }
