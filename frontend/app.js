@@ -8,6 +8,8 @@ import {
     setColorGrade,
     exportVideo,
     perf,
+    getThumbnails,
+    getCurrentFileName,
 } from "./engine.js";
 
 const canvasEl = document.getElementById("canvas-img");
@@ -16,6 +18,9 @@ const fileInput = document.getElementById("file-input");
 const statusBadge = document.querySelector(".status-badge");
 const scoreValue = document.getElementById("score-value");
 
+// ── NEW: Track whether a real video has been imported ──
+let hasRealVideo = false;
+
 // ── Engine Status to UI ──────────────────────────────────────────────
 window.onEngineStatus = (msg) => {
     statusBadge.innerHTML = `<i data-lucide="zap"></i> ${msg}`;
@@ -23,24 +28,86 @@ window.onEngineStatus = (msg) => {
     window.showToast(msg, "zap");
 };
 
-// ── Playhead updates: Engine to UI Timeline ──────────────────────────
+// ── Playhead updates: Engine → UI Timeline ──────────────────────────
 window.onPlayheadUpdate = (ms) => {
     window.S.time = ms / 1000;
     window.updatePlayhead();
 };
 
-// ── Import complete: Update UI Duration ──────────────────────────────
-window.onClipImported = ({ clipId, width, height, durationMs }) => {
-    window.S.dur = durationMs / 1000;
+// ── NEW: Thumbnail updates from engine ───────────────────────────────
+let thumbnailRenderDebounce = null;
+window.onThumbnailsUpdated = (thumbnails) => {
+    if (!hasRealVideo) return;
+    // Store on the real video clip
+    if (window.videoClips.length > 0 && window.videoClips[0].isReal) {
+        window.videoClips[0].thumbnails = thumbnails;
+    }
+    // Debounce re-renders to avoid thrashing during playback
+    clearTimeout(thumbnailRenderDebounce);
+    thumbnailRenderDebounce = setTimeout(() => {
+        window.renderClips();
+    }, 600);
+};
+
+// ── Import complete: Replace fake clips with real video ─────────────
+window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
+    hasRealVideo = true;
+    const durationSec = durationMs / 1000;
+    window.S.dur = durationSec;
+
+    // ── Replace placeholder clips with the actual imported video ──
+    const displayName = fileName || "Imported Video";
+
+    window.videoClips = [{
+        id: "real_v1",
+        name: displayName,
+        start: 0,
+        end: durationSec,
+        isReal: true,
+        thumbnails: getThumbnails ? getThumbnails() : [],
+    }];
+
+    window.audioClips = [{
+        id: "real_a1",
+        name: displayName.replace(/\.[^.]+$/, ""),
+        start: 0,
+        end: durationSec,
+        isReal: true,
+    }];
+
+    // Clear AI nodes from placeholder timeline
+    window.aiNodes = [];
+    if (window.resetAiActions) window.resetAiActions();
+
+    // ── Also add to the media pool ──
+    window.mediaPool.footage = [
+        { id: "imported_real", name: displayName, isReal: true, dur: (durationSec).toFixed(1) + "s" },
+        ...window.mediaPool.footage.filter(f => !f.isReal),
+    ];
+
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
+    window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
+
+    // ── Proactive thumbnail scan: seek to 5 positions to populate strip ──
+    (async () => {
+        const positions = [0, 0.2, 0.4, 0.6, 0.8];
+        for (const pct of positions) {
+            const ms = Math.round(pct * durationMs);
+            await seekTo(ms);
+            // Wait for the frame to arrive and be painted
+            await new Promise(r => setTimeout(r, 200));
+        }
+        // Return to start
+        await seekTo(0);
+    })();
 };
 
 // ── Connect Playback Control to Engine ───────────────────────────────
 window.togglePlay = function () {
-    const nowPlaying = togglePlayback(); // engine.js determines status
+    const nowPlaying = togglePlayback();
     document
         .querySelectorAll(".icon-play")
         .forEach((i) =>
@@ -50,7 +117,7 @@ window.togglePlay = function () {
     window.S.playing = nowPlaying;
 };
 
-// ── Pause Callback (such as end of timeline) ──────────────────────────
+// ── Pause Callback ──────────────────────────────────────────────────
 window.onPlaybackPaused = () => {
     window.S.playing = false;
     document
@@ -65,7 +132,7 @@ let lastScrubMs = -1;
 
 window.onPlayheadScrub = (timeSec) => {
     const ms = Math.round(timeSec * 1000);
-    if (Math.abs(ms - lastScrubMs) < 50) return; // avoid sub-50ms noise
+    if (Math.abs(ms - lastScrubMs) < 50) return;
     lastScrubMs = ms;
 
     clearTimeout(scrubDebounce);
@@ -119,7 +186,6 @@ canvasWrapper.addEventListener("drop", async (e) => {
     if (file && file.type.startsWith("video/")) await importFile(file);
 });
 
-// File picker configuration
 fileInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (file) await importFile(file);
