@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -55,8 +56,21 @@ func (c *WatsonxClient) GenerateText(prompt string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	// TODO 5: Read the response body, unmarshal the JSON, and return the generated text!
-	// Hint: The text will be located in responseJSON["response"]
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ollama returned bad status: %s", resp.Status)
+	}
 
-	return "TODO: Return the AI's response", nil
+	var responseJSON map[string]any
+
+	if err := json.NewDecoder(resp.Body).Decode(&responseJSON); err != nil {
+		return "", fmt.Errorf("failed to decode json response: %w", err)
+	}
+
+	generatedText, ok := responseJSON["response"].(string)
+	if !ok {
+		return "", fmt.Errorf("the 'response' key was missing or wasn't a valid string")
+	}
+
+	return generatedText, nil
+
 }
