@@ -18,15 +18,80 @@ let exportFrames = [];
 let fileRegistry = new Map();
 let nextFileId = 1;
 
-// ... [Keep your existing PerformanceMonitor class exactly as it was] ...
+// ── Web Audio State ───────────────────────────────────────────────────────────
+let audioCtx = null;
+let pendingAudio = new Map();
+let scheduledAudioNodes = [];
+let nextAudioStartTime = 0;
+let lastScheduledChunkMs = -1;
+let audioConfigVersion = 0;
+let audioPlayStartCtxTime = 0;
+let audioPlayStartMs = 0;
+
+// ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
   constructor() { this.reset(); }
-  reset() { this._frameTimes = []; this._gradeTimes = []; this._decodeTimes = []; this._droppedFrames = 0; this._totalFrames = 0; this._lastRaf = null; this._pendingDecodes = new Map(); }
-  recordRaf(ts) { if (this._lastRaf !== null) { const dt = ts - this._lastRaf; this._frameTimes.push(dt); const avgFrameMs = this._frameTimes.reduce((a, b) => a + b, 0) / this._frameTimes.length; const targetMs = (this._frameTimes.length > 10 && avgFrameMs > 25) ? 33.33 : 16.67; if (dt > targetMs * 1.25) this._droppedFrames++; this._totalFrames++; if (this._frameTimes.length > 120) this._frameTimes.shift(); } this._lastRaf = ts; }
+  reset() {
+    this._frameTimes = []; this._gradeTimes = []; this._decodeTimes = [];
+    this._droppedFrames = 0; this._totalFrames = 0; this._lastRaf = null; this._pendingDecodes = new Map();
+  }
+  recordRaf(ts) {
+    if (this._lastRaf !== null) {
+      const dt = ts - this._lastRaf;
+      this._frameTimes.push(dt);
+      const avgFrameMs = this._frameTimes.reduce((a, b) => a + b, 0) / this._frameTimes.length;
+      const targetMs = (this._frameTimes.length > 10 && avgFrameMs > 25) ? 33.33 : 16.67;
+      if (dt > targetMs * 1.25) this._droppedFrames++;
+      this._totalFrames++;
+      if (this._frameTimes.length > 120) this._frameTimes.shift();
+    }
+    this._lastRaf = ts;
+  }
   recordDecodeSubmit(tsMs) { this._pendingDecodes.set(tsMs, performance.now()); }
-  recordFrameArrival(tsMs, gradeMs) { if (this._pendingDecodes.has(tsMs)) { this._decodeTimes.push(performance.now() - this._pendingDecodes.get(tsMs)); this._pendingDecodes.delete(tsMs); if (this._decodeTimes.length > 60) this._decodeTimes.shift(); } this._gradeTimes.push(gradeMs); if (this._gradeTimes.length > 120) this._gradeTimes.shift(); }
-  score() { const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; const avgFrameMs = avg(this._frameTimes); const avgGradeMs = avg(this._gradeTimes); const avgDecodeMs = avg(this._decodeTimes); const dropRate = this._totalFrames > 0 ? this._droppedFrames / this._totalFrames : 0; const targetMs = avgFrameMs > 25 ? 33.33 : 16.67; const smoothness = Math.max(0, Math.min(100, 100 - (Math.abs(avgFrameMs - targetMs) / targetMs) * 100)); const gradePerf = Math.max(0, Math.min(100, 100 - (avgGradeMs / 4) * 100)); const decodePerf = Math.max(0, Math.min(100, 100 - ((avgDecodeMs - 33) / 67) * 100)); const dropScore = Math.max(0, Math.min(100, (1 - dropRate * 10) * 100)); const composite = Math.round(smoothness * 0.40 + dropScore * 0.30 + decodePerf * 0.20 + gradePerf * 0.10); return { composite, smoothness: Math.round(smoothness), gradePerf: Math.round(gradePerf), decodePerf: Math.round(decodePerf), dropScore: Math.round(dropScore), avgFrameMs: avgFrameMs.toFixed(2), avgGradeMs: avgGradeMs.toFixed(2), avgDecodeMs: avgDecodeMs.toFixed(2), dropRatePct: (dropRate * 100).toFixed(1), totalFrames: this._totalFrames, targetFps: Math.round(1000 / targetMs) }; }
-  report() { const s = this.score(); console.group('%ciKlippa Performance Report', 'color:#0d9488;font-weight:700;font-size:14px'); console.log(`%c🎯 Composite Score: ${s.composite} / 100 (${s.targetFps} FPS Target)`, `font-size:16px;font-weight:800;color:${s.composite >= 70 ? '#10b981' : s.composite >= 40 ? '#f59e0b' : '#ef4444'}`); console.table({ 'Smoothness': `${s.smoothness}/100 (avg ${s.avgFrameMs} ms/frame)`, 'Grade Perf': `${s.gradePerf}/100 (avg ${s.avgGradeMs} ms/grade)`, 'Decode Perf': `${s.decodePerf}/100 (avg ${s.avgDecodeMs} ms decode→output)`, 'Drop Score': `${s.dropScore}/100 (${s.dropRatePct}% frames dropped)`, 'Total Frames': s.totalFrames }); console.groupEnd(); return s.composite; }
+  recordFrameArrival(tsMs, gradeMs) {
+    if (this._pendingDecodes.has(tsMs)) {
+      this._decodeTimes.push(performance.now() - this._pendingDecodes.get(tsMs));
+      this._pendingDecodes.delete(tsMs);
+      if (this._decodeTimes.length > 60) this._decodeTimes.shift();
+    }
+    this._gradeTimes.push(gradeMs);
+    if (this._gradeTimes.length > 120) this._gradeTimes.shift();
+  }
+  score() {
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const avgFrameMs = avg(this._frameTimes);
+    const avgGradeMs = avg(this._gradeTimes);
+    const avgDecodeMs = avg(this._decodeTimes);
+    const dropRate = this._totalFrames > 0 ? this._droppedFrames / this._totalFrames : 0;
+    const targetMs = avgFrameMs > 25 ? 33.33 : 16.67;
+    const smoothness = Math.max(0, Math.min(100, 100 - (Math.abs(avgFrameMs - targetMs) / targetMs) * 100));
+    const gradePerf = Math.max(0, Math.min(100, 100 - (avgGradeMs / 4) * 100));
+    const decodePerf = Math.max(0, Math.min(100, 100 - ((avgDecodeMs - 33) / 67) * 100));
+    const dropScore = Math.max(0, Math.min(100, (1 - dropRate * 10) * 100));
+    const composite = Math.round(smoothness * 0.40 + dropScore * 0.30 + decodePerf * 0.20 + gradePerf * 0.10);
+    return {
+      composite, smoothness: Math.round(smoothness), gradePerf: Math.round(gradePerf),
+      decodePerf: Math.round(decodePerf), dropScore: Math.round(dropScore),
+      avgFrameMs: avgFrameMs.toFixed(2), avgGradeMs: avgGradeMs.toFixed(2),
+      avgDecodeMs: avgDecodeMs.toFixed(2), dropRatePct: (dropRate * 100).toFixed(1),
+      totalFrames: this._totalFrames, targetFps: Math.round(1000 / targetMs),
+    };
+  }
+  report() {
+    const s = this.score();
+    console.group('%ciKlippa Performance Report', 'color:#0d9488;font-weight:700;font-size:14px');
+    console.log(`%c🎯 Composite Score: ${s.composite} / 100 (${s.targetFps} FPS Target)`,
+      `font-size:16px;font-weight:800;color:${s.composite >= 70 ? '#10b981' : s.composite >= 40 ? '#f59e0b' : '#ef4444'}`);
+    console.table({
+      'Smoothness': `${s.smoothness}/100 (avg ${s.avgFrameMs} ms/frame)`,
+      'Grade Perf': `${s.gradePerf}/100 (avg ${s.avgGradeMs} ms/grade)`,
+      'Decode Perf': `${s.decodePerf}/100 (avg ${s.avgDecodeMs} ms decode→output)`,
+      'Drop Score': `${s.dropScore}/100 (${s.dropRatePct}% frames dropped)`,
+      'Total Frames': s.totalFrames,
+    });
+    console.groupEnd();
+    return s.composite;
+  }
 }
 export const perf = new PerformanceMonitor();
 window.iklippaScore = () => perf.report();
@@ -42,6 +107,11 @@ export async function initEngine(canvasEl) {
   return true;
 }
 
+async function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state !== 'running') await audioCtx.resume();
+}
+
 function handleWorkerMessage(e) {
   const { type, ...data } = e.data;
   if (type === 'status') logStatus(data.msg);
@@ -52,7 +122,9 @@ function handleWorkerMessage(e) {
     canvas.width = sourceVideoWidth;
     canvas.height = sourceVideoHeight;
     logStatus(`Ready: ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s`);
-    if (window.onClipImported) window.onClipImported({ width: sourceVideoWidth, height: sourceVideoHeight, durationMs: videoDurationMs });
+    if (window.onClipImported) {
+      window.onClipImported({ width: sourceVideoWidth, height: sourceVideoHeight, durationMs: videoDurationMs });
+    }
   }
   if (type === 'frame') {
     perf.recordFrameArrival(data.ms, data.gradeMs);
@@ -66,12 +138,15 @@ function handleWorkerMessage(e) {
 // ── Demux (Main Thread) ───────────────────────────────────────────────────────
 export async function importFile(file) {
   logStatus(`Importing: ${file.name}`);
+  initAudio();
   pendingFrames.clear();
   playheadMs = 0;
   isPlaying = false;
   lastRafTs = null;
 
-  if (!window.MP4Box) await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
+  if (!window.MP4Box) {
+    await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
+  }
 
   const payload = await new Promise((resolve, reject) => {
     const mp4 = MP4Box.createFile();
@@ -142,12 +217,16 @@ export async function importFile(file) {
     height: payload.height,
   });
 
+  // Send dimensions to worker so it can initialize the WASM frame buffer correctly
   worker.postMessage({
     type: 'register_file',
     fileId,
     file,
     codecConfig: payload.codecConfig,
-    samples: payload.samples
+    samples: payload.samples,
+    width: payload.width,
+    height: payload.height,
+    durationMs: payload.durationMs
   });
 
   return { fileId, durationMs: payload.durationMs, width: payload.width, height: payload.height };
@@ -167,7 +246,6 @@ export function addClip(fileId, track, startSec, endSec, sourceStartSec, sourceE
     sourceOffsetMs
   });
 
-  // Update global duration if this clip extends the timeline
   if (endMs > videoDurationMs) {
     videoDurationMs = endMs;
   }
@@ -201,7 +279,13 @@ function renderLoop(ts) {
   lastRafTs = ts;
 
   paintFrameAtTime(playheadMs);
-  worker.postMessage({ type: 'sync', playheadMs, isPlaying });
+
+  let framesAhead = 0;
+  for (const frameMs of pendingFrames.keys()) {
+    if (frameMs >= playheadMs) framesAhead++;
+  }
+  worker.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead });
+
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
   rafHandle = requestAnimationFrame(renderLoop);
 }
@@ -225,7 +309,11 @@ export async function startPlayback() {
   if (isPlaying) return;
   isPlaying = true;
   lastRafTs = null;
-  worker.postMessage({ type: 'sync', playheadMs, isPlaying });
+  await initAudio();
+  audioPlayStartCtxTime = audioCtx.currentTime;
+  audioPlayStartMs = playheadMs;
+  nextAudioStartTime = 0;
+  syncWorkerState();
   rafHandle = requestAnimationFrame(renderLoop);
 }
 
@@ -234,7 +322,9 @@ export function pausePlayback() {
   isPlaying = false;
   lastRafTs = null;
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
-  worker.postMessage({ type: 'sync', playheadMs, isPlaying });
+  nextAudioStartTime = 0;
+  lastScheduledChunkMs = -1;
+  syncWorkerState();
   if (window.onPlaybackPaused) window.onPlaybackPaused();
 }
 
@@ -252,11 +342,16 @@ export async function seekTo(ms) {
     if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
   }
   playheadMs = ms;
+  audioPlayStartMs = ms;
   pendingFrames.clear();
   worker.postMessage({ type: 'seek', ms });
-  worker.postMessage({ type: 'sync', playheadMs, isPlaying });
+  syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   if (wasPlaying) startPlayback();
+}
+
+function syncWorkerState() {
+  if (worker) worker.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead: 0 });
 }
 
 export function setColorGrade(params) {
@@ -273,7 +368,6 @@ export async function exportVideo(onProgress) {
   isExporting = true;
   exportFrames = [];
 
-  // Capture the canvas stream at 30fps
   const stream = canvas.captureStream(30);
   const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
   const chunks = [];
@@ -299,9 +393,8 @@ export async function exportVideo(onProgress) {
 
     recorder.start();
 
-    // Fast-forward through the timeline to record all frames
     let currentTime = 0;
-    const step = 100; // ms
+    const step = 100;
     const interval = setInterval(() => {
       currentTime += step;
       if (onProgress) onProgress(Math.min(currentTime / videoDurationMs, 1));
@@ -315,7 +408,7 @@ export async function exportVideo(onProgress) {
       } else {
         seekTo(currentTime);
       }
-    }, 50); // Step every 50ms for fast rendering
+    }, 50);
   });
 }
 
