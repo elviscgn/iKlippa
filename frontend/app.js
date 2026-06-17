@@ -38,12 +38,21 @@ window.onClipImported = ({ width, height, durationMs }) => {
     window.showToast(`Clip loaded (${width}×${height})`, "film");
 };
 
-// ── NEW: Bridge UI Timeline to Engine ───────────────────────────────
+// ── FIXED: Bridge UI Timeline to Engine ───────────────────────────────
 window.addClipToTimeline = function (fileId, track, startSec, endSec, sourceStartSec, sourceEndSec) {
     addClip(fileId, track, startSec, endSec, sourceStartSec, sourceEndSec);
-
     const fileData = window.mediaFiles.get(fileId);
-    window.timelineClips.push({
+
+    // 🧹 Clear placeholder/dummy clips on first real import
+    if (window.videoClips.length > 0 && window.videoClips[0].id.startsWith('vc')) {
+        window.videoClips = [];
+    }
+    if (window.audioClips.length > 0 && window.audioClips[0].id.startsWith('ac')) {
+        window.audioClips = [];
+    }
+
+    // 🎯 Push to the array that ui.js actually renders
+    window.videoClips.push({
         id: "clip_" + Date.now() + Math.random().toString(36).substr(2, 5),
         fileId,
         track,
@@ -52,7 +61,7 @@ window.addClipToTimeline = function (fileId, track, startSec, endSec, sourceStar
         sourceStart: sourceStartSec,
         sourceEnd: sourceEndSec,
         name: fileData.name,
-        picId: fileData.picId || 29,
+        picId: fileData.picId || 29, // Random thumbnail from picsum
     });
 
     window.renderClips();
