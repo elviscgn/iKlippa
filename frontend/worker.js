@@ -22,15 +22,25 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'status', msg: 'WASM engine running in background worker ✓' });
     }
     else if (type === 'register_file') {
-        const { fileId, file, codecConfig, samples } = data;
+        const { fileId, file, codecConfig, samples, width, height, durationMs } = data;
         fileRegistry.set(fileId, { file, codecConfig, samples });
-        self.postMessage({ type: 'file_registered', fileId });
+
+        // Initialize or resize WASM engine based on actual video dimensions
+        if (!wasmModule) {
+            wasmModule = new IklippaEngine(width, height);
+        } else {
+            wasmModule.resize(width, height);
+        }
+
+        // Create the JS view of the WASM memory buffer
+        baseFrameView = new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), wasmModule.frame_len());
+
+        // Tell the main thread we have a valid video loaded so it can set sourceVideoWidth
+        self.postMessage({ type: 'ready', durationMs, width, height });
     }
     else if (type === 'add_clip') {
         const { fileId, track, startMs, endMs, sourceOffsetMs } = data;
-        // Ensure WASM module is initialized before adding clips
         if (!wasmModule) {
-            // Fallback init if load wasn't called
             wasmModule = new IklippaEngine(1920, 1080);
             baseFrameView = new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), wasmModule.frame_len());
         }
