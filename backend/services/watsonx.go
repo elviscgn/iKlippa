@@ -3,8 +3,6 @@ package services
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
 )
@@ -39,7 +37,6 @@ func (c *WatsonxClient) GenerateText(prompt string) (string, error) {
 		Stream: false,
 	}
 
-	// TODO 2: Marshal the JSON and create an http.NewRequest("POST", ollamaURL, bytes.NewBuffer(jsonData))
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
@@ -50,9 +47,7 @@ func (c *WatsonxClient) GenerateText(prompt string) (string, error) {
 		return "", err
 	}
 
-	// TODO 3: Add the Header!
-	// req.Header.Add("Content-Type", "application/json")
-	// (Notice we NO LONGER need the Authorization Bearer token header!)
+	req.Header.Add("Content-Type", "application/json")
 
 	// TODO 4: Execute the request with c.HttpClient.Do(req)
 
