@@ -4,13 +4,14 @@ lucide.createIcons();
 
 window.S = {
     time: 0,
-    dur: 10,          // FIX #5: sensible default, not 24
+    dur: 10,
     playing: false,
     rafId: null,
     lastTs: null,
     zoom: 1,
     tool: "select",
     selectedAR: "16/9",
+    timelineHeight: 360,
 };
 
 window.mediaPool = {
@@ -329,9 +330,26 @@ $$(".stock-subtab").forEach((tab) => {
 });
 
 // ── Timeline Rules and Rendering ───────────────────────────────────────
+
+// ISSUE 2: Dynamically calculate timeline duration based on clips + buffer
+window.calculateTimelineDuration = function () {
+    let maxEndSec = 0;
+    if (typeof IKState !== 'undefined' && IKState.isReady()) {
+        const allClips = [...IKState.getVideoClips(), ...IKState.getAudioClips()];
+        for (const clip of allClips) {
+            const endSec = us2s(clip.timeline_end_us);
+            if (endSec > maxEndSec) maxEndSec = endSec;
+        }
+    }
+    // Add 10s buffer after the last clip, minimum 10s total
+    const buffered = Math.max(10, maxEndSec + 10);
+    window.S.dur = buffered;
+    return buffered;
+};
+
 function getLaneW() {
     const lane = $("#lane-v1");
-    if (!lane) return 100;   // FIX #5: safe fallback
+    if (!lane) return 100;
     return lane.getBoundingClientRect().width * window.S.zoom;
 }
 
@@ -340,7 +358,7 @@ window.renderRuler = function () {
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
     const dur = window.S.dur;
-    if (dur <= 0) return;    // FIX #5: guard
+    if (dur <= 0) return;
 
     // Adaptive tick interval based on duration & zoom
     let interval;
@@ -363,9 +381,25 @@ window.renderRuler = function () {
     }
 };
 
+// ISSUE 5: Split tool auto-releases after one use
+function activateSplitTool() {
+    window.S.tool = "split";
+    $$(".tl-tool").forEach((b) => b.classList.remove("active"));
+    const splitBtn = document.querySelector('.tl-tool[data-tool="split"]');
+    if (splitBtn) splitBtn.classList.add("active");
+}
+
+function deactivateSplitTool() {
+    window.S.tool = "select";
+    $$(".tl-tool").forEach((b) => b.classList.remove("active"));
+    const selectBtn = document.querySelector('.tl-tool[data-tool="select"]');
+    if (selectBtn) selectBtn.classList.add("active");
+}
+
 function applyDragLogic(el, clip, clipArray, tw) {
     el.onmousedown = (e) => {
         if (window.S.tool === "split") {
+            // ISSUE 5: Split once, then auto-release
             const rect = el.parentElement.getBoundingClientRect();
             const clickX =
                 e.clientX - rect.left + el.parentElement.parentElement.scrollLeft;
@@ -374,42 +408,63 @@ function applyDragLogic(el, clip, clipArray, tw) {
             const clipEndSec = us2s(clip.timeline_end_us);
             if (t > clipStartSec + 0.5 && t < clipEndSec - 0.5) {
                 const splitAtUs = Math.round(t * 1_000_000);
+                // ISSUE 4: splitClip handles linked audio via group_id
                 const newId = IKState.splitClip(clip.id, splitAtUs);
                 if (newId !== null) {
                     showToast("Clip Split", "scissors");
+                    window.calculateTimelineDuration();
+                    window.renderRuler();
                     window.renderClips();
+                    window.updatePlayhead();
                 }
             }
+            // ISSUE 5: Auto-release split tool after one use
+            deactivateSplitTool();
         } else if (window.S.tool === "select") {
             $$(".tl-clip").forEach((c) => c.classList.remove("active"));
             el.classList.add("active");
             let startX = e.clientX;
             let initialStartUs = clip.timeline_start_us;
             let durationUs = clip.timeline_end_us - clip.timeline_start_us;
+            let lastSeekMs = 0;
+            
             const move = (e2) => {
                 const dx = e2.clientX - startX;
                 const dtSec = (dx / tw) * window.S.dur;
                 let newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
                 let newStartUs = Math.round(newStartSec * 1_000_000);
                 
-                // Use IKState.moveClip to handle linked clips
+                // ISSUE 6: Use IKState.moveClip to handle linked clips (video+audio move together)
                 IKState.moveClip(clip.id, newStartUs);
                 
-                // Extend timeline duration if clip moves past current end
+                // ISSUE 2: Extend timeline duration if clip moves past current end
                 const newEndSec = us2s(clip.timeline_end_us);
-                if (newEndSec > window.S.dur) {
-                    window.S.dur = newEndSec;
+                if (newEndSec + 10 > window.S.dur) {
+                    window.calculateTimelineDuration();
+                    window.renderRuler();
                 }
                 
                 window.renderClips();
-                window.renderRuler();
+                window.updatePlayhead();
+                
+                // ISSUE 8: Video preview follows drag position (throttled to 50ms)
+                const now = Date.now();
+                if (now - lastSeekMs > 50) {
+                    lastSeekMs = now;
+                    const dragTimeSec = newStartSec;
+                    if (window.onPlayheadScrub) {
+                        window.onPlayheadScrub(dragTimeSec);
+                    }
+                }
             };
             const up = () => {
                 document.removeEventListener("mousemove", move);
                 document.removeEventListener("mouseup", up);
-                // Commit to state on pointer-up (duration/project already
-                // updated since clip is a live ref; just recompute duration).
                 IKState.computeDuration();
+                window.calculateTimelineDuration();
+                window.renderRuler();
+                window.renderClips();
+                window.updatePlayhead();
             };
             document.addEventListener("mousemove", move);
             document.addEventListener("mouseup", up);
@@ -655,15 +710,14 @@ window.skipTime = function (delta) {
 };
 
 // ── Scrub Seek Event Handling ──────────────────────────────────────────
-// FIX #2: Ruler already has margin-left:140px, so don't subtract 140 again
+// ISSUE 1: Fixed alignment — gutter is 80px, ruler starts after it
 function handleTimelineScrub(e, el) {
     const rect = el.getBoundingClientRect();
     const isRuler = (el.id === "tl-ruler");
-    const headOffset = isRuler ? 0 : 140;
-    const x = Math.max(
-        0,
-        e.clientX - rect.left - headOffset,
-    );
+    // Ruler is already positioned after the gutter, so no offset needed.
+    // Tracks container includes the gutter, so subtract 80px.
+    const headOffset = isRuler ? 0 : 80;
+    const x = Math.max(0, e.clientX - rect.left - headOffset);
     const tw = getLaneW();
     const dur = window.S.dur;
     if (dur <= 0 || tw <= 0) return;
@@ -673,7 +727,7 @@ function handleTimelineScrub(e, el) {
 }
 
 $("#tl-tracks").addEventListener("mousedown", (e) => {
-    if (e.target.closest(".tl-clip") || e.target.closest(".track-head")) return;
+    if (e.target.closest(".tl-clip") || e.target.closest(".track-gutter")) return;
     handleTimelineScrub(e, $("#tl-tracks"));
 });
 $("#tl-ruler").onmousedown = (e) => handleTimelineScrub(e, $("#tl-ruler"));
