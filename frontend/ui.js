@@ -633,7 +633,7 @@ $("#tl-body").addEventListener(
                 0.5,
                 Math.min(4, window.S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)),
             );
-            $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "% Zoom";
+            $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
             window.renderRuler();
             window.renderClips();
             window.updatePlayhead();
@@ -641,6 +641,53 @@ $("#tl-body").addEventListener(
     },
     { passive: false },
 );
+
+// ISSUE 3: Zoom control buttons
+$("#zoom-in")?.addEventListener("click", () => {
+    window.S.zoom = Math.min(4, window.S.zoom + 0.25);
+    $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+});
+$("#zoom-out")?.addEventListener("click", () => {
+    window.S.zoom = Math.max(0.5, window.S.zoom - 0.25);
+    $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+});
+
+// ISSUE 3: Vertical resize handle for timeline
+(function initResizeHandle() {
+    const handle = $("#tl-resize-handle");
+    if (!handle) return;
+    const panel = document.querySelector(".panel-timeline");
+    if (!panel) return;
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+    handle.addEventListener("mousedown", (e) => {
+        isResizing = true;
+        startY = e.clientY;
+        startHeight = panel.offsetHeight;
+        document.body.style.cursor = "ns-resize";
+        e.preventDefault();
+    });
+    document.addEventListener("mousemove", (e) => {
+        if (!isResizing) return;
+        const dy = e.clientY - startY;
+        const newHeight = Math.max(120, Math.min(window.innerHeight * 0.5, startHeight - dy));
+        panel.style.height = newHeight + "px";
+        window.S.timelineHeight = newHeight;
+    });
+    document.addEventListener("mouseup", () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = "";
+        }
+    });
+})();
 
 $$(".tl-tool").forEach((btn) => {
     btn.onclick = () => {
@@ -905,6 +952,7 @@ document.addEventListener("click", (e) => {
 // ── Initialization Trigger ─────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
     window.renderMedia("footage");
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
