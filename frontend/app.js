@@ -61,15 +61,20 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     // Build the canonical project model (µs timestamps, Rust shape)
     IKState.init(width, height);
     const durationUs = Math.round(durationSec * 1_000_000);
-    IKState.addVideoClip("imported_real", 0, durationUs, {
+    
+    // Create a group ID for this import - video and audio clips share it
+    const groupId = `group_${Date.now()}`;
+    const sourceId = "imported_" + Date.now();
+    
+    IKState.addVideoClip(sourceId, 0, durationUs, {
         name: displayName,
         isReal: true,
         thumbnails: getThumbnails ? getThumbnails() : [],
-    });
-    IKState.addAudioClip("imported_real", 0, durationUs, {
+    }, groupId);
+    IKState.addAudioClip(sourceId, 0, durationUs, {
         name: displayName.replace(/\.[^.]+$/, ""),
         isReal: true,
-    });
+    }, groupId);
 
     // Sync to Rust + verify round-trip (Task 1 acceptance criterion)
     const rustJson = IKState.toRustJson();
@@ -91,7 +96,7 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     if (window.resetAiActions) window.resetAiActions();
 
     window.mediaPool.footage = [
-        { id: "imported_real", name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null },
+        { id: sourceId, name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null },
     ];
 
     window.renderRuler();
