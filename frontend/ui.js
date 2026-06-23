@@ -408,7 +408,6 @@ function applyDragLogic(el, clip, clipArray, tw) {
             const clipEndSec = us2s(clip.timeline_end_us);
             if (t > clipStartSec + 0.5 && t < clipEndSec - 0.5) {
                 const splitAtUs = Math.round(t * 1_000_000);
-                // ISSUE 4: splitClip handles linked audio via group_id
                 const newId = IKState.splitClip(clip.id, splitAtUs);
                 if (newId !== null) {
                     showToast("Clip Split", "scissors");
@@ -418,48 +417,31 @@ function applyDragLogic(el, clip, clipArray, tw) {
                     window.updatePlayhead();
                 }
             }
-            // ISSUE 5: Auto-release split tool after one use
             deactivateSplitTool();
         } else if (window.S.tool === "select") {
             $$(".tl-clip").forEach((c) => c.classList.remove("active"));
             el.classList.add("active");
-            let startX = e.clientX;
-            let initialStartUs = clip.timeline_start_us;
-            let durationUs = clip.timeline_end_us - clip.timeline_start_us;
-            let lastSeekMs = 0;
-            
+            const startX = e.clientX;
+            const initialStartUs = clip.timeline_start_us;
+            const dur = window.S.dur;
+            if (dur <= 0) return;
+
             const move = (e2) => {
                 const dx = e2.clientX - startX;
-                const dtSec = (dx / tw) * window.S.dur;
-                let newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
-                let newStartUs = Math.round(newStartSec * 1_000_000);
-                
-                // ISSUE 6: Use IKState.moveClip to handle linked clips (video+audio move together)
-                IKState.moveClip(clip.id, newStartUs);
-                
-                // ISSUE 2: Extend timeline duration if clip moves past current end
-                const newEndSec = us2s(clip.timeline_end_us);
-                if (newEndSec + 10 > window.S.dur) {
-                    window.calculateTimelineDuration();
-                    window.renderRuler();
-                }
-                
-                window.renderClips();
-                window.updatePlayhead();
-                
-                // ISSUE 8: Video preview follows drag position (throttled to 50ms)
-                const now = Date.now();
-                if (now - lastSeekMs > 50) {
-                    lastSeekMs = now;
-                    const dragTimeSec = newStartSec;
-                    if (window.onPlayheadScrub) {
-                        window.onPlayheadScrub(dragTimeSec);
-                    }
-                }
+                const dtSec = (dx / tw) * dur;
+                const newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
+                const newStartPx = (newStartSec / dur) * tw;
+                // Update only the dragged element's position — no full re-render
+                el.style.left = newStartPx + "px";
             };
             const up = () => {
                 document.removeEventListener("mousemove", move);
                 document.removeEventListener("mouseup", up);
+                // Commit final position to data model
+                const finalLeft = parseFloat(el.style.left);
+                const finalStartSec = (finalLeft / tw) * dur;
+                const finalStartUs = Math.round(finalStartSec * 1_000_000);
+                IKState.moveClip(clip.id, finalStartUs);
                 IKState.computeDuration();
                 window.calculateTimelineDuration();
                 window.renderRuler();
@@ -790,6 +772,33 @@ $("#tl-tracks").addEventListener("mousedown", (e) => {
     handleTimelineScrub(e, $("#tl-tracks"));
 });
 $("#tl-ruler").onmousedown = (e) => handleTimelineScrub(e, $("#tl-ruler"));
+
+// Playhead knob drag
+(function initPlayheadKnob() {
+    const knob = document.querySelector(".playhead-knob");
+    if (!knob) return;
+    knob.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        const tracks = $("#tl-tracks");
+        const tw = getLaneW();
+        const dur = window.S.dur;
+        if (dur <= 0 || tw <= 0) return;
+        const onMove = (e2) => {
+            const rect = tracks.getBoundingClientRect();
+            const x = Math.max(0, e2.clientX - rect.left - 80);
+            const t = Math.max(0, Math.min((x / tw) * dur, dur));
+            window.S.time = t;
+            $("#ph-tracks").style.left = (80 + (t / dur) * tw) + "px";
+            if (window.onPlayheadScrub) window.onPlayheadScrub(t);
+        };
+        const onUp = () => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    });
+})();
 
 // ── AI Copilot Chat Interface ──────────────────────────────────────────
 function appendChat(text, isUser = false) {
