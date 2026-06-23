@@ -4,13 +4,14 @@ lucide.createIcons();
 
 window.S = {
     time: 0,
-    dur: 10,          // FIX #5: sensible default, not 24
+    dur: 10,
     playing: false,
     rafId: null,
     lastTs: null,
     zoom: 1,
     tool: "select",
     selectedAR: "16/9",
+    timelineHeight: 360,
 };
 
 window.mediaPool = {
@@ -271,7 +272,7 @@ window.renderMedia = function (type, subType = null) {
         grid.style.display = "grid";
         list.style.display = "none";
         if (data.length === 0 && type === "footage") {
-            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px 16px;color:var(--text-muted);font-size:11px;"><i data-lucide="upload" style="width:24px;height:24px;display:block;margin:0 auto 8px;opacity:0.4;"></i>Drop a video file onto the canvas to begin</div>';
+            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px 16px;color:var(--text-muted);font-size:12px;"><i data-lucide="upload" style="width:28px;height:28px;display:block;margin:0 auto 12px;opacity:0.4;"></i>Drop a video file onto the canvas to begin</div>';
             lucide.createIcons({ nodes: [grid] });
             return;
         }
@@ -279,7 +280,7 @@ window.renderMedia = function (type, subType = null) {
             const el = document.createElement("div");
             el.className = "media-item";
             if (item.isReal) {
-                el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:28px;height:28px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
+                el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:32px;height:32px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
             } else {
                 el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
             }
@@ -329,9 +330,26 @@ $$(".stock-subtab").forEach((tab) => {
 });
 
 // ── Timeline Rules and Rendering ───────────────────────────────────────
+
+// ISSUE 2: Dynamically calculate timeline duration based on clips + buffer
+window.calculateTimelineDuration = function () {
+    let maxEndSec = 0;
+    if (typeof IKState !== 'undefined' && IKState.isReady()) {
+        const allClips = [...IKState.getVideoClips(), ...IKState.getAudioClips()];
+        for (const clip of allClips) {
+            const endSec = us2s(clip.timeline_end_us);
+            if (endSec > maxEndSec) maxEndSec = endSec;
+        }
+    }
+    // Add 10s buffer after the last clip, minimum 10s total
+    const buffered = Math.max(10, maxEndSec + 10);
+    window.S.dur = buffered;
+    return buffered;
+};
+
 function getLaneW() {
     const lane = $("#lane-v1");
-    if (!lane) return 100;   // FIX #5: safe fallback
+    if (!lane) return 100;
     return lane.getBoundingClientRect().width * window.S.zoom;
 }
 
@@ -340,7 +358,7 @@ window.renderRuler = function () {
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
     const dur = window.S.dur;
-    if (dur <= 0) return;    // FIX #5: guard
+    if (dur <= 0) return;
 
     // Adaptive tick interval based on duration & zoom
     let interval;
@@ -363,9 +381,25 @@ window.renderRuler = function () {
     }
 };
 
+// ISSUE 5: Split tool auto-releases after one use
+function activateSplitTool() {
+    window.S.tool = "split";
+    $$(".tl-tool").forEach((b) => b.classList.remove("active"));
+    const splitBtn = document.querySelector('.tl-tool[data-tool="split"]');
+    if (splitBtn) splitBtn.classList.add("active");
+}
+
+function deactivateSplitTool() {
+    window.S.tool = "select";
+    $$(".tl-tool").forEach((b) => b.classList.remove("active"));
+    const selectBtn = document.querySelector('.tl-tool[data-tool="select"]');
+    if (selectBtn) selectBtn.classList.add("active");
+}
+
 function applyDragLogic(el, clip, clipArray, tw) {
     el.onmousedown = (e) => {
         if (window.S.tool === "split") {
+            // ISSUE 5: Split once, then auto-release
             const rect = el.parentElement.getBoundingClientRect();
             const clickX =
                 e.clientX - rect.left + el.parentElement.parentElement.scrollLeft;
@@ -377,38 +411,42 @@ function applyDragLogic(el, clip, clipArray, tw) {
                 const newId = IKState.splitClip(clip.id, splitAtUs);
                 if (newId !== null) {
                     showToast("Clip Split", "scissors");
+                    window.calculateTimelineDuration();
+                    window.renderRuler();
                     window.renderClips();
+                    window.updatePlayhead();
                 }
             }
+            deactivateSplitTool();
         } else if (window.S.tool === "select") {
             $$(".tl-clip").forEach((c) => c.classList.remove("active"));
             el.classList.add("active");
-            let startX = e.clientX;
-            let initialStartUs = clip.timeline_start_us;
-            let durationUs = clip.timeline_end_us - clip.timeline_start_us;
+            const startX = e.clientX;
+            const initialStartUs = clip.timeline_start_us;
+            const dur = window.S.dur;
+            if (dur <= 0) return;
+
             const move = (e2) => {
                 const dx = e2.clientX - startX;
-                const dtSec = (dx / tw) * window.S.dur;
-                let newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
-                let newStartUs = Math.round(newStartSec * 1_000_000);
-                clip.timeline_start_us = newStartUs;
-                clip.timeline_end_us = newStartUs + durationUs;
-                
-                // Extend timeline duration if clip moves past current end
-                const newEndSec = us2s(clip.timeline_end_us);
-                if (newEndSec > window.S.dur) {
-                    window.S.dur = newEndSec;
-                }
-                
-                window.renderClips();
-                window.renderRuler();
+                const dtSec = (dx / tw) * dur;
+                const newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
+                const newStartPx = (newStartSec / dur) * tw;
+                // Update only the dragged element's position — no full re-render
+                el.style.left = newStartPx + "px";
             };
             const up = () => {
                 document.removeEventListener("mousemove", move);
                 document.removeEventListener("mouseup", up);
-                // Commit to state on pointer-up (duration/project already
-                // updated since clip is a live ref; just recompute duration).
+                // Commit final position to data model
+                const finalLeft = parseFloat(el.style.left);
+                const finalStartSec = (finalLeft / tw) * dur;
+                const finalStartUs = Math.round(finalStartSec * 1_000_000);
+                IKState.moveClip(clip.id, finalStartUs);
                 IKState.computeDuration();
+                window.calculateTimelineDuration();
+                window.renderRuler();
+                window.renderClips();
+                window.updatePlayhead();
             };
             document.addEventListener("mousemove", move);
             document.addEventListener("mouseup", up);
@@ -429,14 +467,39 @@ window.renderClips = function () {
     laneV1.innerHTML = laneA1.innerHTML = "";
     const tw = getLaneW();
     const dur = window.S.dur;
-    if (dur <= 0) return;    // FIX #5
+    if (dur <= 0) return;
 
     // Show empty-state hint when no clips exist
     if (window.videoClips.length === 0) {
-        laneV1.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;opacity:0.5;pointer-events:none;">Drop video here</div>';
+        laneV1.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop video here</div>';
     }
 
+    // Group clips by group_id to render combined video+audio clips
+    const clipGroups = new Map();
+    
+    // Collect video clips
     window.videoClips.forEach((clip) => {
+        const groupId = clip.group_id || `group_${clip.id}`;
+        if (!clipGroups.has(groupId)) {
+            clipGroups.set(groupId, { video: null, audio: null });
+        }
+        clipGroups.get(groupId).video = clip;
+    });
+    
+    // Collect audio clips
+    window.audioClips.forEach((clip) => {
+        const groupId = clip.group_id || `group_${clip.id}`;
+        if (!clipGroups.has(groupId)) {
+            clipGroups.set(groupId, { video: null, audio: null });
+        }
+        clipGroups.get(groupId).audio = clip;
+    });
+
+    // Render each clip group
+    clipGroups.forEach((group, groupId) => {
+        const clip = group.video || group.audio;
+        if (!clip) return;
+        
         const el = document.createElement("div");
         el.className = "tl-clip";
         const clipStartSec = us2s(clip.timeline_start_us);
@@ -446,51 +509,55 @@ window.renderClips = function () {
         el.style.left = left + "px";
         el.style.width = w + "px";
 
-        // Real clip with captured thumbnails
-        if (clip.isReal && clip.thumbnails && clip.thumbnails.length > 0) {
-            const count = Math.max(1, Math.floor(w / 60));
-            let thumbs = '<div class="tl-clip-thumbs">';
-            for (let j = 0; j < count; j++) {
-                const idx = Math.min(
-                    Math.floor((j / count) * clip.thumbnails.length),
-                    clip.thumbnails.length - 1
-                );
-                thumbs += `<img src="${clip.thumbnails[idx].dataUrl}" draggable="false">`;
+        let content = '';
+        
+        // Video section only (no audio waveform for video imports)
+        if (group.video) {
+            const videoClip = group.video;
+            if (videoClip.isReal && videoClip.thumbnails && videoClip.thumbnails.length > 0) {
+                const count = Math.max(1, Math.floor(w / 60));
+                let thumbs = '<div class="tl-clip-thumbs">';
+                for (let j = 0; j < count; j++) {
+                    const idx = Math.min(
+                        Math.floor((j / count) * videoClip.thumbnails.length),
+                        videoClip.thumbnails.length - 1
+                    );
+                    thumbs += `<img src="${videoClip.thumbnails[idx].dataUrl}" draggable="false">`;
+                }
+                thumbs += "</div>";
+                content += `${thumbs}<span class="tl-clip-label">${videoClip.name}</span>`;
+            } else if (videoClip.isReal) {
+                content += `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${videoClip.name}</span>`;
+            } else if (videoClip.picId) {
+                const count = Math.max(1, Math.floor(w / 60));
+                let thumbs = '<div class="tl-clip-thumbs">';
+                for (let j = 0; j < count; j++)
+                    thumbs += `<img src="${picUrl(videoClip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
+                thumbs += "</div>";
+                content += `${thumbs}<span class="tl-clip-label">${videoClip.name}</span>`;
+            } else {
+                content += `<span class="tl-clip-label">${videoClip.name}</span>`;
             }
-            thumbs += "</div>";
-            el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
-            el.style.background = "linear-gradient(180deg, rgba(13,148,136,0.08) 0%, rgba(0,0,0,0.4) 100%)";
         }
-        // Real clip without thumbnails yet — gradient placeholder
-        else if (clip.isReal) {
-            el.style.background = "linear-gradient(135deg, rgba(13,148,136,0.12), rgba(6,6,8,0.8))";
-            el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${clip.name}</span>`;
-        }
-        // Stock / placeholder clip with picsum
-        else if (clip.picId) {
-            const count = Math.max(1, Math.floor(w / 60));
-            let thumbs = '<div class="tl-clip-thumbs">';
-            for (let j = 0; j < count; j++)
-                thumbs += `<img src="${picUrl(clip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
-            thumbs += "</div>";
-            el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
-        }
-        // Fallback
-        else {
-            el.style.background = "rgba(255,255,255,0.04)";
-            el.innerHTML = `<span class="tl-clip-label">${clip.name}</span>`;
-        }
-
-        applyDragLogic(el, clip, window.videoClips, tw);
+        
+        el.innerHTML = content;
+        applyDragLogic(el, clip, [clip], tw);
         laneV1.appendChild(el);
     });
 
-    // Empty audio lane hint
-    if (window.audioClips.length === 0) {
-        laneA1.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;opacity:0.5;pointer-events:none;">Audio track</div>';
+    // Audio lane - only for standalone MP3 files (no group_id or unique group)
+    const standaloneAudio = window.audioClips.filter(clip => {
+        const groupId = clip.group_id;
+        // Only show if there's no matching video clip in the same group
+        const group = clipGroups.get(groupId);
+        return group && !group.video;
+    });
+    
+    if (standaloneAudio.length === 0) {
+        laneA1.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Audio track (MP3 only)</div>';
     }
-
-    window.audioClips.forEach((clip) => {
+    
+    standaloneAudio.forEach((clip) => {
         const el = document.createElement("div");
         el.className = "tl-clip tl-clip-audio";
         const clipStartSec = us2s(clip.timeline_start_us);
@@ -499,13 +566,12 @@ window.renderClips = function () {
         const w = (clipDurSec / dur) * tw;
         el.style.left = left + "px";
         el.style.width = w + "px";
-        // FIX #4: deterministic bars — no Math.random()
         const bars = Array.from({ length: Math.max(1, Math.floor(w / 4)) }, (_, i) => {
             const h = seededBarHeight(i);
             return `<rect x="${i * 4}" y="${20 - h / 2}" width="2.5" height="${Math.min(h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`;
         }).join("");
         el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, w)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
-        applyDragLogic(el, clip, window.audioClips, tw);
+        applyDragLogic(el, clip, standaloneAudio, tw);
         laneA1.appendChild(el);
     });
 
@@ -518,7 +584,7 @@ window.renderClips = function () {
         el.onclick = () => showToast("AI Insight: " + node.label, node.icon);
         $("#lane-ai").appendChild(el);
     });
-    lucide.createIcons({ nodes: [$("#lane-ai"), laneV1] });
+    lucide.createIcons({ nodes: [$("#lane-ai"), laneV1, laneA1] });
 };
 
 $("#lane-v1").ondragover = (e) => e.preventDefault();
@@ -549,7 +615,7 @@ $("#tl-body").addEventListener(
                 0.5,
                 Math.min(4, window.S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)),
             );
-            $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "% Zoom";
+            $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
             window.renderRuler();
             window.renderClips();
             window.updatePlayhead();
@@ -558,12 +624,69 @@ $("#tl-body").addEventListener(
     { passive: false },
 );
 
+// ISSUE 3: Zoom control buttons
+$("#zoom-in")?.addEventListener("click", () => {
+    window.S.zoom = Math.min(4, window.S.zoom + 0.25);
+    $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+});
+$("#zoom-out")?.addEventListener("click", () => {
+    window.S.zoom = Math.max(0.5, window.S.zoom - 0.25);
+    $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+});
+
+// ISSUE 3: Vertical resize handle for timeline
+(function initResizeHandle() {
+    const handle = $("#tl-resize-handle");
+    if (!handle) return;
+    const panel = document.querySelector(".panel-timeline");
+    if (!panel) return;
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+    handle.addEventListener("mousedown", (e) => {
+        isResizing = true;
+        startY = e.clientY;
+        startHeight = panel.offsetHeight;
+        document.body.style.cursor = "ns-resize";
+        e.preventDefault();
+    });
+    document.addEventListener("mousemove", (e) => {
+        if (!isResizing) return;
+        const dy = e.clientY - startY;
+        const newHeight = Math.max(120, Math.min(window.innerHeight * 0.5, startHeight - dy));
+        panel.style.height = newHeight + "px";
+        window.S.timelineHeight = newHeight;
+    });
+    document.addEventListener("mouseup", () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = "";
+        }
+    });
+})();
+
 $$(".tl-tool").forEach((btn) => {
     btn.onclick = () => {
         $$(".tl-tool").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         window.S.tool = btn.dataset.tool;
     };
+});
+
+// ADDITIONAL: Keyboard shortcuts
+document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.code === "KeyV") {
+        deactivateSplitTool();
+    } else if (e.code === "KeyS") {
+        activateSplitTool();
+    }
 });
 
 // ── Time Formatting and Playhead Sync ───────────────────────────────
@@ -582,10 +705,11 @@ function fmtTime(sec) {
 window.updatePlayhead = function () {
     const tw = getLaneW();
     const dur = window.S.dur;
-    if (dur <= 0) return;    // FIX #5
+    if (dur <= 0) return;
     const px = (window.S.time / dur) * tw;
-    $("#ph-ruler").style.left = px + "px";
-    $("#ph-tracks").style.left = 140 + px + "px";
+    // Playhead offset = gutter width (80px)
+    const gutterWidth = 80;
+    $("#ph-tracks").style.left = (gutterWidth + px) + "px";
     $("#timecode").textContent = fmtTime(window.S.time);
 };
 
@@ -627,15 +751,14 @@ window.skipTime = function (delta) {
 };
 
 // ── Scrub Seek Event Handling ──────────────────────────────────────────
-// FIX #2: Ruler already has margin-left:140px, so don't subtract 140 again
+// ISSUE 1: Fixed alignment — gutter is 80px, ruler starts after it
 function handleTimelineScrub(e, el) {
     const rect = el.getBoundingClientRect();
     const isRuler = (el.id === "tl-ruler");
-    const headOffset = isRuler ? 0 : 140;
-    const x = Math.max(
-        0,
-        e.clientX - rect.left - headOffset,
-    );
+    // Ruler is already positioned after the gutter, so no offset needed.
+    // Tracks container includes the gutter, so subtract 80px.
+    const headOffset = isRuler ? 0 : 80;
+    const x = Math.max(0, e.clientX - rect.left - headOffset);
     const tw = getLaneW();
     const dur = window.S.dur;
     if (dur <= 0 || tw <= 0) return;
@@ -645,10 +768,37 @@ function handleTimelineScrub(e, el) {
 }
 
 $("#tl-tracks").addEventListener("mousedown", (e) => {
-    if (e.target.closest(".tl-clip") || e.target.closest(".track-head")) return;
+    if (e.target.closest(".tl-clip") || e.target.closest(".track-gutter")) return;
     handleTimelineScrub(e, $("#tl-tracks"));
 });
 $("#tl-ruler").onmousedown = (e) => handleTimelineScrub(e, $("#tl-ruler"));
+
+// Playhead knob drag
+(function initPlayheadKnob() {
+    const knob = document.querySelector(".playhead-knob");
+    if (!knob) return;
+    knob.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        const tracks = $("#tl-tracks");
+        const tw = getLaneW();
+        const dur = window.S.dur;
+        if (dur <= 0 || tw <= 0) return;
+        const onMove = (e2) => {
+            const rect = tracks.getBoundingClientRect();
+            const x = Math.max(0, e2.clientX - rect.left - 80);
+            const t = Math.max(0, Math.min((x / tw) * dur, dur));
+            window.S.time = t;
+            $("#ph-tracks").style.left = (80 + (t / dur) * tw) + "px";
+            if (window.onPlayheadScrub) window.onPlayheadScrub(t);
+        };
+        const onUp = () => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    });
+})();
 
 // ── AI Copilot Chat Interface ──────────────────────────────────────────
 function appendChat(text, isUser = false) {
@@ -716,18 +866,12 @@ window.resetAiActions = function () {
 window.applyAiAction = function (type) {
     if (type === "silence" && !acts.trim) {
         if (window.videoClips.length === 1 && window.videoClips[0].isReal) {
-            // Real video: simulate trim by shortening ~8%
             const clip = window.videoClips[0];
             const startUs = clip.timeline_start_us;
             const origDurUs = clip.timeline_end_us - clip.timeline_start_us;
             const trimmedDurUs = Math.round(origDurUs * 0.92);
             IKState.trimClip(clip.id, startUs, startUs + trimmedDurUs, clip.source_start_us);
             const trimmedDurSec = us2s(trimmedDurUs);
-            window.S.dur = trimmedDurSec;
-            // Trim audio clips to match
-            window.audioClips.forEach(ac => {
-                if (ac.isReal) IKState.trimClip(ac.id, ac.timeline_start_us, ac.timeline_start_us + trimmedDurUs, ac.source_start_us);
-            });
             window.aiNodes.push({ time: trimmedDurSec, label: "Silence Trimmed", icon: "scissors" });
             $("#insight-score").textContent = "93";
             $("#insight-bar").style.width = "93%";
@@ -736,21 +880,17 @@ window.applyAiAction = function (type) {
             showToast("AI Smart Trim Applied", "scissors");
             acts.trim = true;
         } else if (window.videoClips.length >= 2) {
-            // Multiple clips: tighten gaps by moving clips to close gaps
             const clips = window.videoClips;
             const firstStartSec = us2s(clips[0].timeline_start_us);
             let cursorUs = clips[0].timeline_end_us;
             for (let i = 1; i < clips.length; i++) {
                 const clip = clips[i];
                 if (clip.timeline_start_us > cursorUs) {
-                    const durUs = clip.timeline_end_us - clip.timeline_start_us;
-                    clip.timeline_start_us = cursorUs;
-                    clip.timeline_end_us = cursorUs + durUs;
+                    IKState.moveClip(clip.id, cursorUs);
                 }
                 cursorUs = clip.timeline_end_us;
             }
             IKState.computeDuration();
-            window.S.dur = us2s(cursorUs);
             window.aiNodes.push({ time: firstStartSec, label: "Gaps Trimmed", icon: "scissors" });
             $("#insight-score").textContent = "96";
             $("#insight-bar").style.width = "96%";
@@ -782,14 +922,48 @@ window.applyAiAction = function (type) {
         showToast("Action already applied!", "check");
         return;
     }
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
 };
 
+// ─ Track Control Icons ──────────────────────────────────────────────
+document.addEventListener("click", (e) => {
+    const icon = e.target.closest(".track-icons svg");
+    if (!icon) return;
+    
+    const track = icon.closest(".track");
+    if (!track) return;
+    
+    const trackId = track.dataset.trackId;
+    const iconType = icon.getAttribute("data-lucide");
+    
+    if (iconType === "lock") {
+        icon.classList.toggle("active");
+        const isLocked = icon.classList.contains("active");
+        icon.setAttribute("data-lucide", isLocked ? "lock" : "unlock");
+        lucide.createIcons({ nodes: [icon] });
+        showToast(isLocked ? "Track locked" : "Track unlocked", isLocked ? "lock" : "unlock");
+    } else if (iconType === "eye" || iconType === "eye-off") {
+        icon.classList.toggle("active");
+        const isVisible = !icon.classList.contains("active");
+        icon.setAttribute("data-lucide", isVisible ? "eye" : "eye-off");
+        lucide.createIcons({ nodes: [icon] });
+        showToast(isVisible ? "Track visible" : "Track hidden", isVisible ? "eye" : "eye-off");
+    } else if (iconType === "volume-2" || iconType === "volume-x") {
+        icon.classList.toggle("active");
+        const isMuted = icon.classList.contains("active");
+        icon.setAttribute("data-lucide", isMuted ? "volume-x" : "volume-2");
+        lucide.createIcons({ nodes: [icon] });
+        showToast(isMuted ? "Track muted" : "Track unmuted", isMuted ? "volume-x" : "volume-2");
+    }
+});
+
 // ── Initialization Trigger ─────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
     window.renderMedia("footage");
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
