@@ -233,12 +233,37 @@ canvasWrapper.addEventListener("dragleave", (e) => {
         dropOverlay.style.display = "none";
     }
 });
-canvasWrapper.addEventListener("dragover", (e) => e.preventDefault());
+canvasWrapper.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+});
 canvasWrapper.addEventListener("drop", async (e) => {
     e.preventDefault();
     dropOverlay.style.display = "none";
     const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith("video/")) await importFile(file);
+    if (file && file.type.startsWith("video/")) {
+        await importFile(file);
+        return;
+    }
+    const textData = e.dataTransfer.getData("text/plain");
+    if (!textData) return;
+    try {
+        const data = JSON.parse(textData);
+        if (data.id && data.name) {
+            window.saveSnapshot();
+            IKState.addVideoClip("stock_" + data.id, 0, 4_000_000, {
+                name: data.name,
+                isReal: false,
+                picId: data.picId || 0,
+            });
+            IKState.computeDuration();
+            window.calculateTimelineDuration();
+            window.renderRuler();
+            window.renderClips();
+            window.updatePlayhead();
+            showToast("Stock added via canvas", "film");
+        }
+    } catch {}
 });
 
 fileInput.addEventListener("change", async (e) => {
