@@ -897,8 +897,6 @@ document.addEventListener("keydown", (e) => {
         saveSnapshot();
         IKState.moveClip(clipId, newStartUs);
         reRender(clipId);
-        const label = e.shiftKey ? "1s" : "1 frame";
-        showToast("Nudged " + label + " " + (dir > 0 ? "right" : "left"), "move");
     } else if (e.code === "KeyV" && !(e.ctrlKey || e.metaKey)) {
         deactivateSplitTool();
     } else if (e.code === "KeyS") {
