@@ -347,15 +347,14 @@ window.calculateTimelineDuration = function () {
     return buffered;
 };
 
-// Auto-zoom to show ~60s of timeline in the visible track width
+// Auto-zoom to keep ~20px per second minimum for readable ruler ticks
 window.autoFitZoom = function () {
     const lane = $("#lane-v1");
     if (!lane || window.S.dur <= 0) return;
     const laneW = lane.getBoundingClientRect().width;
     if (laneW <= 0) return;
-    const targetVisible = 60;
-    const ideal = window.S.dur / targetVisible;
-    window.S.zoom = Math.max(0.5, Math.min(4, ideal));
+    const minPxPerSec = 20;
+    window.S.zoom = Math.max(0.5, (minPxPerSec * window.S.dur) / laneW);
     const zt = $("#zoom-text");
     if (zt) zt.textContent = Math.round(window.S.zoom * 100) + "%";
 };
@@ -835,7 +834,7 @@ $("#tl-body").addEventListener(
             e.preventDefault();
             window.S.zoom = Math.max(
                 0.5,
-                Math.min(4, window.S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)),
+                Math.min(50, window.S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)),
             );
             $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
             window.renderRuler();
@@ -848,7 +847,7 @@ $("#tl-body").addEventListener(
 
 // ISSUE 3: Zoom control buttons
 $("#zoom-in")?.addEventListener("click", () => {
-    window.S.zoom = Math.min(4, window.S.zoom + 0.25);
+    window.S.zoom = Math.min(50, window.S.zoom + 0.25);
     $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
     window.renderRuler();
     window.renderClips();
