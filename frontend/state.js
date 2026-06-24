@@ -314,6 +314,19 @@ window.IKState = (() => {
 
     function getProject() { return project; }
 
+    // ── Undo/redo state snapshots ─────────────────────────────────────────
+    function saveState() {
+        return {
+            project: JSON.parse(JSON.stringify(project)),
+            clipMeta: JSON.parse(JSON.stringify(clipMeta)),
+        };
+    }
+    function loadState(state) {
+        project = state.project;
+        Object.keys(clipMeta).forEach(k => delete clipMeta[k]);
+        Object.assign(clipMeta, state.clipMeta);
+    }
+
     // ── Rust sync helpers ───────────────────────────────────────────────
     // Strip display metadata and serialise to JSON for Rust. The output must
     // match the Rust Project struct shape exactly so that set_timeline →
@@ -370,6 +383,7 @@ window.IKState = (() => {
         computeDuration, getDurationSec,
         toRustJson, loadFromRustJson, verifyRoundTrip,
         getProject, getLinkedClipIds,
+        saveState, loadState,
     };
 })();
 

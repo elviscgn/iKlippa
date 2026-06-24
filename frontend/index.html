@@ -37,13 +37,15 @@
           <div class="topnav-actions">
             <button
               class="nav-btn"
-              onclick="showToast('Undo performed', 'undo-2')"
+              onclick="window.undo()"
+              title="Undo (Ctrl+Z)"
             >
               <i data-lucide="undo-2"></i>
             </button>
             <button
               class="nav-btn"
-              onclick="showToast('Redo performed', 'redo-2')"
+              onclick="window.redo()"
+              title="Redo (Ctrl+Shift+Z)"
             >
               <i data-lucide="redo-2"></i>
             </button>
