@@ -896,7 +896,12 @@ document.addEventListener("keydown", (e) => {
         const newStartUs = Math.max(0, clip.timeline_start_us + dir * deltaUs);
         saveSnapshot();
         IKState.moveClip(clipId, newStartUs);
-        reRender(clipId);
+        IKState.computeDuration();
+        const tw = getLaneW();
+        const dur = window.S.dur;
+        const newPx = (us2s(newStartUs) / dur) * tw;
+        activeEl.style.left = newPx + "px";
+        window.updatePlayhead();
     } else if (e.code === "KeyV" && !(e.ctrlKey || e.metaKey)) {
         deactivateSplitTool();
     } else if (e.code === "KeyS") {
