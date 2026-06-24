@@ -370,6 +370,7 @@ window.renderRuler = function () {
     const r = $("#tl-ruler");
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
+    r.style.width = tw + "px";
     const dur = window.S.dur;
     if (dur <= 0) return;
 
@@ -859,6 +860,12 @@ $("#zoom-out")?.addEventListener("click", () => {
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
+});
+
+// Sync ruler scroll with track scroll
+$("#tl-tracks").addEventListener("scroll", () => {
+    const rw = document.querySelector(".tl-ruler-wrapper");
+    if (rw) rw.scrollLeft = $("#tl-tracks").scrollLeft;
 });
 
 // ISSUE 3: Vertical resize handle for timeline
