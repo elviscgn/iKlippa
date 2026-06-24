@@ -355,7 +355,6 @@ window.autoFitZoom = function () {
     if (laneW <= 0) return;
     const minPxPerSec = 20;
     window.S.zoom = Math.max(0.5, (minPxPerSec * window.S.dur) / laneW);
-    console.log("[autoFitZoom] dur=" + window.S.dur + " laneW=" + laneW + " zoom=" + window.S.zoom);
     const zt = $("#zoom-text");
     if (zt) zt.textContent = Math.round(window.S.zoom * 100) + "%";
 };
@@ -371,7 +370,6 @@ window.renderRuler = function () {
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
     r.style.width = tw + "px";
-    r.style.flex = "none";
     const dur = window.S.dur;
     if (dur <= 0) return;
 
@@ -807,6 +805,11 @@ window.renderClips = function () {
         $("#lane-ai").appendChild(el);
     });
     lucide.createIcons({ nodes: [$("#lane-ai"), laneV1, laneA1] });
+
+    // Set lane widths to match zoomed timeline so overflow-x:auto shows scrollbar
+    [laneV1, laneA1, $("#lane-ai")].forEach((l) => {
+        if (l) { l.style.width = tw + "px"; l.style.flex = "none"; }
+    });
 };
 
 $("#lane-v1").ondragover = (e) => e.preventDefault();
