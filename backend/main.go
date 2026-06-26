@@ -29,9 +29,7 @@ func main() {
 				Prompt string `json:"prompt"`
 			}
 
-			requestBody := RequestBody{
-				Prompt: "Enter Password",
-			}
+			var requestBody RequestBody
 
 			if err := c.ShouldBindJSON(&requestBody); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON!"})
