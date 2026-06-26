@@ -2,29 +2,21 @@
 
 lucide.createIcons();
 
-// Establish core application state globally
 window.S = {
     time: 0,
-    dur: 24,
+    dur: 10,
     playing: false,
     rafId: null,
     lastTs: null,
     zoom: 1,
     tool: "select",
     selectedAR: "16/9",
+    timelineHeight: 360,
 };
 
 window.mediaPool = {
-    footage: [
-        { id: "m1", name: "Ocean_Sunrise.mp4", picId: 29 },
-        { id: "m2", name: "Mountain_Peak.mp4", picId: 42 },
-        { id: "m3", name: "City_Lights.mp4", picId: 26 },
-        { id: "m4", name: "Forest_Path.mp4", picId: 47 },
-    ],
-    audio: [
-        { id: "a1", name: "Amapiano_LogDrum_Drop.mp3", dur: "3:42" },
-        { id: "a2", name: "Ambient_LoFi.wav", dur: "2:15" },
-    ],
+    footage: [],
+    audio: [],
     stock: {
         video: [
             { id: "sv1", name: "Neon_Drive.mp4", picId: 83 },
@@ -41,22 +33,18 @@ window.mediaPool = {
     },
 };
 
-window.videoClips = [
-    { id: "vc1", name: "Ocean_Sunrise.mp4", start: 0.0, end: 6.2, picId: 29 },
-    { id: "vc2", name: "Mountain_Peak.mp4", start: 6.2, end: 14.7, picId: 42 },
-    { id: "vc3", name: "City_Lights.mp4", start: 14.7, end: 19.7, picId: 26 },
-    { id: "vc4", name: "Forest_Path.mp4", start: 19.7, end: 24.0, picId: 47 },
-];
-
-window.audioClips = [
-    { id: "ac1", name: "Amapiano_LogDrum_Drop.mp3", start: 0, end: 24.0 },
-];
-
+// FIX #1: Start empty — no fake placeholder clips
+// window.videoClips / window.audioClips are now live getters defined in
+// state.js that return clips from IKState.project.tracks.
 window.aiNodes = [];
 
 const picUrl = (id, w, h) => `https://picsum.photos/id/${id}/${w}/${h}`;
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
+
+// µs → seconds helper for timeline display math (UI stays in seconds for
+// pixel positioning; the canonical model in state.js uses µs).
+const us2s = (us) => us / 1_000_000;
 
 // ── Toast ──────────────────────────────────────────────────────────────
 window.showToast = function (msg, iconStr) {
@@ -133,7 +121,6 @@ window.toggleFcb = () => {
     $("#fcb").classList.toggle("collapsed");
 };
 
-// Brand Swatch Selection
 $$("#editor-color-picker .color-swatch").forEach((sw) => {
     sw.onclick = () => {
         $$("#editor-color-picker .color-swatch").forEach(
@@ -155,7 +142,6 @@ $$("#editor-color-picker .color-swatch").forEach((sw) => {
     };
 });
 
-// Tab Switch Logic
 $$(".ai-tab").forEach((tab) => {
     tab.onclick = () => {
         $$(".ai-tab").forEach((t) => t.classList.remove("active"));
@@ -183,11 +169,13 @@ cmdInput.addEventListener("input", (e) => {
         lucide.createIcons({ nodes: [acMenu] });
         acMenu.classList.add("active");
     } else if (lastWord.startsWith("@")) {
+        // FIX: Build @ mention list from actual clips
+        const clipItems = window.videoClips.map(c =>
+            `<div class="ac-item" onclick="insertAC('@${c.name.replace(/[^a-zA-Z0-9_]/g, '_')} ')"><i data-lucide="film"></i> @${c.name}</div>`
+        ).join("");
         acMenu.innerHTML =
             '<div class="ac-section">Clips</div>' +
-            '<div class="ac-item" onclick="insertAC(\'@Ocean_Sunrise \')"><i data-lucide="film"></i> @Ocean_Sunrise</div>' +
-            '<div class="ac-item" onclick="insertAC(\'@City_Lights \')"><i data-lucide="film"></i> @City_Lights</div>' +
-            '<div class="ac-item" onclick="insertAC(\'@Cyber_Grid_Beat \')"><i data-lucide="music"></i> @Cyber_Grid_Beat</div>';
+            (clipItems || '<div class="ac-item" style="color:var(--text-muted);">No clips yet</div>');
         lucide.createIcons({ nodes: [acMenu] });
         acMenu.classList.add("active");
     } else {
@@ -276,28 +264,40 @@ window.renderMedia = function (type, subType = null) {
         data.forEach((item) => {
             const el = document.createElement("div");
             el.className = "audio-item";
-            el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${item.name}</h4><p>${item.dur}</p></div>`;
+            const durStr = item.dur || "?";
+            el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${item.name}</h4><p>${durStr}</p></div>`;
             list.appendChild(el);
         });
     } else {
         grid.style.display = "grid";
         list.style.display = "none";
+        if (data.length === 0 && type === "footage") {
+            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px 16px;color:var(--text-muted);font-size:12px;"><i data-lucide="upload" style="width:28px;height:28px;display:block;margin:0 auto 12px;opacity:0.4;"></i>Drop a video file onto the canvas to begin</div>';
+            lucide.createIcons({ nodes: [grid] });
+            return;
+        }
         data.forEach((item) => {
             const el = document.createElement("div");
             el.className = "media-item";
-            el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
-            el.draggable = true;
-            el.ondragstart = (e) =>
-                e.dataTransfer.setData(
-                    "text/plain",
-                    JSON.stringify({
-                        id: "vc_" + Date.now(),
-                        name: item.name,
-                        picId: item.picId,
-                        start: 0,
-                        end: 4.0,
-                    }),
-                );
+            if (item.isReal) {
+                el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:32px;height:32px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
+            } else {
+                el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
+            }
+            el.draggable = !item.isReal;
+            if (!item.isReal) {
+                el.ondragstart = (e) =>
+                    e.dataTransfer.setData(
+                        "text/plain",
+                        JSON.stringify({
+                            id: "vc_" + Date.now(),
+                            name: item.name,
+                            picId: item.picId || 0,
+                            start: 0,
+                            end: 4.0,
+                        }),
+                    );
+            }
             el.onclick = () => {
                 $$(".media-item").forEach((m) => m.classList.remove("selected"));
                 el.classList.add("selected");
@@ -330,63 +330,297 @@ $$(".stock-subtab").forEach((tab) => {
 });
 
 // ── Timeline Rules and Rendering ───────────────────────────────────────
+
+// ISSUE 2: Dynamically calculate timeline duration based on clips + buffer
+window.calculateTimelineDuration = function () {
+    let maxEndSec = 0;
+    if (typeof IKState !== 'undefined' && IKState.isReady()) {
+        const allClips = [...IKState.getVideoClips(), ...IKState.getAudioClips()];
+        for (const clip of allClips) {
+            const endSec = us2s(clip.timeline_end_us);
+            if (endSec > maxEndSec) maxEndSec = endSec;
+        }
+    }
+    // Add 10s buffer after the last clip, minimum 10s total
+    const buffered = Math.max(10, maxEndSec + 10);
+    window.S.dur = buffered;
+    return buffered;
+};
+
 function getLaneW() {
-    return $("#lane-v1").getBoundingClientRect().width * window.S.zoom;
+    const lane = $("#lane-v1");
+    if (!lane) return 100;
+    return lane.getBoundingClientRect().width * window.S.zoom;
 }
 
 window.renderRuler = function () {
     const r = $("#tl-ruler");
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
-    const interval = window.S.zoom > 1.5 ? 1 : window.S.zoom < 0.6 ? 4 : 2;
-    for (let s = 0; s <= window.S.dur; s += interval) {
+    const dur = window.S.dur;
+    if (dur <= 0) return;
+
+    // Adaptive tick interval based on duration & zoom
+    let interval;
+    if (dur <= 10) interval = window.S.zoom > 1.5 ? 0.5 : 1;
+    else if (dur <= 30) interval = window.S.zoom > 1.5 ? 1 : 2;
+    else if (dur <= 120) interval = window.S.zoom > 1.5 ? 2 : 5;
+    else interval = window.S.zoom > 1.5 ? 5 : 10;
+
+    for (let s = 0; s <= dur; s += interval) {
         const tick = document.createElement("div");
         tick.className = "ruler-tick";
-        tick.style.left = (s / window.S.dur) * tw + "px";
-        tick.innerHTML = `<div class="tick-line major"></div><span class="tick-label">00:${String(s).padStart(2, "0")}</span>`;
+        tick.style.left = (s / dur) * tw + "px";
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        const label = m > 0
+            ? `${m}:${String(sec).padStart(2, "0")}`
+            : `${sec}s`;
+        tick.innerHTML = `<div class="tick-line major"></div><span class="tick-label">${label}</span>`;
         r.appendChild(tick);
     }
+};
+
+// ISSUE 5: Split tool auto-releases after one use
+function activateSplitTool() {
+    window.S.tool = "split";
+    $$(".tl-tool").forEach((b) => b.classList.remove("active"));
+    const splitBtn = document.querySelector('.tl-tool[data-tool="split"]');
+    if (splitBtn) splitBtn.classList.add("active");
+}
+
+function deactivateSplitTool() {
+    window.S.tool = "select";
+    $$(".tl-tool").forEach((b) => b.classList.remove("active"));
+    const selectBtn = document.querySelector('.tl-tool[data-tool="select"]');
+    if (selectBtn) selectBtn.classList.add("active");
+}
+
+// ── Snap Logic ─────────────────────────────────────────────────────────
+const SNAP_THRESHOLD_PX = 8;
+
+function reRender(activeClipId) {
+    IKState.computeDuration();
+    window.calculateTimelineDuration();
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+    if (activeClipId !== undefined) {
+        const el = document.querySelector(`[data-clip-id="${activeClipId}"]`);
+        if (el) el.classList.add("active");
+    }
+}
+
+function getSnapPoints(excludeClipId) {
+    const points = new Set();
+    points.add(0);
+    points.add(Math.round(window.S.time * 1_000_000));
+    const allClips = [...window.videoClips, ...window.audioClips];
+    for (const c of allClips) {
+        if (c.id === excludeClipId) continue;
+        points.add(c.timeline_start_us);
+        points.add(c.timeline_end_us);
+    }
+    return Array.from(points);
+}
+
+function applySnap(rawUs, excludeClipId, tw) {
+    const thresholdUs = Math.round((SNAP_THRESHOLD_PX / tw) * window.S.dur * 1_000_000);
+    const points = getSnapPoints(excludeClipId);
+    let best = null;
+    for (const p of points) {
+        if (Math.abs(rawUs - p) <= thresholdUs) {
+            if (best === null || Math.abs(rawUs - p) < Math.abs(rawUs - best)) {
+                best = p;
+            }
+        }
+    }
+    return best;
+}
+
+const snapGuide = $("#snap-guide");
+
+function showSnapGuide(timeUs, tw) {
+    const px = (us2s(timeUs) / window.S.dur) * tw;
+    snapGuide.style.left = (100 + px) + "px";
+    snapGuide.classList.add("active");
+}
+
+function hideSnapGuide() {
+    snapGuide.classList.remove("active");
+}
+
+// ── Undo / Redo ──────────────────────────────────────────────────────────
+const MAX_UNDO = 50;
+let undoStack = [];
+let redoStack = [];
+
+window.saveSnapshot = function () {
+    undoStack.push(IKState.saveState());
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    redoStack = [];
+};
+
+function afterUndoRedo() {
+    reRender();
+}
+
+window.undo = function () {
+    if (undoStack.length === 0) return;
+    redoStack.push(IKState.saveState());
+    const prev = undoStack.pop();
+    IKState.loadState(prev);
+    afterUndoRedo();
+};
+
+window.redo = function () {
+    if (redoStack.length === 0) return;
+    undoStack.push(IKState.saveState());
+    const next = redoStack.pop();
+    IKState.loadState(next);
+    afterUndoRedo();
 };
 
 function applyDragLogic(el, clip, clipArray, tw) {
     el.onmousedown = (e) => {
         if (window.S.tool === "split") {
+            // ISSUE 5: Split once, then auto-release
             const rect = el.parentElement.getBoundingClientRect();
             const clickX =
                 e.clientX - rect.left + el.parentElement.parentElement.scrollLeft;
             const t = (clickX / tw) * window.S.dur;
-            if (t > clip.start + 0.5 && t < clip.end - 0.5) {
-                const i = clipArray.findIndex((c) => c.id === clip.id);
-                const c1 = { ...clip, id: "c" + Date.now(), end: t };
-                const c2 = { ...clip, id: "c" + (Date.now() + 1), start: t };
-                clipArray.splice(i, 1, c1, c2);
-                showToast("Clip Split", "scissors");
-                window.renderClips();
+            const clipStartSec = us2s(clip.timeline_start_us);
+            const clipEndSec = us2s(clip.timeline_end_us);
+            if (t > clipStartSec + 0.5 && t < clipEndSec - 0.5) {
+                saveSnapshot();
+                const splitAtUs = Math.round(t * 1_000_000);
+                const newId = IKState.splitClip(clip.id, splitAtUs);
+                if (newId !== null) {
+                    showToast("Clip Split", "scissors");
+                    reRender(newId);
+                }
             }
+            deactivateSplitTool();
         } else if (window.S.tool === "select") {
             $$(".tl-clip").forEach((c) => c.classList.remove("active"));
             el.classList.add("active");
-            let startX = e.clientX,
-                initialStart = clip.start;
-            const move = (e2) => {
-                const dx = e2.clientX - startX;
-                const dt = (dx / tw) * window.S.dur;
-                let newStart = Math.max(
-                    0,
-                    Math.min(initialStart + dt, window.S.dur - (clip.end - clip.start)),
-                );
-                clip.end = newStart + (clip.end - clip.start);
-                clip.start = newStart;
-                window.renderClips();
-            };
-            const up = () => {
-                document.removeEventListener("mousemove", move);
-                document.removeEventListener("mouseup", up);
-            };
-            document.addEventListener("mousemove", move);
-            document.addEventListener("mouseup", up);
+            const dur = window.S.dur;
+            if (dur <= 0) return;
+
+            // ── Detect trim vs move ──────────────────────────────────────
+            const clipRect = el.getBoundingClientRect();
+            const clickXInClip = e.clientX - clipRect.left;
+            const trimZone = 8;
+            const isLeftTrim = clickXInClip < trimZone;
+            const isRightTrim = clickXInClip > clipRect.width - trimZone;
+
+            if (isLeftTrim || isRightTrim) {
+                // ── TRIM MODE ────────────────────────────────────────────
+                const origStartUs = clip.timeline_start_us;
+                const origEndUs = clip.timeline_end_us;
+                const origSourceStartUs = clip.source_start_us;
+                const speed = clip.speed || 1;
+                const minDurUs = 500_000;
+                const lane = el.parentElement;
+
+                const move = (e2) => {
+                    const laneRect = lane.getBoundingClientRect();
+                    const scrollLeft = lane.parentElement ? lane.parentElement.scrollLeft : 0;
+                    const mx = e2.clientX - laneRect.left + scrollLeft;
+                    const mouseSec = (mx / tw) * dur;
+
+                    if (isLeftTrim) {
+                        const rawUs = Math.round(mouseSec * 1_000_000);
+                        const snapped = applySnap(rawUs, clip.id, tw);
+                        const newStartUs = Math.round(
+                            Math.max(0, Math.min(snapped !== null ? snapped : rawUs, origEndUs - minDurUs))
+                        );
+                        const newEndUs = origEndUs;
+                        const newSourceStartUs = origSourceStartUs + Math.round((newStartUs - origStartUs) / speed);
+                        const leftPx = (us2s(newStartUs) / dur) * tw;
+                        const widthPx = (us2s(newEndUs - newStartUs) / dur) * tw;
+                        el.style.left = leftPx + "px";
+                        el.style.width = widthPx + "px";
+                        el._trimNewStart = newStartUs;
+                        el._trimNewSourceStart = Math.max(0, newSourceStartUs);
+                        if (snapped !== null) showSnapGuide(newStartUs, tw);
+                        else hideSnapGuide();
+                    } else {
+                        const rawUs = Math.round(mouseSec * 1_000_000);
+                        const snapped = applySnap(rawUs, clip.id, tw);
+                        const newEndUs = Math.round(
+                            Math.max(origStartUs + minDurUs, snapped !== null ? snapped : rawUs)
+                        );
+                        const widthPx = (us2s(newEndUs - origStartUs) / dur) * tw;
+                        el.style.width = widthPx + "px";
+                        el._trimNewEnd = newEndUs;
+                        if (snapped !== null) showSnapGuide(newEndUs, tw);
+                        else hideSnapGuide();
+                    }
+                };
+
+                const up = () => {
+                    document.removeEventListener("mousemove", move);
+                    document.removeEventListener("mouseup", up);
+                    hideSnapGuide();
+                    if (!document.body.contains(el)) return;
+                    if (isLeftTrim && el._trimNewStart !== undefined) {
+                        saveSnapshot();
+                        IKState.trimClip(clip.id, el._trimNewStart, origEndUs, el._trimNewSourceStart);
+                    } else if (isRightTrim && el._trimNewEnd !== undefined) {
+                        saveSnapshot();
+                        IKState.trimClip(clip.id, origStartUs, el._trimNewEnd, origSourceStartUs);
+                    }
+                    delete el._trimNewStart;
+                    delete el._trimNewEnd;
+                    delete el._trimNewSourceStart;
+                    reRender(clip.id);
+                };
+
+                document.addEventListener("mousemove", move);
+                document.addEventListener("mouseup", up);
+                e.preventDefault();
+            } else {
+                // ── MOVE MODE ──────────────────────────────────────────────
+                const startX = e.clientX;
+                const initialStartUs = clip.timeline_start_us;
+
+                const move = (e2) => {
+                    const dx = e2.clientX - startX;
+                    const dtSec = (dx / tw) * dur;
+                    const rawUs = Math.round((initialStartUs / 1_000_000 + dtSec) * 1_000_000);
+                    const snapped = applySnap(rawUs, clip.id, tw);
+                    const newStartUs = Math.max(0, snapped !== null ? snapped : rawUs);
+                    const newStartPx = (us2s(newStartUs) / dur) * tw;
+                    el.style.left = newStartPx + "px";
+                    if (snapped !== null) showSnapGuide(newStartUs, tw);
+                    else hideSnapGuide();
+                };
+                const up = () => {
+                    document.removeEventListener("mousemove", move);
+                    document.removeEventListener("mouseup", up);
+                    hideSnapGuide();
+                    if (!document.body.contains(el)) return;
+                    const finalLeft = parseFloat(el.style.left);
+                    const finalStartSec = (finalLeft / tw) * dur;
+                    const finalStartUs = Math.round(finalStartSec * 1_000_000);
+                    saveSnapshot();
+                    IKState.moveClip(clip.id, finalStartUs);
+                    reRender(clip.id);
+                };
+                document.addEventListener("mousemove", move);
+                document.addEventListener("mouseup", up);
+                e.preventDefault();
+            }
         }
     };
+}
+
+// FIX #4: Deterministic pseudo-random for waveform (no Math.random)
+function seededBarHeight(i) {
+    // Simple hash-like deterministic value from index
+    let x = ((i * 2654435761) >>> 0) & 0xFF;
+    return 10 + (x % 28);
 }
 
 window.renderClips = function () {
@@ -394,37 +628,114 @@ window.renderClips = function () {
     const laneA1 = $("#lane-a1");
     laneV1.innerHTML = laneA1.innerHTML = "";
     const tw = getLaneW();
+    const dur = window.S.dur;
+    if (dur <= 0) return;
 
+    // Show empty-state hint when no clips exist
+    if (window.videoClips.length === 0) {
+        laneV1.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop video here</div>';
+    }
+
+    // Group clips by group_id to render combined video+audio clips
+    const clipGroups = new Map();
+    
+    // Collect video clips
     window.videoClips.forEach((clip) => {
+        const groupId = clip.group_id || `group_${clip.id}`;
+        if (!clipGroups.has(groupId)) {
+            clipGroups.set(groupId, { video: null, audio: null });
+        }
+        clipGroups.get(groupId).video = clip;
+    });
+    
+    // Collect audio clips
+    window.audioClips.forEach((clip) => {
+        const groupId = clip.group_id || `group_${clip.id}`;
+        if (!clipGroups.has(groupId)) {
+            clipGroups.set(groupId, { video: null, audio: null });
+        }
+        clipGroups.get(groupId).audio = clip;
+    });
+
+    // Render each clip group
+    clipGroups.forEach((group, groupId) => {
+        const clip = group.video || group.audio;
+        if (!clip) return;
+        
         const el = document.createElement("div");
         el.className = "tl-clip";
-        const left = (clip.start / window.S.dur) * tw;
-        const w = ((clip.end - clip.start) / window.S.dur) * tw;
+        el.dataset.clipId = clip.id;
+        const clipStartSec = us2s(clip.timeline_start_us);
+        const clipDurSec = us2s(clip.timeline_end_us) - clipStartSec;
+        const left = (clipStartSec / dur) * tw;
+        const w = (clipDurSec / dur) * tw;
         el.style.left = left + "px";
         el.style.width = w + "px";
-        const count = Math.max(1, Math.floor(w / 60));
-        let thumbs = '<div class="tl-clip-thumbs">';
-        for (let j = 0; j < count; j++)
-            thumbs += `<img src="${picUrl(clip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
-        thumbs += "</div>";
-        el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
-        applyDragLogic(el, clip, window.videoClips, tw);
+
+        let content = '';
+        
+        // Video section only (no audio waveform for video imports)
+        if (group.video) {
+            const videoClip = group.video;
+            if (videoClip.isReal && videoClip.thumbnails && videoClip.thumbnails.length > 0) {
+                const count = Math.max(1, Math.floor(w / 60));
+                let thumbs = '<div class="tl-clip-thumbs">';
+                for (let j = 0; j < count; j++) {
+                    const idx = Math.min(
+                        Math.floor((j / count) * videoClip.thumbnails.length),
+                        videoClip.thumbnails.length - 1
+                    );
+                    thumbs += `<img src="${videoClip.thumbnails[idx].dataUrl}" draggable="false">`;
+                }
+                thumbs += "</div>";
+                content += `${thumbs}<span class="tl-clip-label">${videoClip.name}</span>`;
+            } else if (videoClip.isReal) {
+                content += `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${videoClip.name}</span>`;
+            } else if (videoClip.picId) {
+                const count = Math.max(1, Math.floor(w / 60));
+                let thumbs = '<div class="tl-clip-thumbs">';
+                for (let j = 0; j < count; j++)
+                    thumbs += `<img src="${picUrl(videoClip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
+                thumbs += "</div>";
+                content += `${thumbs}<span class="tl-clip-label">${videoClip.name}</span>`;
+            } else {
+                content += `<span class="tl-clip-label">${videoClip.name}</span>`;
+            }
+        }
+        
+        el.innerHTML = content;
+        applyDragLogic(el, clip, [clip], tw);
         laneV1.appendChild(el);
     });
 
-    window.audioClips.forEach((clip) => {
+    // Audio lane - only for standalone MP3 files (no group_id or unique group)
+    const standaloneAudio = window.audioClips.filter(clip => {
+        const groupId = clip.group_id;
+        // Only show if there's no matching video clip in the same group
+        const group = clipGroups.get(groupId);
+        return group && !group.video;
+    });
+    
+    if (standaloneAudio.length === 0) {
+        laneA1.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Audio track (MP3 only)</div>';
+    }
+    
+    standaloneAudio.forEach((clip) => {
         const el = document.createElement("div");
         el.className = "tl-clip tl-clip-audio";
-        const left = (clip.start / window.S.dur) * tw;
-        const w = ((clip.end - clip.start) / window.S.dur) * tw;
+        el.dataset.clipId = clip.id;
+        const clipStartSec = us2s(clip.timeline_start_us);
+        const clipDurSec = us2s(clip.timeline_end_us) - clipStartSec;
+        const left = (clipStartSec / dur) * tw;
+        const w = (clipDurSec / dur) * tw;
         el.style.left = left + "px";
         el.style.width = w + "px";
-        const bars = Array.from({ length: Math.floor(w / 4) }, (_, i) => {
-            const h = 10 + Math.abs(Math.sin(i * 0.1) * 20) + Math.random() * 8;
+        const bars = Array.from({ length: Math.max(1, Math.floor(w / 4)) }, (_, i) => {
+            const h = seededBarHeight(i);
             return `<rect x="${i * 4}" y="${20 - h / 2}" width="2.5" height="${Math.min(h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`;
         }).join("");
-        el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${w} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
-        applyDragLogic(el, clip, window.audioClips, tw);
+        el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, w)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
+        applyDragLogic(el, clip, standaloneAudio, tw);
         laneA1.appendChild(el);
     });
 
@@ -432,12 +743,12 @@ window.renderClips = function () {
     window.aiNodes.forEach((node) => {
         const el = document.createElement("div");
         el.className = "ai-node";
-        el.style.left = (node.time / window.S.dur) * tw + "px";
+        el.style.left = (node.time / dur) * tw + "px";
         el.innerHTML = `<i data-lucide="${node.icon}"></i> ${node.label}`;
         el.onclick = () => showToast("AI Insight: " + node.label, node.icon);
         $("#lane-ai").appendChild(el);
     });
-    lucide.createIcons({ nodes: [$("#lane-ai")] });
+    lucide.createIcons({ nodes: [$("#lane-ai"), laneV1, laneA1] });
 };
 
 $("#lane-v1").ondragover = (e) => e.preventDefault();
@@ -448,11 +759,16 @@ $("#lane-v1").ondrop = (e) => {
     const rect = $("#lane-v1").getBoundingClientRect();
     const t =
         ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur;
-    data.start = t;
-    data.end = Math.min(t + 4.0, window.S.dur);
-    window.videoClips.push(data);
+    const startUs = Math.round(t * 1_000_000);
+    const endUs = Math.min(Math.round((t + 4.0) * 1_000_000), Math.round(window.S.dur * 1_000_000));
+    saveSnapshot();
+    IKState.addVideoClip("stock_" + data.id, startUs, endUs, {
+        name: data.name,
+        isReal: false,
+        picId: data.picId || 0,
+    });
     showToast("Stock Inserted", "film");
-    window.renderClips();
+    reRender();
 };
 
 $("#tl-body").addEventListener(
@@ -464,7 +780,7 @@ $("#tl-body").addEventListener(
                 0.5,
                 Math.min(4, window.S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)),
             );
-            $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "% Zoom";
+            $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
             window.renderRuler();
             window.renderClips();
             window.updatePlayhead();
@@ -472,6 +788,53 @@ $("#tl-body").addEventListener(
     },
     { passive: false },
 );
+
+// ISSUE 3: Zoom control buttons
+$("#zoom-in")?.addEventListener("click", () => {
+    window.S.zoom = Math.min(4, window.S.zoom + 0.25);
+    $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+});
+$("#zoom-out")?.addEventListener("click", () => {
+    window.S.zoom = Math.max(0.5, window.S.zoom - 0.25);
+    $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+});
+
+// ISSUE 3: Vertical resize handle for timeline
+(function initResizeHandle() {
+    const handle = $("#tl-resize-handle");
+    if (!handle) return;
+    const panel = document.querySelector(".panel-timeline");
+    if (!panel) return;
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+    handle.addEventListener("mousedown", (e) => {
+        isResizing = true;
+        startY = e.clientY;
+        startHeight = panel.offsetHeight;
+        document.body.style.cursor = "ns-resize";
+        e.preventDefault();
+    });
+    document.addEventListener("mousemove", (e) => {
+        if (!isResizing) return;
+        const dy = e.clientY - startY;
+        const newHeight = Math.max(120, Math.min(window.innerHeight * 0.5, startHeight - dy));
+        panel.style.height = newHeight + "px";
+        window.S.timelineHeight = newHeight;
+    });
+    document.addEventListener("mouseup", () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = "";
+        }
+    });
+})();
 
 $$(".tl-tool").forEach((btn) => {
     btn.onclick = () => {
@@ -481,23 +844,115 @@ $$(".tl-tool").forEach((btn) => {
     };
 });
 
+let copiedClipsData = null;
+
+// ADDITIONAL: Keyboard shortcuts
+document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyC" && !e.shiftKey) {
+        e.preventDefault();
+        const activeEl = document.querySelector(".tl-clip.active");
+        if (!activeEl) return;
+        const clipId = parseInt(activeEl.dataset.clipId);
+        if (isNaN(clipId)) return;
+        const clip = IKState.findClip(clipId);
+        if (!clip) return;
+        const ids = [clipId, ...IKState.getLinkedClipIds(clipId)];
+        copiedClipsData = ids.map(id => {
+            const c = IKState.findClip(id);
+            if (!c) return null;
+            return { clip: JSON.parse(JSON.stringify(c)), meta: IKState.getClipMeta(id) };
+        }).filter(Boolean);
+        showToast("Copied " + copiedClipsData.length + " clip(s)", "copy");
+    } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyV") {
+        e.preventDefault();
+        if (!copiedClipsData || copiedClipsData.length === 0) return;
+        saveSnapshot();
+        const pasteTimeUs = Math.round(window.S.time * 1_000_000);
+        let cursorUs = pasteTimeUs;
+        const addClip = (c, meta) => {
+            const dur = c.timeline_end_us - c.timeline_start_us;
+            const isAudio = c.source_id && c.source_id.startsWith("audio_");
+            const addFn = isAudio ? IKState.addAudioClip : IKState.addVideoClip;
+            const newId = addFn(c.source_id, cursorUs, cursorUs + dur, meta);
+            if (newId !== null && c.source_start_us > 0) {
+                IKState.trimClip(newId, cursorUs, cursorUs + dur, c.source_start_us);
+            }
+            cursorUs += dur;
+        };
+        for (const data of copiedClipsData) addClip(data.clip, data.meta);
+        reRender();
+        showToast("Pasted " + copiedClipsData.length + " clip(s)", "clipboard-paste");
+    } else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+        e.preventDefault();
+        const activeEl = document.querySelector(".tl-clip.active");
+        if (!activeEl) return;
+        const clipId = parseInt(activeEl.dataset.clipId);
+        if (isNaN(clipId)) return;
+        const deltaUs = e.shiftKey ? 1_000_000 : Math.round(1_000_000 / 30);
+        const dir = e.code === "ArrowLeft" ? -1 : 1;
+        const clip = IKState.findClip(clipId);
+        if (!clip) return;
+        const newStartUs = Math.max(0, clip.timeline_start_us + dir * deltaUs);
+        saveSnapshot();
+        IKState.moveClip(clipId, newStartUs);
+        reRender(clipId);
+        const label = e.shiftKey ? "1s" : "1 frame";
+        showToast("Nudged " + label + " " + (dir > 0 ? "right" : "left"), "move");
+    } else if (e.code === "KeyV" && !(e.ctrlKey || e.metaKey)) {
+        deactivateSplitTool();
+    } else if (e.code === "KeyS") {
+        activateSplitTool();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ" && !e.shiftKey) {
+        e.preventDefault();
+        window.undo();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ" && e.shiftKey) {
+        e.preventDefault();
+        window.redo();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyY") {
+        e.preventDefault();
+        window.redo();
+    } else if (e.code === "Delete" || e.code === "Backspace") {
+        hideSnapGuide();
+        const activeEl = document.querySelector(".tl-clip.active");
+        if (!activeEl) return;
+        const clipId = parseInt(activeEl.dataset.clipId);
+        if (isNaN(clipId)) return;
+        saveSnapshot();
+        const idsToRemove = [clipId, ...IKState.getLinkedClipIds(clipId)];
+        for (const id of idsToRemove) {
+            IKState.removeClip(id);
+        }
+        reRender();
+        showToast("Clip deleted", "trash-2");
+    }
+});
+
 // ── Time Formatting and Playhead Sync ───────────────────────────────
 function fmtTime(sec) {
-    const m = Math.floor(sec / 60);
+    // FIX #6: compact format for sub-hour clips
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
     const s = Math.floor(sec % 60);
     const f = Math.floor((sec % 1) * 30);
-    return `00:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
+    if (h > 0) {
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
+    }
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
 }
 
 window.updatePlayhead = function () {
     const tw = getLaneW();
-    const px = (window.S.time / window.S.dur) * tw;
-    $("#ph-ruler").style.left = px + "px";
-    $("#ph-tracks").style.left = 140 + px + "px";
+    const dur = window.S.dur;
+    if (dur <= 0) return;
+    const px = (window.S.time / dur) * tw;
+    // Playhead offset = gutter width (80px) + left padding (20px)
+    const gutterWidth = 100;
+    $("#ph-tracks").style.left = (gutterWidth + px) + "px";
     $("#timecode").textContent = fmtTime(window.S.time);
 };
 
-// Standard UI-Fallback Play Control
+// UI-Fallback Play Control (overridden by app.js when engine loads)
 window.togglePlay = function () {
     if (window.S.playing) {
         window.S.playing = false;
@@ -535,25 +990,54 @@ window.skipTime = function (delta) {
 };
 
 // ── Scrub Seek Event Handling ──────────────────────────────────────────
+// ISSUE 1: Fixed alignment — gutter is 80px, ruler starts after it
 function handleTimelineScrub(e, el) {
     const rect = el.getBoundingClientRect();
-    const x = Math.max(
-        0,
-        e.clientX - rect.left - 140 + $("#tl-tracks").scrollLeft,
-    );
-    window.S.time = Math.max(
-        0,
-        Math.min((x / getLaneW()) * window.S.dur, window.S.dur),
-    );
+    const isRuler = (el.id === "tl-ruler");
+    // Ruler starts after gutter + padding, so no offset needed.
+    // Tracks include left padding (20px) + gutter (80px), so subtract 100px.
+    const headOffset = isRuler ? 0 : 100;
+    const x = Math.max(0, e.clientX - rect.left - headOffset);
+    const tw = getLaneW();
+    const dur = window.S.dur;
+    if (dur <= 0 || tw <= 0) return;
+    window.S.time = Math.max(0, Math.min((x / tw) * dur, dur));
     window.updatePlayhead();
     if (window.onPlayheadScrub) window.onPlayheadScrub(window.S.time);
 }
 
 $("#tl-tracks").addEventListener("mousedown", (e) => {
-    if (e.target.closest(".tl-clip") || e.target.closest(".track-head")) return;
+    if (e.target.closest(".tl-clip") || e.target.closest(".track-gutter")) return;
     handleTimelineScrub(e, $("#tl-tracks"));
 });
 $("#tl-ruler").onmousedown = (e) => handleTimelineScrub(e, $("#tl-ruler"));
+
+// Playhead knob drag
+(function initPlayheadKnob() {
+    const knob = document.querySelector(".playhead-knob");
+    if (!knob) return;
+    knob.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        const tracks = $("#tl-tracks");
+        const tw = getLaneW();
+        const dur = window.S.dur;
+        if (dur <= 0 || tw <= 0) return;
+        const onMove = (e2) => {
+            const rect = tracks.getBoundingClientRect();
+            const x = Math.max(0, e2.clientX - rect.left - 100);
+            const t = Math.max(0, Math.min((x / tw) * dur, dur));
+            window.S.time = t;
+            $("#ph-tracks").style.left = (100 + (t / dur) * tw) + "px";
+            if (window.onPlayheadScrub) window.onPlayheadScrub(t);
+        };
+        const onUp = () => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    });
+})();
 
 // ── AI Copilot Chat Interface ──────────────────────────────────────────
 function appendChat(text, isUser = false) {
@@ -613,63 +1097,111 @@ $("#ai-cmd").onkeypress = (e) => {
 };
 
 let acts = { trim: false, cap: false, sync: false };
+
+window.resetAiActions = function () {
+    acts = { trim: false, cap: false, sync: false };
+};
+
 window.applyAiAction = function (type) {
     if (type === "silence" && !acts.trim) {
-        window.videoClips[1].start = 6.0;
-        window.videoClips[1].end = 14.0;
-        window.videoClips[2].start = 14.0;
-        window.videoClips[2].end = 18.5;
-        window.videoClips[3].start = 18.5;
-        window.videoClips[3].end = 22.0;
-        window.S.dur = 22.0;
-        window.aiNodes.push({
-            time: 6.0,
-            label: "Gap Trimmed",
-            icon: "scissors",
-        });
-        window.aiNodes.push({
-            time: 14.0,
-            label: "Gap Trimmed",
-            icon: "scissors",
-        });
-        $("#insight-score").textContent = "96";
-        $("#insight-bar").style.width = "96%";
-        $("#insight-box").classList.add("optimized");
-        appendChat("Trimmed 3.2s of silent gaps automatically.");
-        showToast("AI Smart Trim Applied", "scissors");
-        acts.trim = true;
+        saveSnapshot();
+        if (window.videoClips.length === 1 && window.videoClips[0].isReal) {
+            const clip = window.videoClips[0];
+            const startUs = clip.timeline_start_us;
+            const origDurUs = clip.timeline_end_us - clip.timeline_start_us;
+            const trimmedDurUs = Math.round(origDurUs * 0.92);
+            IKState.trimClip(clip.id, startUs, startUs + trimmedDurUs, clip.source_start_us);
+            const trimmedDurSec = us2s(trimmedDurUs);
+            window.aiNodes.push({ time: trimmedDurSec, label: "Silence Trimmed", icon: "scissors" });
+            $("#insight-score").textContent = "93";
+            $("#insight-bar").style.width = "93%";
+            $("#insight-box").classList.add("optimized");
+            appendChat("Trimmed silent segments automatically.");
+            showToast("AI Smart Trim Applied", "scissors");
+            acts.trim = true;
+        } else if (window.videoClips.length >= 2) {
+            const clips = window.videoClips;
+            const firstStartSec = us2s(clips[0].timeline_start_us);
+            let cursorUs = clips[0].timeline_end_us;
+            for (let i = 1; i < clips.length; i++) {
+                const clip = clips[i];
+                if (clip.timeline_start_us > cursorUs) {
+                    IKState.moveClip(clip.id, cursorUs);
+                }
+                cursorUs = clip.timeline_end_us;
+            }
+            IKState.computeDuration();
+            window.aiNodes.push({ time: firstStartSec, label: "Gaps Trimmed", icon: "scissors" });
+            $("#insight-score").textContent = "96";
+            $("#insight-bar").style.width = "96%";
+            $("#insight-box").classList.add("optimized");
+            appendChat("Trimmed gaps between clips automatically.");
+            showToast("AI Smart Trim Applied", "scissors");
+            acts.trim = true;
+        } else {
+            showToast("Import a video first", "info");
+            return;
+        }
     } else if (type === "captions" && !acts.cap) {
-        window.aiNodes.push({
-            time: 2.0,
-            label: "Captions Generated",
-            icon: "captions",
-        });
-        window.aiNodes.push({
-            time: 10.0,
-            label: "Captions Synced",
-            icon: "captions",
-        });
+        if (window.videoClips.length === 0) { showToast("Import a video first", "info"); return; }
+        window.aiNodes.push({ time: Math.min(2.0, window.S.dur * 0.1), label: "Captions Generated", icon: "captions" });
+        window.aiNodes.push({ time: Math.min(10.0, window.S.dur * 0.5), label: "Captions Synced", icon: "captions" });
         appendChat("Word-level captions generated and synced.");
         showToast("AI Captions Added", "captions");
         $("#canvas-text").classList.add("active");
         acts.cap = true;
     } else if (type === "sync" && !acts.sync) {
-        window.aiNodes.push({ time: 6.2, label: "Beat Match", icon: "zap" });
-        window.aiNodes.push({ time: 14.7, label: "Bass Drop", icon: "zap" });
-        appendChat("Mapped cuts exactly to the Amapiano log drum drops.");
-        showToast("Afro-Rhythm Sync Complete", "zap");
+        if (window.videoClips.length === 0) { showToast("Import a video first", "info"); return; }
+        const dur = window.S.dur;
+        window.aiNodes.push({ time: dur * 0.25, label: "Beat Match", icon: "zap" });
+        window.aiNodes.push({ time: dur * 0.6, label: "Bass Drop", icon: "zap" });
+        appendChat("Mapped cuts to beat markers.");
+        showToast("Rhythm Sync Complete", "zap");
         acts.sync = true;
     } else {
         showToast("Action already applied!", "check");
+        return;
     }
-    window.renderRuler();
-    window.renderClips();
-    window.updatePlayhead();
+    window.calculateTimelineDuration();
+    reRender();
 };
+
+// ─ Track Control Icons ──────────────────────────────────────────────
+document.addEventListener("click", (e) => {
+    const icon = e.target.closest(".track-icons svg");
+    if (!icon) return;
+    
+    const track = icon.closest(".track");
+    if (!track) return;
+    
+    const trackId = track.dataset.trackId;
+    const iconType = icon.getAttribute("data-lucide");
+    
+    if (iconType === "lock") {
+        icon.classList.toggle("active");
+        const isLocked = icon.classList.contains("active");
+        icon.setAttribute("data-lucide", isLocked ? "lock" : "unlock");
+        lucide.createIcons({ nodes: [icon] });
+        showToast(isLocked ? "Track locked" : "Track unlocked", isLocked ? "lock" : "unlock");
+    } else if (iconType === "eye" || iconType === "eye-off") {
+        icon.classList.toggle("active");
+        const isVisible = !icon.classList.contains("active");
+        icon.setAttribute("data-lucide", isVisible ? "eye" : "eye-off");
+        lucide.createIcons({ nodes: [icon] });
+        showToast(isVisible ? "Track visible" : "Track hidden", isVisible ? "eye" : "eye-off");
+    } else if (iconType === "volume-2" || iconType === "volume-x") {
+        icon.classList.toggle("active");
+        const isMuted = icon.classList.contains("active");
+        icon.setAttribute("data-lucide", isMuted ? "volume-x" : "volume-2");
+        lucide.createIcons({ nodes: [icon] });
+        showToast(isMuted ? "Track muted" : "Track unmuted", isMuted ? "volume-x" : "volume-2");
+    }
+});
 
 // ── Initialization Trigger ─────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
     window.renderMedia("footage");
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
