@@ -1,5 +1,5 @@
 /**
- * iKlippa — engine.js (Stable Audio & Catch-Up Fix)
+ * iKlippa — engine.js (Timeline Sync Build)
  */
 const DECODE_LOOKAHEAD = 12;
 
@@ -24,11 +24,18 @@ let exportFrames = [];
 let audioCtx = null;
 let pendingAudio = new Map();
 let scheduledAudioNodes = [];
-let nextAudioStartTime = 0; // Used for chaining audio chunks
+let nextAudioStartTime = 0;
 let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
-let audioPlayStartCtxTime = 0;  // audioCtx.currentTime when play began
-let audioPlayStartMs = 0;       // playheadMs when play began
+let audioPlayStartCtxTime = 0;
+let audioPlayStartMs = 0;
+
+// ── NEW: Thumbnail Capture State ─────────────────────────────────────────────
+let currentFileName = '';
+let timelineThumbnails = [];
+let lastThumbnailCaptureMs = -Infinity;
+const THUMBNAIL_CAPTURE_INTERVAL = 800;  // ms between captures
+const MAX_TIMELINE_THUMBNAILS = 60;
 
 // ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
@@ -103,6 +110,22 @@ export class PerformanceMonitor {
 export const perf = new PerformanceMonitor();
 window.iklippaScore = () => perf.report();
 
+// ── NEW: Thumbnail Capture ────────────────────────────────────────────────────
+function maybeCaptureThumbnail(ms) {
+  if (!canvas || canvas.width === 0 || canvas.height === 0) return;
+  if (ms - lastThumbnailCaptureMs < THUMBNAIL_CAPTURE_INTERVAL) return;
+  if (timelineThumbnails.length >= MAX_TIMELINE_THUMBNAILS) return;
+  try {
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.35);
+    timelineThumbnails.push({ ms, dataUrl });
+    lastThumbnailCaptureMs = ms;
+    if (window.onThumbnailsUpdated) window.onThumbnailsUpdated(timelineThumbnails);
+  } catch (e) { /* canvas may be tainted in rare edge cases */ }
+}
+
+export function getThumbnails() { return timelineThumbnails; }
+export function getCurrentFileName() { return currentFileName; }
+
 // ── Init & Worker Bridge ──────────────────────────────────────────────────────
 export async function initEngine(canvasEl) {
   canvas = canvasEl;
@@ -135,7 +158,12 @@ function handleWorkerMessage(e) {
     canvas.height = sourceVideoHeight;
     logStatus(`Ready: ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s`);
     if (window.onClipImported) {
-      window.onClipImported({ width: sourceVideoWidth, height: sourceVideoHeight, durationMs: videoDurationMs });
+      window.onClipImported({
+        width: sourceVideoWidth,
+        height: sourceVideoHeight,
+        durationMs: videoDurationMs,
+        fileName: currentFileName
+      });
     }
   }
 
@@ -167,18 +195,14 @@ function scheduleAudioNode(chunkMs, audioBuffer) {
 
   const idealCtxTime = audioPlayStartCtxTime + (chunkMs - audioPlayStartMs) / 1000;
 
-  // Initialize or reset if we've fallen behind (e.g., after a pause or seek)
   if (nextAudioStartTime === 0 || nextAudioStartTime < audioCtx.currentTime) {
     nextAudioStartTime = Math.max(audioCtx.currentTime, idealCtxTime);
   }
 
-  // Drop chunks that are too far in the past (>150ms) to prevent overlap cascades
   if (idealCtxTime < audioCtx.currentTime - 0.15) {
     return;
   }
 
-  // If there's a gap in the decoded stream, advance time to insert silence
-  // rather than overlapping with the previous chunk.
   if (idealCtxTime > nextAudioStartTime + 0.05) {
     nextAudioStartTime = idealCtxTime;
   }
@@ -186,8 +210,6 @@ function scheduleAudioNode(chunkMs, audioBuffer) {
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(audioCtx.destination);
-
-  // Schedule exactly at nextAudioStartTime to guarantee no overlap and no gap
   source.start(nextAudioStartTime);
   nextAudioStartTime += audioBuffer.duration;
 
@@ -202,6 +224,12 @@ function stopAllAudioNodes() {
 // ── Demux (Main Thread) ───────────────────────────────────────────────────────
 export async function importFile(file) {
   logStatus(`Importing: ${file.name}`);
+
+  // ── NEW: Store filename & reset thumbnail state ──
+  currentFileName = file.name;
+  timelineThumbnails = [];
+  lastThumbnailCaptureMs = -Infinity;
+
   initAudio();
   pendingFrames.clear();
   pendingAudio.clear();
@@ -271,26 +299,20 @@ export async function importFile(file) {
       if (offset >= file.size) {
         mp4.flush();
         if (trackInfo && codecConfigResult) {
-          // FIX: Calculate duration more robustly
           let durationSec = trackInfo.duration / trackInfo.timescale;
-
-          // If duration is 0, try to calculate it from the last sample
           if (durationSec === 0 && samplesArray.length > 0) {
             const lastSample = samplesArray[samplesArray.length - 1];
             durationSec = (lastSample.cts + lastSample.duration) / lastSample.timescale;
           }
-
-          // Fallback for audio if video duration is still weird
           if (durationSec === 0 && audioSamplesArray.length > 0) {
             const lastAudio = audioSamplesArray[audioSamplesArray.length - 1];
             durationSec = (lastAudio.cts + lastAudio.duration) / lastAudio.timescale;
           }
-
           resolve({
             codecConfig: codecConfigResult,
             width: trackInfo.track_width,
             height: trackInfo.track_height,
-            durationMs: Math.round(durationSec * 1000), // Use the calculated duration
+            durationMs: Math.round(durationSec * 1000),
             samples: samplesArray,
             audioConfig: audioConfigResult,
             audioSamples: audioSamplesArray,
@@ -373,6 +395,10 @@ function paintFrameAtTime(ms) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
   }
   if (bestMs >= 0) ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
+
+  // ── NEW: Capture thumbnail from canvas ──
+  maybeCaptureThumbnail(ms);
+
   const pruneBeforeMs = ms - 1500;
   for (const [frameMs] of pendingFrames) {
     if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
@@ -388,20 +414,13 @@ export async function startPlayback() {
   isPlaying = true;
   lastRafTs = null;
   await initAudio();
-
-  // Anchor: sync AudioContext time to playhead position
   audioPlayStartCtxTime = audioCtx.currentTime;
   audioPlayStartMs = playheadMs;
-
-  // Reset chaining timer
   nextAudioStartTime = 0;
-
-  // Schedule anything already buffered (from primeAudioDecode)
   const sortedAudio = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
   for (const [ms, buffer] of sortedAudio) {
     scheduleAudioNode(ms, buffer);
   }
-
   syncWorkerState();
   rafHandle = requestAnimationFrame(renderLoop);
 }
@@ -412,8 +431,7 @@ export function pausePlayback() {
   lastRafTs = null;
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
   stopAllAudioNodes();
-
-  nextAudioStartTime = 0; // Reset so it recalculates cleanly on resume
+  nextAudioStartTime = 0;
   lastScheduledChunkMs = -1;
   syncWorkerState();
   if (window.onPlaybackPaused) window.onPlaybackPaused();
@@ -445,9 +463,7 @@ export async function seekTo(ms) {
   worker.postMessage({ type: 'seek', ms });
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
-
-  nextAudioStartTime = 0; // Reset on seek
-
+  nextAudioStartTime = 0;
   if (wasPlaying) startPlayback();
 }
 
