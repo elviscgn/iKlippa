@@ -18,7 +18,6 @@ const fileInput = document.getElementById("file-input");
 const statusBadge = document.querySelector(".status-badge");
 const scoreValue = document.getElementById("score-value");
 
-// ── NEW: Track whether a real video has been imported ──
 let hasRealVideo = false;
 
 // ── Engine Status to UI ──────────────────────────────────────────────
@@ -34,28 +33,25 @@ window.onPlayheadUpdate = (ms) => {
     window.updatePlayhead();
 };
 
-// ── NEW: Thumbnail updates from engine ───────────────────────────────
+// ── Thumbnail updates: debounced re-render ──────────────────────────
 let thumbnailRenderDebounce = null;
 window.onThumbnailsUpdated = (thumbnails) => {
     if (!hasRealVideo) return;
-    // Store on the real video clip
     if (window.videoClips.length > 0 && window.videoClips[0].isReal) {
         window.videoClips[0].thumbnails = thumbnails;
     }
-    // Debounce re-renders to avoid thrashing during playback
     clearTimeout(thumbnailRenderDebounce);
     thumbnailRenderDebounce = setTimeout(() => {
         window.renderClips();
     }, 600);
 };
 
-// ── Import complete: Replace fake clips with real video ─────────────
+// ── Import complete: Replace empty clips with real video ────────────
 window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
     hasRealVideo = true;
     const durationSec = durationMs / 1000;
     window.S.dur = durationSec;
 
-    // ── Replace placeholder clips with the actual imported video ──
     const displayName = fileName || "Imported Video";
 
     window.videoClips = [{
@@ -75,14 +71,13 @@ window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
         isReal: true,
     }];
 
-    // Clear AI nodes from placeholder timeline
+    // Reset AI state for new clip
     window.aiNodes = [];
     if (window.resetAiActions) window.resetAiActions();
 
-    // ── Also add to the media pool ──
+    // Add to media pool
     window.mediaPool.footage = [
-        { id: "imported_real", name: displayName, isReal: true, dur: (durationSec).toFixed(1) + "s" },
-        ...window.mediaPool.footage.filter(f => !f.isReal),
+        { id: "imported_real", name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s" },
     ];
 
     window.renderRuler();
@@ -91,18 +86,9 @@ window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
 
-    // ── Proactive thumbnail scan: seek to 5 positions to populate strip ──
-    (async () => {
-        const positions = [0, 0.2, 0.4, 0.6, 0.8];
-        for (const pct of positions) {
-            const ms = Math.round(pct * durationMs);
-            await seekTo(ms);
-            // Wait for the frame to arrive and be painted
-            await new Promise(r => setTimeout(r, 200));
-        }
-        // Return to start
-        await seekTo(0);
-    })();
+    // FIX #3: Removed the rapid 5-point seek scan — it raced with the
+    // worker's seek queue. Thumbnails now build naturally during playback
+    // and scrubbing, which is how professional NLEs work anyway.
 };
 
 // ── Connect Playback Control to Engine ───────────────────────────────
@@ -126,7 +112,7 @@ window.onPlaybackPaused = () => {
     lucide.createIcons();
 };
 
-// ── Timeline Scrub: Handle and Debounce ────────────────────────────────
+// ── Timeline Scrub: Debounced ────────────────────────────────────────
 let scrubDebounce = null;
 let lastScrubMs = -1;
 
@@ -150,7 +136,7 @@ window.handleExport = async function () {
     });
 };
 
-// ── Color grading sliders connection ──────────────────────────────────
+// ── Color grading sliders ────────────────────────────────────────────
 document.addEventListener("input", (e) => {
     const slider = e.target.closest("[data-grade]");
     if (!slider) return;
@@ -168,7 +154,7 @@ setInterval(() => {
         (composite >= 70 ? "good" : composite >= 40 ? "ok" : "bad");
 }, 2000);
 
-// ── Drag & Drop Event Handling ────────────────────────────────────────
+// ── Drag & Drop ──────────────────────────────────────────────────────
 const canvasWrapper = document.getElementById("canvas-wrapper");
 canvasWrapper.addEventListener("dragenter", () => {
     dropOverlay.style.display = "flex";
