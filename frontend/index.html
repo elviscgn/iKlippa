@@ -449,7 +449,6 @@
         overflow: hidden;
       }
 
-      /* Floating Aspect Ratio Selector (Over Canvas) */
       .ar-selector {
         position: absolute;
         top: 20px;
@@ -512,7 +511,6 @@
         background: var(--accent-glow);
       }
 
-      /* Canvas Wrapper Maxed Out */
       .canvas-wrapper {
         flex: 1;
         display: flex;
@@ -578,7 +576,47 @@
         opacity: 1;
       }
 
-      /* Floating Command Bar - Fixed Center, Non-draggable */
+      /* Score Badge */
+      .score-badge {
+        position: absolute;
+        bottom: 76px;
+        right: 20px;
+        z-index: 30;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 6px 10px;
+        border-radius: var(--radius-sm);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .score-badge:hover {
+        border-color: var(--accent-primary);
+        color: var(--accent-primary);
+      }
+      .score-value {
+        color: var(--text-main);
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .score-value.good {
+        color: #10b981;
+      }
+      .score-value.ok {
+        color: #f59e0b;
+      }
+      .score-value.bad {
+        color: #ef4444;
+      }
+
+      /* Floating Command Bar */
       .fcb-container {
         position: absolute;
         bottom: 20px;
@@ -602,7 +640,7 @@
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
         pointer-events: auto;
         transition: all 0.3s;
-        position: relative; /* For autocomplete menu positioning */
+        position: relative;
       }
       .floating-command-bar:focus-within {
         border-color: var(--accent-primary);
@@ -610,7 +648,6 @@
           0 8px 24px rgba(0, 0, 0, 0.5),
           0 0 0 1px var(--accent-glow);
       }
-
       .fcb-expanded {
         display: flex;
         align-items: center;
@@ -665,7 +702,6 @@
         background: var(--border-subtle);
         margin: 0 2px;
       }
-
       .fcb-transport {
         display: flex;
         align-items: center;
@@ -695,7 +731,6 @@
         width: 32px;
         height: 32px;
       }
-
       .fcb-collapse {
         color: var(--text-muted);
         display: flex;
@@ -726,7 +761,6 @@
         background: var(--accent-glow);
       }
 
-      /* Particle Easter Egg CSS Animation fallback */
       @keyframes magic-sparkle {
         0% {
           transform: scale(1) rotate(0deg);
@@ -743,7 +777,6 @@
         animation: magic-sparkle 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
       }
 
-      /* Auto-complete Menu (@ / Commands) */
       .ac-menu {
         position: absolute;
         bottom: calc(100% + 12px);
@@ -942,7 +975,6 @@
         background: #10b981;
       }
 
-      /* Premium Visible Horizontal Scroll for Actions */
       .ai-actions-wrap {
         display: flex;
         flex-direction: column;
@@ -957,7 +989,6 @@
         padding: 0 20px 12px 2px;
         margin: 0 -20px -12px -2px;
       }
-      /* Visible custom scrollbar */
       .ai-actions-scroll::-webkit-scrollbar {
         height: 2px;
         display: block;
@@ -1188,7 +1219,6 @@
         background: rgba(0, 0, 0, 0.2);
         border-bottom: 1px solid var(--border-subtle);
       }
-
       .tl-tools {
         display: flex;
         background: var(--bg-card);
@@ -1215,7 +1245,6 @@
         color: var(--text-main);
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
       }
-
       .tl-zoom-text {
         font-size: 10px;
         font-weight: 700;
@@ -1231,7 +1260,6 @@
         overflow: hidden;
         background: rgba(0, 0, 0, 0.1);
       }
-
       .tl-ruler {
         height: 24px;
         position: relative;
@@ -1276,7 +1304,6 @@
         min-height: 50px;
         margin-bottom: 6px;
       }
-
       .track-head {
         width: 140px;
         flex-shrink: 0;
@@ -1320,7 +1347,6 @@
         margin: 0 16px 0 0;
         border: 1px solid rgba(255, 255, 255, 0.02);
       }
-
       .track.ai-track {
         min-height: 20px;
         margin-bottom: 2px;
@@ -1406,7 +1432,6 @@
       .tl-clip::after {
         right: 4px;
       }
-
       .tl-clip-thumbs {
         position: absolute;
         inset: 0;
@@ -1428,7 +1453,6 @@
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
         pointer-events: none;
       }
-
       .tl-clip-audio {
         background: #064e3b;
         box-shadow: inset 0 0 0 1px #047857;
@@ -1468,7 +1492,6 @@
         cursor: grab;
       }
 
-      /* Toast */
       .toast-container {
         position: fixed;
         bottom: 24px;
@@ -1562,13 +1585,10 @@
         </div>
 
         <div class="topnav-right">
-          <span class="status-badge">
-            <i data-lucide="cloud-lightning"></i> All changes saved
-          </span>
-          <button
-            class="btn-export"
-            onclick="handleExport()"
+          <span class="status-badge"
+            ><i data-lucide="cloud-lightning"></i> All changes saved</span
           >
+          <button class="btn-export" onclick="handleExport()">
             <i data-lucide="download"></i> Export
           </button>
         </div>
@@ -1584,12 +1604,10 @@
                 <i data-lucide="plus"></i> Import
               </button>
             </div>
-
             <div class="search-box">
               <i data-lucide="search"></i>
               <input type="text" placeholder="Search semantic footage..." />
             </div>
-
             <div class="media-tabs" id="media-tabs">
               <div class="media-tab active" data-tab="footage">Footage</div>
               <div class="media-tab" data-tab="audio">Audio</div>
@@ -1597,7 +1615,6 @@
                 <i data-lucide="sparkles"></i> AI Stock
               </div>
             </div>
-
             <div class="stock-subtabs" id="stock-subtabs">
               <button class="stock-subtab active" data-sub="video">
                 Videos
@@ -1605,7 +1622,6 @@
               <button class="stock-subtab" data-sub="image">Images</button>
               <button class="stock-subtab" data-sub="music">Music</button>
             </div>
-
             <div class="media-content">
               <div class="media-grid" id="media-grid"></div>
               <div
@@ -1618,14 +1634,13 @@
 
           <!-- CENTER: CANVAS -->
           <section class="panel-center">
-            <!-- Maximized Canvas Wrapper -->
             <div class="canvas-wrapper" id="canvas-wrapper">
               <div
                 class="canvas-frame"
                 id="canvas-frame"
                 style="aspect-ratio: 16/9"
               >
-                <!-- Floating AR Selector inside canvas frame bounds -->
+                <!-- AR Selector -->
                 <div class="ar-selector">
                   <button class="ar-btn" id="ar-btn">
                     <i data-lucide="monitor" id="ar-icon"></i>
@@ -1668,7 +1683,6 @@
                   </div>
                 </div>
 
-                <!-- iKlippa engine renders into this canvas via putImageData() -->
                 <canvas
                   id="canvas-img"
                   style="
@@ -1679,24 +1693,34 @@
                     display: block;
                   "
                 ></canvas>
-                <!-- Drop overlay — shown when dragging a file over the canvas area -->
-                <div id="drop-overlay" style="
-                  display: none;
-                  position: absolute;
-                  inset: 0;
-                  background: rgba(13,148,136,0.18);
-                  border: 2px dashed var(--accent-primary);
-                  border-radius: var(--radius-md);
-                  align-items: center;
-                  justify-content: center;
-                  font-size: 14px;
-                  font-weight: 700;
-                  color: var(--accent-primary);
-                  pointer-events: none;
-                  z-index: 20;
-                ">Drop video to import</div>
-                <!-- Hidden file input triggered by Import button -->
-                <input type="file" id="file-input" accept="video/*" style="display:none" />
+
+                <div
+                  id="drop-overlay"
+                  style="
+                    display: none;
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(13, 148, 136, 0.18);
+                    border: 2px dashed var(--accent-primary);
+                    border-radius: var(--radius-md);
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: var(--accent-primary);
+                    pointer-events: none;
+                    z-index: 20;
+                  "
+                >
+                  Drop video to import
+                </div>
+
+                <input
+                  type="file"
+                  id="file-input"
+                  accept="video/*"
+                  style="display: none"
+                />
                 <div class="canvas-timecode" id="timecode">00:00:00:00</div>
                 <div class="canvas-text-overlay" id="canvas-text">
                   VIBRANT CITY
@@ -1704,18 +1728,27 @@
               </div>
             </div>
 
-            <!-- Anchored Command Bar -->
+            <!-- Performance Score Badge -->
+            <div
+              class="score-badge"
+              id="score-badge"
+              onclick="window.iklippaScore && window.iklippaScore()"
+              title="Click to print full report in console"
+            >
+              <i data-lucide="activity"></i>
+              Score: <span class="score-value" id="score-value">—</span>
+            </div>
+
+            <!-- Floating Command Bar -->
             <div class="fcb-container">
               <div class="floating-command-bar" id="fcb">
                 <div class="fcb-expanded" id="fcb-expanded">
-                  <!-- Sparkle Easter Egg Icon (Triggers JS particles) -->
                   <i
                     data-lucide="sparkles"
                     style="color: var(--accent-primary); cursor: pointer"
                     id="fcb-sparkle-1"
                     onclick="triggerSparkle(this)"
                   ></i>
-
                   <div style="position: relative">
                     <input
                       type="text"
@@ -1726,7 +1759,6 @@
                     />
                     <div class="ac-menu" id="ac-menu"></div>
                   </div>
-
                   <button class="fcb-send" onclick="submitCmd()">
                     <i data-lucide="arrow-up"></i>
                   </button>
@@ -1762,7 +1794,6 @@
                     <i data-lucide="minimize-2"></i>
                   </button>
                 </div>
-
                 <div class="fcb-collapsed" id="fcb-collapsed">
                   <button class="fcb-btn" onclick="skipTime(-2)">
                     <i data-lucide="skip-back"></i>
@@ -1781,7 +1812,6 @@
                     <i data-lucide="skip-forward"></i>
                   </button>
                   <div class="fcb-divider" style="margin: 0 4px"></div>
-                  <!-- Sparkle Easter Egg Icon Collapsed -->
                   <button class="fcb-expand" onclick="toggleFcb()">
                     <i data-lucide="sparkles"></i>
                   </button>
@@ -1809,13 +1839,11 @@
                 ></span
               ></span>
             </div>
-
             <div class="ai-tabs">
               <div class="ai-tab active" data-target="tab-chat">Chat</div>
               <div class="ai-tab" data-target="tab-script">Script</div>
               <div class="ai-tab" data-target="tab-brand">Brand</div>
             </div>
-
             <div class="copilot-body">
               <div id="tab-chat">
                 <div class="insight-box" id="insight-box">
@@ -1952,39 +1980,39 @@
                       class="color-swatch"
                       style="background: #0d9488; border-color: white"
                       data-color="#0d9488"
-                      data-glow="rgba(13, 148, 136, 0.2)"
+                      data-glow="rgba(13,148,136,0.2)"
                     ></div>
                     <div
                       class="color-swatch"
                       style="background: #e11d48"
                       data-color="#e11d48"
-                      data-glow="rgba(225, 29, 72, 0.2)"
+                      data-glow="rgba(225,29,72,0.2)"
                     ></div>
                     <div
                       class="color-swatch"
                       style="background: #2563eb"
                       data-color="#2563eb"
-                      data-glow="rgba(37, 99, 235, 0.2)"
+                      data-glow="rgba(37,99,235,0.2)"
                     ></div>
                     <div
                       class="color-swatch"
                       style="background: #d97706"
                       data-color="#d97706"
-                      data-glow="rgba(217, 119, 6, 0.2)"
+                      data-glow="rgba(217,119,6,0.2)"
                     ></div>
                   </div>
                 </div>
                 <div class="brand-group">
-                  <label>Caption Font</label>
-                  <input
+                  <label>Caption Font</label
+                  ><input
                     type="text"
                     class="brand-input"
                     value="Plus Jakarta Sans"
                   />
                 </div>
                 <div class="brand-group">
-                  <label>Brand Name</label>
-                  <input
+                  <label>Brand Name</label
+                  ><input
                     type="text"
                     class="brand-input"
                     value="Vibrant City Studio"
@@ -2022,7 +2050,6 @@
                 <div class="playhead-knob"></div>
               </div>
             </div>
-
             <div class="tl-tracks" id="tl-tracks">
               <div class="track ai-track">
                 <div class="track-head">
@@ -2032,7 +2059,6 @@
                 </div>
                 <div class="track-lane" id="lane-ai"></div>
               </div>
-
               <div class="track">
                 <div class="track-head">
                   <span class="track-title"
@@ -2065,7 +2091,6 @@
                 </div>
                 <div class="track-lane" id="lane-v1"></div>
               </div>
-
               <div class="track">
                 <div class="track-head">
                   <span class="track-title"
@@ -2101,7 +2126,6 @@
                   </div>
                 </div>
               </div>
-
               <div
                 class="playhead"
                 id="ph-tracks"
@@ -2115,13 +2139,14 @@
 
     <div class="toast-container" id="toast-box"></div>
 
+    <!-- ═══════════════════════════════════════════════════════
+         INLINE UI SCRIPT — timeline, media panel, play controls.
+         Talks to the engine via window.* callbacks set in the module block.
+    ═══════════════════════════════════════════════════════ -->
     <script>
       "use strict";
       lucide.createIcons();
 
-      /* ═══════════════════════════════════════════════════════
-         STATE & DATA
-      ═══════════════════════════════════════════════════════ */
       const S = {
         time: 0,
         dur: 24,
@@ -2161,7 +2186,13 @@
       };
 
       let videoClips = [
-        { id: "vc1", name: "Ocean_Sunrise.mp4", start: 0, end: 6.2, picId: 29 },
+        {
+          id: "vc1",
+          name: "Ocean_Sunrise.mp4",
+          start: 0.0,
+          end: 6.2,
+          picId: 29,
+        },
         {
           id: "vc2",
           name: "Mountain_Peak.mp4",
@@ -2184,28 +2215,21 @@
           picId: 47,
         },
       ];
-
       let audioClips = [
         { id: "ac1", name: "Amapiano_LogDrum_Drop.mp3", start: 0, end: 24.0 },
       ];
-
       let aiNodes = [];
 
-      function picUrl(id, w, h) {
-        return "https://picsum.photos/id/" + id + "/" + w + "/" + h;
-      }
+      const picUrl = (id, w, h) => `https://picsum.photos/id/${id}/${w}/${h}`;
       const $ = (s) => document.querySelector(s);
       const $$ = (s) => document.querySelectorAll(s);
 
-      /* ═══════════════════════════════════════════════════════
-         TOAST & UI
-      ═══════════════════════════════════════════════════════ */
+      // ── Toast ──────────────────────────────────────────────────────────────
       function showToast(msg, iconStr) {
         const box = $("#toast-box");
         const t = document.createElement("div");
         t.className = "toast";
-        t.innerHTML =
-          '<i data-lucide="' + iconStr + '"></i> <span>' + msg + "</span>";
+        t.innerHTML = `<i data-lucide="${iconStr}"></i> <span>${msg}</span>`;
         box.appendChild(t);
         lucide.createIcons({ nodes: [t] });
         setTimeout(() => {
@@ -2214,48 +2238,38 @@
         }, 3000);
       }
 
-      /* Javascript Particle Engine Restored! */
+      // ── Sparkle ────────────────────────────────────────────────────────────
       window.triggerSparkle = function (el) {
         const rect = el.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
         for (let i = 0; i < 8; i++) {
-          const particle = document.createElement("div");
-          particle.innerHTML =
+          const p = document.createElement("div");
+          p.innerHTML =
             '<svg viewBox="0 0 24 24" fill="var(--accent-primary)" style="width:12px;height:12px;"><path d="M12 2L15 9L22 12L15 15L12 22L9 15L2 12L9 9L12 2Z"/></svg>';
-          particle.style.position = "fixed";
-          particle.style.left = centerX - 6 + "px";
-          particle.style.top = centerY - 6 + "px";
-          particle.style.pointerEvents = "none";
-          particle.style.zIndex = "9999";
-          particle.style.transition =
-            "all 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)";
-          particle.style.opacity = "1";
-          particle.style.transform = "scale(0.5)";
-
-          document.body.appendChild(particle);
-
+          Object.assign(p.style, {
+            position: "fixed",
+            left: cx - 6 + "px",
+            top: cy - 6 + "px",
+            pointerEvents: "none",
+            zIndex: "9999",
+            transition: "all 0.8s cubic-bezier(0.175,0.885,0.32,1.275)",
+            opacity: "1",
+            transform: "scale(0.5)",
+          });
+          document.body.appendChild(p);
           setTimeout(() => {
-            const angle = (i / 8) * 360 * (Math.PI / 180) + Math.random() * 0.5;
+            const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.5;
             const dist = 40 + Math.random() * 30;
-            particle.style.transform =
-              "translate(" +
-              Math.cos(angle) * dist +
-              "px, " +
-              Math.sin(angle) * dist +
-              "px) scale(1) rotate(" +
-              Math.random() * 180 +
-              "deg)";
-            particle.style.opacity = "0";
+            p.style.transform = `translate(${Math.cos(angle) * dist}px,${Math.sin(angle) * dist}px) scale(1) rotate(${Math.random() * 180}deg)`;
+            p.style.opacity = "0";
           }, 10);
-
-          setTimeout(() => particle.remove(), 800);
+          setTimeout(() => p.remove(), 800);
         }
-
         showToast("Granite AI is listening...", "sparkles");
       };
 
+      // ── Tool buttons ───────────────────────────────────────────────────────
       let isTextActive = false,
         isEffectActive = false;
       $("#t-text").onclick = () => {
@@ -2283,43 +2297,45 @@
         $("#fcb").classList.toggle("collapsed");
       };
 
-      /* Brand Customization */
+      // Brand colour swatches
       $$("#editor-color-picker .color-swatch").forEach((sw) => {
         sw.onclick = () => {
           $$("#editor-color-picker .color-swatch").forEach(
             (s) => (s.style.borderColor = "rgba(255,255,255,0.1)"),
           );
           sw.style.borderColor = "white";
-          const c = sw.dataset.color;
-          const g = sw.dataset.glow;
-          document.documentElement.style.setProperty("--accent-primary", c);
-          document.documentElement.style.setProperty("--accent-hover", c);
-          document.documentElement.style.setProperty("--accent-glow", g);
+          document.documentElement.style.setProperty(
+            "--accent-primary",
+            sw.dataset.color,
+          );
+          document.documentElement.style.setProperty(
+            "--accent-hover",
+            sw.dataset.color,
+          );
+          document.documentElement.style.setProperty(
+            "--accent-glow",
+            sw.dataset.glow,
+          );
         };
       });
 
-      /* AI Panel Tabs */
+      // AI panel tabs
       $$(".ai-tab").forEach((tab) => {
         tab.onclick = () => {
           $$(".ai-tab").forEach((t) => t.classList.remove("active"));
           tab.classList.add("active");
-          $("#tab-chat").style.display = "none";
-          $("#tab-script").style.display = "none";
-          $("#tab-brand").style.display = "none";
+          ["tab-chat", "tab-script", "tab-brand"].forEach(
+            (id) => ($("#" + id).style.display = "none"),
+          );
           $("#" + tab.dataset.target).style.display = "flex";
         };
       });
 
-      /* ═══════════════════════════════════════════════════════
-         AUTOCOMPLETE MENU (@ and /)
-      ═══════════════════════════════════════════════════════ */
+      // ── Autocomplete (/ and @) ─────────────────────────────────────────────
       const cmdInput = $("#ai-cmd");
       const acMenu = $("#ac-menu");
-
       cmdInput.addEventListener("input", (e) => {
-        const val = e.target.value;
-        const lastWord = val.split(" ").pop();
-
+        const lastWord = e.target.value.split(" ").pop();
         if (lastWord.startsWith("/")) {
           acMenu.innerHTML =
             '<div class="ac-section">Commands</div>' +
@@ -2341,7 +2357,6 @@
           acMenu.classList.remove("active");
         }
       });
-
       window.insertAC = function (text) {
         const words = cmdInput.value.split(" ");
         words.pop();
@@ -2350,19 +2365,14 @@
         cmdInput.focus();
       };
 
-      /* ═══════════════════════════════════════════════════════
-         CANVAS DYNAMIC SCALING ENGINE
-      ═══════════════════════════════════════════════════════ */
+      // ── Canvas / AR ────────────────────────────────────────────────────────
       function resizeCanvas() {
         const wrapper = $("#canvas-wrapper");
         const frame = $("#canvas-frame");
         if (!wrapper || !frame) return;
-
-        const ar = S.selectedAR;
-        const [wStr, hStr] = ar.split("/");
+        const [wStr, hStr] = S.selectedAR.split("/");
         const targetRatio = parseFloat(wStr) / parseFloat(hStr);
         const wrapperRatio = wrapper.clientWidth / wrapper.clientHeight;
-
         if (wrapperRatio > targetRatio) {
           frame.style.height = "100%";
           frame.style.width = "auto";
@@ -2371,32 +2381,28 @@
           frame.style.height = "auto";
         }
       }
-
       window.addEventListener("resize", resizeCanvas);
 
       $("#ar-btn").onclick = (e) => {
         e.stopPropagation();
         $("#ar-menu").classList.toggle("open");
       };
-      window.onclick = () => $("#ar-menu").classList.remove("open");
+      window.addEventListener("click", () =>
+        $("#ar-menu").classList.remove("open"),
+      );
       $$(".ar-option").forEach((opt) => {
         opt.onclick = () => {
           $$(".ar-option").forEach((o) => o.classList.remove("active"));
           opt.classList.add("active");
           $("#ar-label").textContent = opt.dataset.label.split(" ")[0];
           $("#ar-icon").setAttribute("data-lucide", opt.dataset.icon);
-
           S.selectedAR = opt.dataset.ar;
           $("#canvas-frame").style.aspectRatio = S.selectedAR;
-
           resizeCanvas();
-
-          if (S.selectedAR === "9/16" || S.selectedAR === "4/5") {
-            $("#panel-right").style.width = "340px";
-          } else {
-            $("#panel-right").style.width = "300px";
-          }
-
+          $("#panel-right").style.width =
+            S.selectedAR === "9/16" || S.selectedAR === "4/5"
+              ? "340px"
+              : "300px";
           lucide.createIcons({ nodes: [$("#ar-btn")] });
           showToast("Canvas set to " + opt.dataset.label, "monitor");
         };
@@ -2413,16 +2419,12 @@
         }
       });
 
-      /* ═══════════════════════════════════════════════════════
-         MEDIA PANEL
-      ═══════════════════════════════════════════════════════ */
+      // ── Media Panel ────────────────────────────────────────────────────────
       function renderMedia(type, subType = null) {
         const grid = $("#media-grid");
         const list = $("#media-list");
-        grid.innerHTML = "";
-        list.innerHTML = "";
+        grid.innerHTML = list.innerHTML = "";
         let data = [];
-
         if (type === "footage" || type === "audio") {
           data = mediaPool[type];
           $("#stock-subtabs").style.display = "none";
@@ -2430,19 +2432,13 @@
           $("#stock-subtabs").style.display = "flex";
           data = mediaPool.stock[subType || "video"];
         }
-
         if (type === "audio" || (type === "stock" && subType === "music")) {
           grid.style.display = "none";
           list.style.display = "flex";
           data.forEach((item) => {
             const el = document.createElement("div");
             el.className = "audio-item";
-            el.innerHTML =
-              '<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>' +
-              item.name +
-              "</h4><p>" +
-              item.dur +
-              "</p></div>";
+            el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${item.name}</h4><p>${item.dur}</p></div>`;
             list.appendChild(el);
           });
         } else {
@@ -2451,15 +2447,9 @@
           data.forEach((item) => {
             const el = document.createElement("div");
             el.className = "media-item";
-            el.innerHTML =
-              '<img src="' +
-              picUrl(item.picId, 320, 200) +
-              '"><div class="media-label">' +
-              item.name +
-              "</div>";
-
+            el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}"><div class="media-label">${item.name}</div>`;
             el.draggable = true;
-            el.ondragstart = (e) => {
+            el.ondragstart = (e) =>
               e.dataTransfer.setData(
                 "text/plain",
                 JSON.stringify({
@@ -2470,12 +2460,9 @@
                   end: 4.0,
                 }),
               );
-            };
-
             el.onclick = () => {
               $$(".media-item").forEach((m) => m.classList.remove("selected"));
               el.classList.add("selected");
-              $("#canvas-img").src = picUrl(item.picId, 960, 540);
             };
             grid.appendChild(el);
           });
@@ -2491,9 +2478,7 @@
             $$(".stock-subtab").forEach((s) => s.classList.remove("active"));
             $$(".stock-subtab")[0].classList.add("active");
             renderMedia("stock", "video");
-          } else {
-            renderMedia(type);
-          }
+          } else renderMedia(type);
         };
       });
       $$(".stock-subtab").forEach((tab) => {
@@ -2504,9 +2489,7 @@
         };
       });
 
-      /* ═══════════════════════════════════════════════════════
-         TIMELINE ENGINE
-      ═══════════════════════════════════════════════════════ */
+      // ── Timeline ───────────────────────────────────────────────────────────
       function getLaneW() {
         return $("#lane-v1").getBoundingClientRect().width * S.zoom;
       }
@@ -2520,10 +2503,7 @@
           const tick = document.createElement("div");
           tick.className = "ruler-tick";
           tick.style.left = (s / S.dur) * tw + "px";
-          tick.innerHTML =
-            '<div class="tick-line major"></div><span class="tick-label">00:' +
-            String(s).padStart(2, "0") +
-            "</span>";
+          tick.innerHTML = `<div class="tick-line major"></div><span class="tick-label">00:${String(s).padStart(2, "0")}</span>`;
           r.appendChild(tick);
         }
       }
@@ -2538,7 +2518,7 @@
             if (t > clip.start + 0.5 && t < clip.end - 0.5) {
               const i = clipArray.findIndex((c) => c.id === clip.id);
               const c1 = { ...clip, id: "c" + Date.now(), end: t };
-              const c2 = { ...clip, id: "c" + Date.now() + 1, start: t };
+              const c2 = { ...clip, id: "c" + (Date.now() + 1), start: t };
               clipArray.splice(i, 1, c1, c2);
               showToast("Clip Split", "scissors");
               renderClips();
@@ -2546,17 +2526,14 @@
           } else if (S.tool === "select") {
             $$(".tl-clip").forEach((c) => c.classList.remove("active"));
             el.classList.add("active");
-            if (clip.picId) $("#canvas-img").src = picUrl(clip.picId, 960, 540);
-
             let startX = e.clientX,
               initialStart = clip.start;
             const move = (e2) => {
               const dx = e2.clientX - startX;
               const dt = (dx / tw) * S.dur;
-              let newStart = initialStart + dt;
-              newStart = Math.max(
+              let newStart = Math.max(
                 0,
-                Math.min(newStart, S.dur - (clip.end - clip.start)),
+                Math.min(initialStart + dt, S.dur - (clip.end - clip.start)),
               );
               clip.end = newStart + (clip.end - clip.start);
               clip.start = newStart;
@@ -2574,9 +2551,8 @@
 
       function renderClips() {
         const laneV1 = $("#lane-v1");
-        laneV1.innerHTML = "";
         const laneA1 = $("#lane-a1");
-        laneA1.innerHTML = "";
+        laneV1.innerHTML = laneA1.innerHTML = "";
         const tw = getLaneW();
 
         videoClips.forEach((clip) => {
@@ -2586,18 +2562,13 @@
           const w = ((clip.end - clip.start) / S.dur) * tw;
           el.style.left = left + "px";
           el.style.width = w + "px";
-
-          let thumbs = '<div class="tl-clip-thumbs">';
           const count = Math.max(1, Math.floor(w / 60));
+          let thumbs = '<div class="tl-clip-thumbs">';
           for (let j = 0; j < count; j++)
-            thumbs +=
-              '<img src="' +
-              picUrl(clip.picId, 100, 60) +
-              '" draggable="false">';
+            thumbs += `<img src="${picUrl(clip.picId, 100, 60)}" draggable="false">`;
           thumbs += "</div>";
           el.innerHTML =
-            thumbs + '<span class="tl-clip-label">' + clip.name + "</span>";
-
+            thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
           applyDragLogic(el, clip, videoClips, tw);
           laneV1.appendChild(el);
         });
@@ -2609,34 +2580,11 @@
           const w = ((clip.end - clip.start) / S.dur) * tw;
           el.style.left = left + "px";
           el.style.width = w + "px";
-
-          const svgWaveform =
-            '<svg viewBox="0 0 ' +
-            w +
-            ' 40" preserveAspectRatio="none" style="width:100%; height:100%; display:block;">' +
-            Array.from({ length: Math.floor(w / 4) }, (_, i) => {
-              let phase = i * 4 * 0.025 + Math.random() * 0.1;
-              let h = 10 + Math.abs(Math.sin(phase) * 20) + Math.random() * 8;
-              if (h > 38) h = 38;
-              return (
-                '<rect x="' +
-                i * 4 +
-                '" y="' +
-                (20 - h / 2) +
-                '" width="2.5" height="' +
-                h +
-                '" fill="currentColor" opacity="0.8" rx="1"/>'
-              );
-            }).join("") +
-            "</svg>";
-
-          el.innerHTML =
-            '<div class="waveform">' +
-            svgWaveform +
-            '</div><span class="tl-clip-label" style="position:absolute; bottom:6px; left:8px;">' +
-            clip.name +
-            "</span>";
-
+          const bars = Array.from({ length: Math.floor(w / 4) }, (_, i) => {
+            const h = 10 + Math.abs(Math.sin(i * 0.1) * 20) + Math.random() * 8;
+            return `<rect x="${i * 4}" y="${20 - h / 2}" width="2.5" height="${Math.min(h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`;
+          }).join("");
+          el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${w} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
           applyDragLogic(el, clip, audioClips, tw);
           laneA1.appendChild(el);
         });
@@ -2646,8 +2594,7 @@
           const el = document.createElement("div");
           el.className = "ai-node";
           el.style.left = (node.time / S.dur) * tw + "px";
-          el.innerHTML =
-            '<i data-lucide="' + node.icon + '"></i> ' + node.label;
+          el.innerHTML = `<i data-lucide="${node.icon}"></i> ${node.label}`;
           el.onclick = () => showToast("AI Insight: " + node.label, node.icon);
           $("#lane-ai").appendChild(el);
         });
@@ -2660,8 +2607,8 @@
         const data = JSON.parse(e.dataTransfer.getData("text/plain"));
         const tw = getLaneW();
         const rect = $("#lane-v1").getBoundingClientRect();
-        const dropX = e.clientX - rect.left + $("#tl-tracks").scrollLeft;
-        const t = (dropX / tw) * S.dur;
+        const t =
+          ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * S.dur;
         data.start = t;
         data.end = Math.min(t + 4.0, S.dur);
         videoClips.push(data);
@@ -2674,8 +2621,10 @@
         (e) => {
           if (e.ctrlKey || e.metaKey || !e.shiftKey) {
             e.preventDefault();
-            const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
-            S.zoom = Math.max(0.5, Math.min(4, S.zoom + zoomDelta));
+            S.zoom = Math.max(
+              0.5,
+              Math.min(4, S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)),
+            );
             $("#zoom-text").textContent = Math.round(S.zoom * 100) + "% Zoom";
             renderRuler();
             renderClips();
@@ -2693,21 +2642,12 @@
         };
       });
 
-      /* ═══════════════════════════════════════════════════════
-         PLAYHEAD
-      ═══════════════════════════════════════════════════════ */
+      // ── Playhead ───────────────────────────────────────────────────────────
       function fmtTime(sec) {
         const m = Math.floor(sec / 60);
         const s = Math.floor(sec % 60);
         const f = Math.floor((sec % 1) * 30);
-        return (
-          "00:" +
-          String(m).padStart(2, "0") +
-          ":" +
-          String(s).padStart(2, "0") +
-          ":" +
-          String(f).padStart(2, "0")
-        );
+        return `00:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
       }
 
       function updatePlayhead() {
@@ -2718,6 +2658,8 @@
         $("#timecode").textContent = fmtTime(S.time);
       }
 
+      // togglePlay is overridden by the engine module below.
+      // This stub fires when the engine hasn't loaded yet (UI-only mode).
       window.togglePlay = function () {
         if (S.playing) {
           S.playing = false;
@@ -2735,61 +2677,57 @@
             i.setAttribute("data-lucide", "pause"),
           );
           lucide.createIcons();
-          S.rafId = requestAnimationFrame(playLoop);
+          S.rafId = requestAnimationFrame(function playLoop(ts) {
+            if (!S.playing) return;
+            if (S.lastTs) {
+              S.time += (ts - S.lastTs) / 1000;
+            }
+            if (S.time >= S.dur) {
+              S.time = S.dur;
+              window.togglePlay();
+              return;
+            }
+            S.lastTs = ts;
+            updatePlayhead();
+            S.rafId = requestAnimationFrame(playLoop);
+          });
         }
       };
-
-      function playLoop(ts) {
-        if (!S.playing) return;
-        if (S.lastTs === null) S.lastTs = ts;
-        const dt = (ts - S.lastTs) / 1000;
-        S.lastTs = ts;
-        S.time += dt;
-        if (S.time >= S.dur) {
-          S.time = S.dur;
-          togglePlay();
-        }
-        updatePlayhead();
-        S.rafId = requestAnimationFrame(playLoop);
-      }
 
       window.skipTime = function (delta) {
         S.time = Math.max(0, Math.min(S.dur, S.time + delta));
         updatePlayhead();
+        // Notify engine of manual seek
+        if (window.onPlayheadScrub) window.onPlayheadScrub(S.time);
       };
+
+      // ── Timeline scrub → fires engine seek (event-driven, no polling) ─────
+      function handleTimelineScrub(e, el) {
+        const rect = el.getBoundingClientRect();
+        const x = Math.max(
+          0,
+          e.clientX - rect.left - 140 + $("#tl-tracks").scrollLeft,
+        );
+        S.time = Math.max(0, Math.min((x / getLaneW()) * S.dur, S.dur));
+        updatePlayhead();
+        if (window.onPlayheadScrub) window.onPlayheadScrub(S.time);
+      }
 
       $("#tl-tracks").addEventListener("mousedown", (e) => {
         if (e.target.closest(".tl-clip") || e.target.closest(".track-head"))
           return;
-        const rect = $("#tl-tracks").getBoundingClientRect();
-        const x = Math.max(
-          0,
-          e.clientX - rect.left - 140 + $("#tl-tracks").scrollLeft,
-        );
-        S.time = Math.max(0, Math.min((x / getLaneW()) * S.dur, S.dur));
-        updatePlayhead();
+        handleTimelineScrub(e, $("#tl-tracks"));
       });
-      $("#tl-ruler").onmousedown = (e) => {
-        const rect = $("#tl-ruler").getBoundingClientRect();
-        const x = Math.max(
-          0,
-          e.clientX - rect.left - 140 + $("#tl-tracks").scrollLeft,
-        );
-        S.time = Math.max(0, Math.min((x / getLaneW()) * S.dur, S.dur));
-        updatePlayhead();
-      };
+      $("#tl-ruler").onmousedown = (e) =>
+        handleTimelineScrub(e, $("#tl-ruler"));
 
-      /* ═══════════════════════════════════════════════════════
-         AI CHAT & ACTIONS
-      ═══════════════════════════════════════════════════════ */
+      // ── AI Chat & Actions ──────────────────────────────────────────────────
       function appendChat(text, isUser = false) {
         const el = document.createElement("div");
         el.className = "chat-msg " + (isUser ? "user" : "ai");
-        if (isUser) el.textContent = text;
-        else
-          el.innerHTML =
-            '<div class="msg-sender"><i data-lucide="bot"></i> Granite</div>' +
-            text;
+        el.innerHTML = isUser
+          ? text
+          : `<div class="msg-sender"><i data-lucide="bot"></i> Granite</div>${text}`;
         $("#chat-log").appendChild(el);
         lucide.createIcons({ nodes: [el] });
         $("#chat-log").parentElement.scrollTop =
@@ -2800,7 +2738,6 @@
         const input = $("#ai-cmd");
         const val = input.value.trim();
         if (!val) return;
-
         if (val.startsWith("/") || val.includes("@")) {
           appendChat(val, true);
           input.value = "";
@@ -2812,7 +2749,6 @@
           }, 600);
           return;
         }
-
         input.value = "";
         appendChat(val, true);
         setTimeout(() => {
@@ -2888,29 +2824,26 @@
         updatePlayhead();
       };
 
-      /* ═══════════════════════════════════════════════════════
-         INIT
-      ═══════════════════════════════════════════════════════ */
+      // ── Init ───────────────────────────────────────────────────────────────
       window.onresize = () => {
         renderRuler();
         renderClips();
         updatePlayhead();
         resizeCanvas();
       };
-      function init() {
+      requestAnimationFrame(() => {
         renderMedia("footage");
         renderRuler();
         renderClips();
         updatePlayhead();
         resizeCanvas();
-      }
-      requestAnimationFrame(init);
+        lucide.createIcons();
+      });
     </script>
 
     <!-- ═══════════════════════════════════════════════════════
-         iKlippa ENGINE INTEGRATION
-         This block bridges the existing UI (above) with the real
-         video pipeline in engine.js + the Rust WASM module.
+         ENGINE MODULE — bridges UI above with Rust WASM + WebCodecs pipeline.
+         Runs as a module so it can import from engine.js.
     ═══════════════════════════════════════════════════════ -->
     <script type="module">
       import {
@@ -2922,64 +2855,79 @@
         seekTo,
         setColorGrade,
         exportVideo,
-        wireDropTarget,
-        wireFileInput,
-      } from './engine.js';
+        perf,
+      } from "./engine.js";
 
-      const canvasEl = document.getElementById('canvas-img');
-      const dropOverlay = document.getElementById('drop-overlay');
-      const fileInput = document.getElementById('file-input');
-      const statusBadge = document.querySelector('.status-badge');
+      const canvasEl = document.getElementById("canvas-img");
+      const dropOverlay = document.getElementById("drop-overlay");
+      const fileInput = document.getElementById("file-input");
+      const statusBadge = document.querySelector(".status-badge");
+      const scoreValue = document.getElementById("score-value");
 
-      // ── Engine status → UI badge ─────────────────────────────────────────
+      // ── Engine status → status badge ──────────────────────────────────────
       window.onEngineStatus = (msg) => {
         statusBadge.innerHTML = `<i data-lucide="zap"></i> ${msg}`;
         lucide.createIcons({ nodes: [statusBadge] });
-        showToast(msg, 'zap');
+        showToast(msg, "zap");
       };
 
-      // ── Playhead sync: engine → existing UI ─────────────────────────────
+      // ── Playhead sync: engine → timeline UI ──────────────────────────────
       window.onPlayheadUpdate = (ms) => {
         S.time = ms / 1000;
         updatePlayhead();
       };
 
-      // ── Clip imported: update media panel ───────────────────────────────
+      // ── Clip imported → update timeline duration ──────────────────────────
       window.onClipImported = ({ clipId, width, height, durationMs }) => {
         S.dur = durationMs / 1000;
         renderRuler();
         renderClips();
         updatePlayhead();
-        showToast(`Clip loaded (${width}×${height})`, 'film');
+        showToast(`Clip loaded (${width}×${height})`, "film");
       };
 
-      // ── Override the existing togglePlay to drive the real engine ────────
+      // ── Override togglePlay to drive the real engine ──────────────────────
       window.togglePlay = function () {
-        togglePlayback();
-        // Sync the icon
-        const icons = document.querySelectorAll('.icon-play');
-        icons.forEach(i => i.setAttribute('data-lucide', S.playing ? 'pause' : 'play'));
+        const nowPlaying = togglePlayback(); // engine.js returns new state
+        // Sync the play/pause icon
+        document
+          .querySelectorAll(".icon-play")
+          .forEach((i) =>
+            i.setAttribute("data-lucide", nowPlaying ? "pause" : "play"),
+          );
         lucide.createIcons();
-        // Flip the local state flag so the original RAF loop doesn't also fire
-        S.playing = !S.playing;
+        // Keep S.playing in sync so the inline fallback RAF loop stays dormant
+        S.playing = nowPlaying;
       };
 
-      // ── Seek: scrubbing timeline → engine ────────────────────────────────
-      // Patch the playhead mousedown handler to also seek the engine
-      const origPlayLoop = window.playLoop;
-      const origUpdatePlayhead = window.updatePlayhead;
-      // We wrap seekTo into the existing timeline scrub events via MutationObserver
-      // on playhead position — simpler than patching the event chain.
-      let lastEngineSeekMs = -1;
-      setInterval(() => {
-        const targetMs = Math.round(S.time * 1000);
-        if (!S.playing && Math.abs(targetMs - lastEngineSeekMs) > 50) {
-          lastEngineSeekMs = targetMs;
-          seekTo(targetMs).catch(() => {});
-        }
-      }, 100);
+      // ── Pause callback (e.g. end of video) ───────────────────────────────
+      window.onPlaybackPaused = () => {
+        S.playing = false;
+        document
+          .querySelectorAll(".icon-play")
+          .forEach((i) => i.setAttribute("data-lucide", "play"));
+        lucide.createIcons();
+      };
 
-      // ── Export wiring ────────────────────────────────────────────────────
+      // ── Event-driven scrub seek (replaces the old 100ms setInterval) ──────
+      // The inline script calls window.onPlayheadScrub when the user drags the
+      // playhead or clicks on the timeline ruler — no polling needed.
+      let scrubDebounce = null;
+      let lastScrubMs = -1;
+
+      window.onPlayheadScrub = (timeSec) => {
+        const ms = Math.round(timeSec * 1000);
+        if (Math.abs(ms - lastScrubMs) < 50) return; // ignore tiny sub-50ms jitter
+        lastScrubMs = ms;
+
+        // Debounce: if the user is dragging fast, only fire once they pause briefly
+        clearTimeout(scrubDebounce);
+        scrubDebounce = setTimeout(() => {
+          seekTo(ms).catch(console.error);
+        }, 80);
+      };
+
+      // ── Export ────────────────────────────────────────────────────────────
       window.handleExport = async function () {
         await exportVideo((progress) => {
           const pct = Math.round(progress * 100);
@@ -2988,53 +2936,64 @@
         });
       };
 
-      // ── Colour grade controls wiring ─────────────────────────────────────
-      // Hook the existing slider/input controls in the colour panel.
-      // The UI uses generic "param-slider" data attributes — we read them here.
-      document.addEventListener('input', (e) => {
-        const slider = e.target.closest('[data-grade]');
+      // ── Colour grade sliders → engine ─────────────────────────────────────
+      document.addEventListener("input", (e) => {
+        const slider = e.target.closest("[data-grade]");
         if (!slider) return;
-        const param = slider.dataset.grade;
-        const value = parseFloat(slider.value);
-        setColorGrade({ [param]: value });
+        setColorGrade({ [slider.dataset.grade]: parseFloat(slider.value) });
       });
 
-      // ── Drag-and-drop on the canvas wrapper ──────────────────────────────
-      const canvasWrapper = document.getElementById('canvas-wrapper');
-      canvasWrapper.addEventListener('dragenter', () => {
-        dropOverlay.style.display = 'flex';
+      // ── Score badge: update every 2 seconds while playing ─────────────────
+      setInterval(() => {
+        if (!S.playing) return;
+        const { composite } = perf.score();
+        if (composite === 0) return;
+        scoreValue.textContent = composite;
+        scoreValue.className =
+          "score-value " +
+          (composite >= 70 ? "good" : composite >= 40 ? "ok" : "bad");
+      }, 2000);
+
+      // ── Drag-and-drop on canvas wrapper ───────────────────────────────────
+      const canvasWrapper = document.getElementById("canvas-wrapper");
+      canvasWrapper.addEventListener("dragenter", () => {
+        dropOverlay.style.display = "flex";
       });
-      canvasWrapper.addEventListener('dragleave', (e) => {
-        if (!canvasWrapper.contains(e.relatedTarget)) {
-          dropOverlay.style.display = 'none';
-        }
+      canvasWrapper.addEventListener("dragleave", (e) => {
+        if (!canvasWrapper.contains(e.relatedTarget))
+          dropOverlay.style.display = "none";
       });
-      canvasWrapper.addEventListener('dragover', (e) => { e.preventDefault(); });
-      canvasWrapper.addEventListener('drop', async (e) => {
+      canvasWrapper.addEventListener("dragover", (e) => e.preventDefault());
+      canvasWrapper.addEventListener("drop", async (e) => {
         e.preventDefault();
-        dropOverlay.style.display = 'none';
+        dropOverlay.style.display = "none";
         const file = e.dataTransfer.files[0];
-        if (file && file.type.startsWith('video/')) {
-          await importFile(file);
-        }
+        if (file && file.type.startsWith("video/")) await importFile(file);
       });
 
       // File picker
-      fileInput.addEventListener('change', async (e) => {
+      fileInput.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (file) await importFile(file);
       });
 
-      // ── Init ─────────────────────────────────────────────────────────────
-      initEngine(canvasEl).then(() => {
-        console.log('[iKlippa] Engine ready. Drop a video file to begin.');
-        statusBadge.innerHTML = '<i data-lucide="cloud-lightning"></i> Engine ready';
-        lucide.createIcons({ nodes: [statusBadge] });
-      }).catch(err => {
-        console.error('[iKlippa] WASM load failed:', err);
-        statusBadge.innerHTML = '<i data-lucide="alert-triangle"></i> WASM load failed';
-        lucide.createIcons({ nodes: [statusBadge] });
-      });
+      // ── Init ──────────────────────────────────────────────────────────────
+      initEngine(canvasEl)
+        .then(() => {
+          console.log("[iKlippa] Engine ready. Drop a video file to begin.");
+          console.log(
+            "[iKlippa] Run iklippaScore() in the console at any time for a benchmark report.",
+          );
+          statusBadge.innerHTML =
+            '<i data-lucide="cloud-lightning"></i> Engine ready';
+          lucide.createIcons({ nodes: [statusBadge] });
+        })
+        .catch((err) => {
+          console.error("[iKlippa] WASM load failed:", err);
+          statusBadge.innerHTML =
+            '<i data-lucide="alert-triangle"></i> WASM load failed';
+          lucide.createIcons({ nodes: [statusBadge] });
+        });
     </script>
   </body>
 </html>
