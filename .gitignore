@@ -1,0 +1,21 @@
+# Python / ML
+ml/venv/
+ml/.env
+__pycache__/
+*.pyc
+ml/data/*.csv
+ml/data/*.json
+ml/models/*.pkl
+
+# Go
+backend/bin/
+
+# Frontend / Rust (For Elvis)
+node_modules/
+dist/
+engine/target/
+engine/pkg/
+
+# OS
+.DS_Store
+Thumbs.db
