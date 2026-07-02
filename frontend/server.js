@@ -19,6 +19,7 @@ http.createServer((req, res) => {
     // THESE ARE THE MAGIC HEADERS
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    res.setHeader('Cache-Control', 'no-store, must-revalidate');
 
     fs.readFile(filePath, (error, content) => {
         if (error) {
