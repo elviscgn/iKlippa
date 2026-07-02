@@ -2,10 +2,9 @@
 
 lucide.createIcons();
 
-// Establish core application state globally
 window.S = {
     time: 0,
-    dur: 24,
+    dur: 10,          // FIX #5: sensible default, not 24
     playing: false,
     rafId: null,
     lastTs: null,
@@ -15,16 +14,8 @@ window.S = {
 };
 
 window.mediaPool = {
-    footage: [
-        { id: "m1", name: "Ocean_Sunrise.mp4", picId: 29 },
-        { id: "m2", name: "Mountain_Peak.mp4", picId: 42 },
-        { id: "m3", name: "City_Lights.mp4", picId: 26 },
-        { id: "m4", name: "Forest_Path.mp4", picId: 47 },
-    ],
-    audio: [
-        { id: "a1", name: "Amapiano_LogDrum_Drop.mp3", dur: "3:42" },
-        { id: "a2", name: "Ambient_LoFi.wav", dur: "2:15" },
-    ],
+    footage: [],
+    audio: [],
     stock: {
         video: [
             { id: "sv1", name: "Neon_Drive.mp4", picId: 83 },
@@ -41,17 +32,9 @@ window.mediaPool = {
     },
 };
 
-window.videoClips = [
-    { id: "vc1", name: "Ocean_Sunrise.mp4", start: 0.0, end: 6.2, picId: 29 },
-    { id: "vc2", name: "Mountain_Peak.mp4", start: 6.2, end: 14.7, picId: 42 },
-    { id: "vc3", name: "City_Lights.mp4", start: 14.7, end: 19.7, picId: 26 },
-    { id: "vc4", name: "Forest_Path.mp4", start: 19.7, end: 24.0, picId: 47 },
-];
-
-window.audioClips = [
-    { id: "ac1", name: "Amapiano_LogDrum_Drop.mp3", start: 0, end: 24.0 },
-];
-
+// FIX #1: Start empty — no fake placeholder clips
+window.videoClips = [];
+window.audioClips = [];
 window.aiNodes = [];
 
 const picUrl = (id, w, h) => `https://picsum.photos/id/${id}/${w}/${h}`;
@@ -133,7 +116,6 @@ window.toggleFcb = () => {
     $("#fcb").classList.toggle("collapsed");
 };
 
-// Brand Swatch Selection
 $$("#editor-color-picker .color-swatch").forEach((sw) => {
     sw.onclick = () => {
         $$("#editor-color-picker .color-swatch").forEach(
@@ -155,7 +137,6 @@ $$("#editor-color-picker .color-swatch").forEach((sw) => {
     };
 });
 
-// Tab Switch Logic
 $$(".ai-tab").forEach((tab) => {
     tab.onclick = () => {
         $$(".ai-tab").forEach((t) => t.classList.remove("active"));
@@ -183,11 +164,13 @@ cmdInput.addEventListener("input", (e) => {
         lucide.createIcons({ nodes: [acMenu] });
         acMenu.classList.add("active");
     } else if (lastWord.startsWith("@")) {
+        // FIX: Build @ mention list from actual clips
+        const clipItems = window.videoClips.map(c =>
+            `<div class="ac-item" onclick="insertAC('@${c.name.replace(/[^a-zA-Z0-9_]/g, '_')} ')"><i data-lucide="film"></i> @${c.name}</div>`
+        ).join("");
         acMenu.innerHTML =
             '<div class="ac-section">Clips</div>' +
-            '<div class="ac-item" onclick="insertAC(\'@Ocean_Sunrise \')"><i data-lucide="film"></i> @Ocean_Sunrise</div>' +
-            '<div class="ac-item" onclick="insertAC(\'@City_Lights \')"><i data-lucide="film"></i> @City_Lights</div>' +
-            '<div class="ac-item" onclick="insertAC(\'@Cyber_Grid_Beat \')"><i data-lucide="music"></i> @Cyber_Grid_Beat</div>';
+            (clipItems || '<div class="ac-item" style="color:var(--text-muted);">No clips yet</div>');
         lucide.createIcons({ nodes: [acMenu] });
         acMenu.classList.add("active");
     } else {
@@ -276,28 +259,40 @@ window.renderMedia = function (type, subType = null) {
         data.forEach((item) => {
             const el = document.createElement("div");
             el.className = "audio-item";
-            el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${item.name}</h4><p>${item.dur}</p></div>`;
+            const durStr = item.dur || "?";
+            el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${item.name}</h4><p>${durStr}</p></div>`;
             list.appendChild(el);
         });
     } else {
         grid.style.display = "grid";
         list.style.display = "none";
+        if (data.length === 0 && type === "footage") {
+            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px 16px;color:var(--text-muted);font-size:11px;"><i data-lucide="upload" style="width:24px;height:24px;display:block;margin:0 auto 8px;opacity:0.4;"></i>Drop a video file onto the canvas to begin</div>';
+            lucide.createIcons({ nodes: [grid] });
+            return;
+        }
         data.forEach((item) => {
             const el = document.createElement("div");
             el.className = "media-item";
-            el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
-            el.draggable = true;
-            el.ondragstart = (e) =>
-                e.dataTransfer.setData(
-                    "text/plain",
-                    JSON.stringify({
-                        id: "vc_" + Date.now(),
-                        name: item.name,
-                        picId: item.picId,
-                        start: 0,
-                        end: 4.0,
-                    }),
-                );
+            if (item.isReal) {
+                el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:28px;height:28px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
+            } else {
+                el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
+            }
+            el.draggable = !item.isReal;
+            if (!item.isReal) {
+                el.ondragstart = (e) =>
+                    e.dataTransfer.setData(
+                        "text/plain",
+                        JSON.stringify({
+                            id: "vc_" + Date.now(),
+                            name: item.name,
+                            picId: item.picId || 0,
+                            start: 0,
+                            end: 4.0,
+                        }),
+                    );
+            }
             el.onclick = () => {
                 $$(".media-item").forEach((m) => m.classList.remove("selected"));
                 el.classList.add("selected");
@@ -331,19 +326,35 @@ $$(".stock-subtab").forEach((tab) => {
 
 // ── Timeline Rules and Rendering ───────────────────────────────────────
 function getLaneW() {
-    return $("#lane-v1").getBoundingClientRect().width * window.S.zoom;
+    const lane = $("#lane-v1");
+    if (!lane) return 100;   // FIX #5: safe fallback
+    return lane.getBoundingClientRect().width * window.S.zoom;
 }
 
 window.renderRuler = function () {
     const r = $("#tl-ruler");
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
-    const interval = window.S.zoom > 1.5 ? 1 : window.S.zoom < 0.6 ? 4 : 2;
-    for (let s = 0; s <= window.S.dur; s += interval) {
+    const dur = window.S.dur;
+    if (dur <= 0) return;    // FIX #5: guard
+
+    // Adaptive tick interval based on duration & zoom
+    let interval;
+    if (dur <= 10) interval = window.S.zoom > 1.5 ? 0.5 : 1;
+    else if (dur <= 30) interval = window.S.zoom > 1.5 ? 1 : 2;
+    else if (dur <= 120) interval = window.S.zoom > 1.5 ? 2 : 5;
+    else interval = window.S.zoom > 1.5 ? 5 : 10;
+
+    for (let s = 0; s <= dur; s += interval) {
         const tick = document.createElement("div");
         tick.className = "ruler-tick";
-        tick.style.left = (s / window.S.dur) * tw + "px";
-        tick.innerHTML = `<div class="tick-line major"></div><span class="tick-label">00:${String(s).padStart(2, "0")}</span>`;
+        tick.style.left = (s / dur) * tw + "px";
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        const label = m > 0
+            ? `${m}:${String(sec).padStart(2, "0")}`
+            : `${sec}s`;
+        tick.innerHTML = `<div class="tick-line major"></div><span class="tick-label">${label}</span>`;
         r.appendChild(tick);
     }
 };
@@ -389,41 +400,91 @@ function applyDragLogic(el, clip, clipArray, tw) {
     };
 }
 
+// FIX #4: Deterministic pseudo-random for waveform (no Math.random)
+function seededBarHeight(i) {
+    // Simple hash-like deterministic value from index
+    let x = ((i * 2654435761) >>> 0) & 0xFF;
+    return 10 + (x % 28);
+}
+
 window.renderClips = function () {
     const laneV1 = $("#lane-v1");
     const laneA1 = $("#lane-a1");
     laneV1.innerHTML = laneA1.innerHTML = "";
     const tw = getLaneW();
+    const dur = window.S.dur;
+    if (dur <= 0) return;    // FIX #5
+
+    // Show empty-state hint when no clips exist
+    if (window.videoClips.length === 0) {
+        laneV1.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;opacity:0.5;pointer-events:none;">Drop video here</div>';
+    }
 
     window.videoClips.forEach((clip) => {
         const el = document.createElement("div");
         el.className = "tl-clip";
-        const left = (clip.start / window.S.dur) * tw;
-        const w = ((clip.end - clip.start) / window.S.dur) * tw;
+        const left = (clip.start / dur) * tw;
+        const w = ((clip.end - clip.start) / dur) * tw;
         el.style.left = left + "px";
         el.style.width = w + "px";
-        const count = Math.max(1, Math.floor(w / 60));
-        let thumbs = '<div class="tl-clip-thumbs">';
-        for (let j = 0; j < count; j++)
-            thumbs += `<img src="${picUrl(clip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
-        thumbs += "</div>";
-        el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
+
+        // Real clip with captured thumbnails
+        if (clip.isReal && clip.thumbnails && clip.thumbnails.length > 0) {
+            const count = Math.max(1, Math.floor(w / 60));
+            let thumbs = '<div class="tl-clip-thumbs">';
+            for (let j = 0; j < count; j++) {
+                const idx = Math.min(
+                    Math.floor((j / count) * clip.thumbnails.length),
+                    clip.thumbnails.length - 1
+                );
+                thumbs += `<img src="${clip.thumbnails[idx].dataUrl}" draggable="false">`;
+            }
+            thumbs += "</div>";
+            el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
+            el.style.background = "linear-gradient(180deg, rgba(13,148,136,0.08) 0%, rgba(0,0,0,0.4) 100%)";
+        }
+        // Real clip without thumbnails yet — gradient placeholder
+        else if (clip.isReal) {
+            el.style.background = "linear-gradient(135deg, rgba(13,148,136,0.12), rgba(6,6,8,0.8))";
+            el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${clip.name}</span>`;
+        }
+        // Stock / placeholder clip with picsum
+        else if (clip.picId) {
+            const count = Math.max(1, Math.floor(w / 60));
+            let thumbs = '<div class="tl-clip-thumbs">';
+            for (let j = 0; j < count; j++)
+                thumbs += `<img src="${picUrl(clip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
+            thumbs += "</div>";
+            el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
+        }
+        // Fallback
+        else {
+            el.style.background = "rgba(255,255,255,0.04)";
+            el.innerHTML = `<span class="tl-clip-label">${clip.name}</span>`;
+        }
+
         applyDragLogic(el, clip, window.videoClips, tw);
         laneV1.appendChild(el);
     });
 
+    // Empty audio lane hint
+    if (window.audioClips.length === 0) {
+        laneA1.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;opacity:0.5;pointer-events:none;">Audio track</div>';
+    }
+
     window.audioClips.forEach((clip) => {
         const el = document.createElement("div");
         el.className = "tl-clip tl-clip-audio";
-        const left = (clip.start / window.S.dur) * tw;
-        const w = ((clip.end - clip.start) / window.S.dur) * tw;
+        const left = (clip.start / dur) * tw;
+        const w = ((clip.end - clip.start) / dur) * tw;
         el.style.left = left + "px";
         el.style.width = w + "px";
-        const bars = Array.from({ length: Math.floor(w / 4) }, (_, i) => {
-            const h = 10 + Math.abs(Math.sin(i * 0.1) * 20) + Math.random() * 8;
+        // FIX #4: deterministic bars — no Math.random()
+        const bars = Array.from({ length: Math.max(1, Math.floor(w / 4)) }, (_, i) => {
+            const h = seededBarHeight(i);
             return `<rect x="${i * 4}" y="${20 - h / 2}" width="2.5" height="${Math.min(h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`;
         }).join("");
-        el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${w} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
+        el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, w)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
         applyDragLogic(el, clip, window.audioClips, tw);
         laneA1.appendChild(el);
     });
@@ -432,12 +493,12 @@ window.renderClips = function () {
     window.aiNodes.forEach((node) => {
         const el = document.createElement("div");
         el.className = "ai-node";
-        el.style.left = (node.time / window.S.dur) * tw + "px";
+        el.style.left = (node.time / dur) * tw + "px";
         el.innerHTML = `<i data-lucide="${node.icon}"></i> ${node.label}`;
         el.onclick = () => showToast("AI Insight: " + node.label, node.icon);
         $("#lane-ai").appendChild(el);
     });
-    lucide.createIcons({ nodes: [$("#lane-ai")] });
+    lucide.createIcons({ nodes: [$("#lane-ai"), laneV1] });
 };
 
 $("#lane-v1").ondragover = (e) => e.preventDefault();
@@ -483,21 +544,28 @@ $$(".tl-tool").forEach((btn) => {
 
 // ── Time Formatting and Playhead Sync ───────────────────────────────
 function fmtTime(sec) {
-    const m = Math.floor(sec / 60);
+    // FIX #6: compact format for sub-hour clips
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
     const s = Math.floor(sec % 60);
     const f = Math.floor((sec % 1) * 30);
-    return `00:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
+    if (h > 0) {
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
+    }
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
 }
 
 window.updatePlayhead = function () {
     const tw = getLaneW();
-    const px = (window.S.time / window.S.dur) * tw;
+    const dur = window.S.dur;
+    if (dur <= 0) return;    // FIX #5
+    const px = (window.S.time / dur) * tw;
     $("#ph-ruler").style.left = px + "px";
     $("#ph-tracks").style.left = 140 + px + "px";
     $("#timecode").textContent = fmtTime(window.S.time);
 };
 
-// Standard UI-Fallback Play Control
+// UI-Fallback Play Control (overridden by app.js when engine loads)
 window.togglePlay = function () {
     if (window.S.playing) {
         window.S.playing = false;
@@ -535,16 +603,19 @@ window.skipTime = function (delta) {
 };
 
 // ── Scrub Seek Event Handling ──────────────────────────────────────────
+// FIX #2: Ruler already has margin-left:140px, so don't subtract 140 again
 function handleTimelineScrub(e, el) {
     const rect = el.getBoundingClientRect();
+    const isRuler = (el.id === "tl-ruler");
+    const headOffset = isRuler ? 0 : 140;
     const x = Math.max(
         0,
-        e.clientX - rect.left - 140 + $("#tl-tracks").scrollLeft,
+        e.clientX - rect.left - headOffset,
     );
-    window.S.time = Math.max(
-        0,
-        Math.min((x / getLaneW()) * window.S.dur, window.S.dur),
-    );
+    const tw = getLaneW();
+    const dur = window.S.dur;
+    if (dur <= 0 || tw <= 0) return;
+    window.S.time = Math.max(0, Math.min((x / tw) * dur, dur));
     window.updatePlayhead();
     if (window.onPlayheadScrub) window.onPlayheadScrub(window.S.time);
 }
@@ -613,54 +684,72 @@ $("#ai-cmd").onkeypress = (e) => {
 };
 
 let acts = { trim: false, cap: false, sync: false };
+
+window.resetAiActions = function () {
+    acts = { trim: false, cap: false, sync: false };
+};
+
 window.applyAiAction = function (type) {
     if (type === "silence" && !acts.trim) {
-        window.videoClips[1].start = 6.0;
-        window.videoClips[1].end = 14.0;
-        window.videoClips[2].start = 14.0;
-        window.videoClips[2].end = 18.5;
-        window.videoClips[3].start = 18.5;
-        window.videoClips[3].end = 22.0;
-        window.S.dur = 22.0;
-        window.aiNodes.push({
-            time: 6.0,
-            label: "Gap Trimmed",
-            icon: "scissors",
-        });
-        window.aiNodes.push({
-            time: 14.0,
-            label: "Gap Trimmed",
-            icon: "scissors",
-        });
-        $("#insight-score").textContent = "96";
-        $("#insight-bar").style.width = "96%";
-        $("#insight-box").classList.add("optimized");
-        appendChat("Trimmed 3.2s of silent gaps automatically.");
-        showToast("AI Smart Trim Applied", "scissors");
-        acts.trim = true;
+        if (window.videoClips.length === 1 && window.videoClips[0].isReal) {
+            // Real video: simulate trim by shortening ~8%
+            const clip = window.videoClips[0];
+            const originalDur = clip.end - clip.start;
+            const trimmedDur = originalDur * 0.92;
+            clip.end = clip.start + trimmedDur;
+            window.S.dur = trimmedDur;
+            window.audioClips.forEach(ac => { if (ac.isReal) ac.end = trimmedDur; });
+            window.aiNodes.push({ time: trimmedDur, label: "Silence Trimmed", icon: "scissors" });
+            $("#insight-score").textContent = "93";
+            $("#insight-bar").style.width = "93%";
+            $("#insight-box").classList.add("optimized");
+            appendChat("Trimmed silent segments automatically.");
+            showToast("AI Smart Trim Applied", "scissors");
+            acts.trim = true;
+        } else if (window.videoClips.length >= 2) {
+            // Multiple clips: tighten gaps
+            const firstStart = window.videoClips[0].start;
+            let cursor = window.videoClips[0].end;
+            for (let i = 1; i < window.videoClips.length; i++) {
+                const gap = window.videoClips[i].start - cursor;
+                if (gap > 0) {
+                    const dur = window.videoClips[i].end - window.videoClips[i].start;
+                    window.videoClips[i].start = cursor;
+                    window.videoClips[i].end = cursor + dur;
+                }
+                cursor = window.videoClips[i].end;
+            }
+            window.S.dur = cursor;
+            window.aiNodes.push({ time: firstStart, label: "Gaps Trimmed", icon: "scissors" });
+            $("#insight-score").textContent = "96";
+            $("#insight-bar").style.width = "96%";
+            $("#insight-box").classList.add("optimized");
+            appendChat("Trimmed gaps between clips automatically.");
+            showToast("AI Smart Trim Applied", "scissors");
+            acts.trim = true;
+        } else {
+            showToast("Import a video first", "info");
+            return;
+        }
     } else if (type === "captions" && !acts.cap) {
-        window.aiNodes.push({
-            time: 2.0,
-            label: "Captions Generated",
-            icon: "captions",
-        });
-        window.aiNodes.push({
-            time: 10.0,
-            label: "Captions Synced",
-            icon: "captions",
-        });
+        if (window.videoClips.length === 0) { showToast("Import a video first", "info"); return; }
+        window.aiNodes.push({ time: Math.min(2.0, window.S.dur * 0.1), label: "Captions Generated", icon: "captions" });
+        window.aiNodes.push({ time: Math.min(10.0, window.S.dur * 0.5), label: "Captions Synced", icon: "captions" });
         appendChat("Word-level captions generated and synced.");
         showToast("AI Captions Added", "captions");
         $("#canvas-text").classList.add("active");
         acts.cap = true;
     } else if (type === "sync" && !acts.sync) {
-        window.aiNodes.push({ time: 6.2, label: "Beat Match", icon: "zap" });
-        window.aiNodes.push({ time: 14.7, label: "Bass Drop", icon: "zap" });
-        appendChat("Mapped cuts exactly to the Amapiano log drum drops.");
-        showToast("Afro-Rhythm Sync Complete", "zap");
+        if (window.videoClips.length === 0) { showToast("Import a video first", "info"); return; }
+        const dur = window.S.dur;
+        window.aiNodes.push({ time: dur * 0.25, label: "Beat Match", icon: "zap" });
+        window.aiNodes.push({ time: dur * 0.6, label: "Bass Drop", icon: "zap" });
+        appendChat("Mapped cuts to beat markers.");
+        showToast("Rhythm Sync Complete", "zap");
         acts.sync = true;
     } else {
         showToast("Action already applied!", "check");
+        return;
     }
     window.renderRuler();
     window.renderClips();

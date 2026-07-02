@@ -8,6 +8,8 @@ import {
     setColorGrade,
     exportVideo,
     perf,
+    getThumbnails,
+    getCurrentFileName,
 } from "./engine.js";
 
 const canvasEl = document.getElementById("canvas-img");
@@ -16,6 +18,8 @@ const fileInput = document.getElementById("file-input");
 const statusBadge = document.querySelector(".status-badge");
 const scoreValue = document.getElementById("score-value");
 
+let hasRealVideo = false;
+
 // ── Engine Status to UI ──────────────────────────────────────────────
 window.onEngineStatus = (msg) => {
     statusBadge.innerHTML = `<i data-lucide="zap"></i> ${msg}`;
@@ -23,24 +27,73 @@ window.onEngineStatus = (msg) => {
     window.showToast(msg, "zap");
 };
 
-// ── Playhead updates: Engine to UI Timeline ──────────────────────────
+// ── Playhead updates: Engine → UI Timeline ──────────────────────────
 window.onPlayheadUpdate = (ms) => {
     window.S.time = ms / 1000;
     window.updatePlayhead();
 };
 
-// ── Import complete: Update UI Duration ──────────────────────────────
-window.onClipImported = ({ clipId, width, height, durationMs }) => {
-    window.S.dur = durationMs / 1000;
+// ── Thumbnail updates: debounced re-render ──────────────────────────
+let thumbnailRenderDebounce = null;
+window.onThumbnailsUpdated = (thumbnails) => {
+    if (!hasRealVideo) return;
+    if (window.videoClips.length > 0 && window.videoClips[0].isReal) {
+        window.videoClips[0].thumbnails = thumbnails;
+    }
+    clearTimeout(thumbnailRenderDebounce);
+    thumbnailRenderDebounce = setTimeout(() => {
+        window.renderClips();
+    }, 600);
+};
+
+// ── Import complete: Replace empty clips with real video ────────────
+window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
+    hasRealVideo = true;
+    const durationSec = durationMs / 1000;
+    window.S.dur = durationSec;
+
+    const displayName = fileName || "Imported Video";
+
+    window.videoClips = [{
+        id: "real_v1",
+        name: displayName,
+        start: 0,
+        end: durationSec,
+        isReal: true,
+        thumbnails: getThumbnails ? getThumbnails() : [],
+    }];
+
+    window.audioClips = [{
+        id: "real_a1",
+        name: displayName.replace(/\.[^.]+$/, ""),
+        start: 0,
+        end: durationSec,
+        isReal: true,
+    }];
+
+    // Reset AI state for new clip
+    window.aiNodes = [];
+    if (window.resetAiActions) window.resetAiActions();
+
+    // Add to media pool
+    window.mediaPool.footage = [
+        { id: "imported_real", name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s" },
+    ];
+
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
+    window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
+
+    // FIX #3: Removed the rapid 5-point seek scan — it raced with the
+    // worker's seek queue. Thumbnails now build naturally during playback
+    // and scrubbing, which is how professional NLEs work anyway.
 };
 
 // ── Connect Playback Control to Engine ───────────────────────────────
 window.togglePlay = function () {
-    const nowPlaying = togglePlayback(); // engine.js determines status
+    const nowPlaying = togglePlayback();
     document
         .querySelectorAll(".icon-play")
         .forEach((i) =>
@@ -50,7 +103,7 @@ window.togglePlay = function () {
     window.S.playing = nowPlaying;
 };
 
-// ── Pause Callback (such as end of timeline) ──────────────────────────
+// ── Pause Callback ──────────────────────────────────────────────────
 window.onPlaybackPaused = () => {
     window.S.playing = false;
     document
@@ -59,13 +112,13 @@ window.onPlaybackPaused = () => {
     lucide.createIcons();
 };
 
-// ── Timeline Scrub: Handle and Debounce ────────────────────────────────
+// ── Timeline Scrub: Debounced ────────────────────────────────────────
 let scrubDebounce = null;
 let lastScrubMs = -1;
 
 window.onPlayheadScrub = (timeSec) => {
     const ms = Math.round(timeSec * 1000);
-    if (Math.abs(ms - lastScrubMs) < 50) return; // avoid sub-50ms noise
+    if (Math.abs(ms - lastScrubMs) < 50) return;
     lastScrubMs = ms;
 
     clearTimeout(scrubDebounce);
@@ -83,7 +136,7 @@ window.handleExport = async function () {
     });
 };
 
-// ── Color grading sliders connection ──────────────────────────────────
+// ── Color grading sliders ────────────────────────────────────────────
 document.addEventListener("input", (e) => {
     const slider = e.target.closest("[data-grade]");
     if (!slider) return;
@@ -101,7 +154,7 @@ setInterval(() => {
         (composite >= 70 ? "good" : composite >= 40 ? "ok" : "bad");
 }, 2000);
 
-// ── Drag & Drop Event Handling ────────────────────────────────────────
+// ── Drag & Drop ──────────────────────────────────────────────────────
 const canvasWrapper = document.getElementById("canvas-wrapper");
 canvasWrapper.addEventListener("dragenter", () => {
     dropOverlay.style.display = "flex";
@@ -119,7 +172,6 @@ canvasWrapper.addEventListener("drop", async (e) => {
     if (file && file.type.startsWith("video/")) await importFile(file);
 });
 
-// File picker configuration
 fileInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (file) await importFile(file);
