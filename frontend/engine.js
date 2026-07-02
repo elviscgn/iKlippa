@@ -21,7 +21,7 @@ let videoDurationMs = 0;
 let isExporting = false;
 let exportFrames = [];
 
-// ── Performance Monitor (Restored with Worker Support) ───────────────────────
+// ── Performance Monitor (Smart Auto-Detection) ───────────────────────────────
 export class PerformanceMonitor {
   constructor() { this.reset(); }
 
@@ -40,7 +40,14 @@ export class PerformanceMonitor {
     if (this._lastRaf !== null) {
       const dt = ts - this._lastRaf;
       this._frameTimes.push(dt);
-      if (dt > 20) this._droppedFrames++;  // below 50 fps = a dropped frame
+
+      // DYNAMIC DETECT: If display is 30Hz (M1 battery saver / 30fps video), threshold is ~40ms.
+      // If 60Hz, threshold is ~20ms.
+      const avgFrameMs = this._frameTimes.reduce((a, b) => a + b, 0) / this._frameTimes.length;
+      const targetMs = (this._frameTimes.length > 10 && avgFrameMs > 25) ? 33.33 : 16.67;
+      const threshold = targetMs * 1.25; // 25% tolerance limit
+
+      if (dt > threshold) this._droppedFrames++;
       this._totalFrames++;
       if (this._frameTimes.length > 120) this._frameTimes.shift();
     }
@@ -74,9 +81,12 @@ export class PerformanceMonitor {
     const dropRate = this._totalFrames > 0
       ? this._droppedFrames / this._totalFrames : 0;
 
+    // Auto-detect target based on actual frame timings
+    const targetMs = avgFrameMs > 25 ? 33.33 : 16.67;
+
     // Sub-scores 0–100
     const smoothness = Math.max(0, Math.min(100,
-      100 - ((avgFrameMs - 16.67) / 16.67) * 100));
+      100 - (Math.abs(avgFrameMs - targetMs) / targetMs) * 100));
     const gradePerf = Math.max(0, Math.min(100,
       100 - (avgGradeMs / 4) * 100));
     const decodePerf = Math.max(0, Math.min(100,
@@ -102,13 +112,14 @@ export class PerformanceMonitor {
       avgDecodeMs: avgDecodeMs.toFixed(2),
       dropRatePct: (dropRate * 100).toFixed(1),
       totalFrames: this._totalFrames,
+      targetFps: Math.round(1000 / targetMs)
     };
   }
 
   report() {
     const s = this.score();
     console.group('%ciKlippa Performance Report', 'color:#0d9488;font-weight:700;font-size:14px');
-    console.log('%c🎯 Composite Score: ' + s.composite + ' / 100',
+    console.log('%c🎯 Composite Score: ' + s.composite + ' / 100 (' + s.targetFps + ' FPS Target)',
       'font-size:16px;font-weight:800;color:' + (s.composite >= 70 ? '#10b981' : s.composite >= 40 ? '#f59e0b' : '#ef4444'));
     console.table({
       'Smoothness': s.smoothness + '/100  (avg ' + s.avgFrameMs + ' ms/frame)',
@@ -125,8 +136,19 @@ export class PerformanceMonitor {
 export const perf = new PerformanceMonitor();
 window.iklippaScore = () => perf.report();
 
+// ── Init & Worker Bridge ─────────────────────────────────────────────────────
+export async function initEngine(canvasEl) {
+  canvas = canvasEl;
+  ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
 
-// ── Updated Worker Message Handler (Routes data back into the monitor) ─────────
+  worker = new Worker('./worker.js', { type: 'module' });
+  worker.onmessage = handleWorkerMessage;
+  worker.postMessage({ type: 'init' });
+
+  logStatus('Booting background worker...');
+  return true;
+}
+
 function handleWorkerMessage(e) {
   const { type, ...data } = e.data;
 
@@ -147,7 +169,6 @@ function handleWorkerMessage(e) {
   }
 
   if (type === 'frame') {
-    // We send the worker's native grade time directly into our metric monitor
     perf.recordFrameArrival(data.ms, data.gradeMs);
 
     // Convert the ArrayBuffer back into an ImageData object
@@ -161,20 +182,6 @@ function handleWorkerMessage(e) {
   }
 }
 
-// ── Init & Worker Bridge ─────────────────────────────────────────────────────
-export async function initEngine(canvasEl) {
-  canvas = canvasEl;
-  ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-
-  worker = new Worker('./worker.js', { type: 'module' });
-  worker.onmessage = handleWorkerMessage;
-  worker.postMessage({ type: 'init' });
-
-  logStatus('Booting background worker...');
-  return true;
-}
-
-
 // ── Demux (Main Thread) ──────────────────────────────────────────────────────
 export async function importFile(file) {
   logStatus(`Importing: ${file.name}`);
@@ -182,31 +189,70 @@ export async function importFile(file) {
 
   const { codecConfig, width, height, durationMs, samples } = await new Promise((resolve, reject) => {
     const mp4 = MP4Box.createFile();
-    let resolved = false;
+    let trackInfo = null;
+    let codecConfigResult = null;
+    const samplesArray = [];
+
+    // This triggers as soon as the index box is parsed (at start OR end of file)
     mp4.onReady = (info) => {
       const track = info.videoTracks[0];
-      const codecConfig = { codec: track.codec, codedWidth: track.track_width, codedHeight: track.track_height, description: getDecoderDescription(mp4, track) };
+      if (!track) {
+        reject(new Error('No video track found in this file'));
+        return;
+      }
+      trackInfo = track;
+      codecConfigResult = {
+        codec: track.codec,
+        codedWidth: track.track_width,
+        codedHeight: track.track_height,
+        description: getDecoderDescription(mp4, track)
+      };
+
       mp4.setExtractionOptions(track.id, null, { nbSamples: Infinity });
       mp4.start();
-      const samples = [];
-      mp4.onSamples = (_id, _user, s) => { samples.push(...s); };
-      const CHUNK = 2 * 1024 * 1024;
-      let offset = 0;
-      function readChunk() {
-        file.slice(offset, offset + CHUNK).arrayBuffer().then(buf => {
+    };
+
+    mp4.onSamples = (_id, _user, s) => {
+      samplesArray.push(...s);
+    };
+
+    mp4.onError = (err) => {
+      reject(new Error('MP4Box error during import: ' + err));
+    };
+
+    const CHUNK = 2 * 1024 * 1024; // 2MB slices
+    let offset = 0;
+
+    // This loop reads the file independently of onReady, preventing deadlocks!
+    function readNextChunk() {
+      if (offset >= file.size) {
+        mp4.flush();
+        if (trackInfo && codecConfigResult) {
+          resolve({
+            codecConfig: codecConfigResult,
+            width: trackInfo.track_width,
+            height: trackInfo.track_height,
+            durationMs: Math.round((trackInfo.duration / trackInfo.timescale) * 1000),
+            samples: samplesArray
+          });
+        } else {
+          reject(new Error('Failed to find video metadata (corrupt or missing index)'));
+        }
+        return;
+      }
+
+      file.slice(offset, offset + CHUNK).arrayBuffer()
+        .then(buf => {
           buf.fileStart = offset;
           mp4.appendBuffer(buf);
           offset += CHUNK;
-          if (offset < file.size) readChunk();
-          else {
-            mp4.flush();
-            if (!resolved) { resolved = true; resolve({ codecConfig, width: track.track_width, height: track.track_height, durationMs: Math.round((track.duration / track.timescale) * 1000), samples }); }
-          }
-        }).catch(reject);
-      }
-      file.slice(0, 4 * 1024 * 1024).arrayBuffer().then(buf => { buf.fileStart = 0; mp4.appendBuffer(buf); offset = 4 * 1024 * 1024; readChunk(); }).catch(reject);
-    };
-    file.slice(0, 4 * 1024 * 1024).arrayBuffer().then(buf => { buf.fileStart = 0; mp4.appendBuffer(buf); }).catch(reject);
+          readNextChunk(); // Read sequentially to the end
+        })
+        .catch(reject);
+    }
+
+    // Start reading immediately
+    readNextChunk();
   });
 
   worker.postMessage({ type: 'load', file, codecConfig, width, height, durationMs, samples });
@@ -354,3 +400,24 @@ function loadScript(src) {
   });
 }
 function logStatus(msg) { console.log(`[iKlippa] ${msg}`); if (window.onEngineStatus) window.onEngineStatus(msg); }
+
+export function wireDropTarget(dropEl) {
+  dropEl.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  dropEl.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('video/')) {
+      await importFile(file);
+    }
+  });
+}
+
+export function wireFileInput(inputEl) {
+  inputEl.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (file) await importFile(file);
+  });
+}
