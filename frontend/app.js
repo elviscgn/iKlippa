@@ -10,6 +10,7 @@ import {
     perf,
     getThumbnails,
     getCurrentFileName,
+    captureThumbnail,
 } from "./engine.js";
 
 const canvasEl = document.getElementById("canvas-img");
@@ -71,13 +72,13 @@ window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
         isReal: true,
     }];
 
-    // Reset AI state for new clip
     window.aiNodes = [];
     if (window.resetAiActions) window.resetAiActions();
 
-    // Add to media pool
+    // ── FIX: Capture canvas thumbnail for media pool ──
+    // The first frame may not be painted yet, so retry with backoff
     window.mediaPool.footage = [
-        { id: "imported_real", name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s" },
+        { id: "imported_real", name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null },
     ];
 
     window.renderRuler();
@@ -86,9 +87,19 @@ window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
 
-    // FIX #3: Removed the rapid 5-point seek scan — it raced with the
-    // worker's seek queue. Thumbnails now build naturally during playback
-    // and scrubbing, which is how professional NLEs work anyway.
+    // Retry thumbnail capture until canvas has been painted
+    let thumbAttempts = 0;
+    const tryCaptureThumb = () => {
+        if (thumbAttempts++ > 15) return;
+        const thumb = captureThumbnail();
+        if (thumb && window.mediaPool.footage[0]) {
+            window.mediaPool.footage[0].thumbDataUrl = thumb;
+            window.renderMedia("footage");
+        } else {
+            setTimeout(tryCaptureThumb, 150);
+        }
+    };
+    setTimeout(tryCaptureThumb, 150);
 };
 
 // ── Connect Playback Control to Engine ───────────────────────────────
@@ -112,19 +123,15 @@ window.onPlaybackPaused = () => {
     lucide.createIcons();
 };
 
-// ── Timeline Scrub: Debounced ────────────────────────────────────────
-let scrubDebounce = null;
-let lastScrubMs = -1;
-
+// ── Timeline Scrub: Throttled (not debounced) ────────────────────────
+// FIX: Changed from debounce to throttle so the canvas updates DURING drag,
+// not only after the drag stops.
+let lastSeekMs = -1;
 window.onPlayheadScrub = (timeSec) => {
     const ms = Math.round(timeSec * 1000);
-    if (Math.abs(ms - lastScrubMs) < 50) return;
-    lastScrubMs = ms;
-
-    clearTimeout(scrubDebounce);
-    scrubDebounce = setTimeout(() => {
-        seekTo(ms).catch(console.error);
-    }, 80);
+    if (Math.abs(ms - lastSeekMs) < 50) return; // at least 50ms between seeks
+    lastSeekMs = ms;
+    seekTo(ms).catch(console.error);
 };
 
 // ── Video Export Trigger ─────────────────────────────────────────────
@@ -181,9 +188,6 @@ fileInput.addEventListener("change", async (e) => {
 initEngine(canvasEl)
     .then(() => {
         console.log("[iKlippa] Engine ready. Drop a video file to begin.");
-        console.log(
-            "[iKlippa] Run iklippaScore() in the console at any time for a benchmark report.",
-        );
         statusBadge.innerHTML =
             '<i data-lucide="cloud-lightning"></i> Engine ready';
         lucide.createIcons({ nodes: [statusBadge] });
