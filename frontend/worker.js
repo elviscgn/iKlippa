@@ -8,11 +8,18 @@ let decoder = null;
 
 let clips = [];
 let isSeeking = false;
+let pendingSeekMs = null;
 let isDecodingNext = false;
 let lastDecodedSampleIdx = -1;
 let decoderSeeded = false;
 
-// Persistent offscreen canvas for opaque hardware textures (e.g. HEVC on M1)
+// Concurrency Shield: Prevents stale async decodes from feeding reset decoders
+let decoderGeneration = 0;
+
+// Sync State from Main Thread
+let currentPlayheadMs = 0;
+let isWorkerPlaying = false;
+
 let offscreenCanvas = null;
 let offscreenCtx = null;
 
@@ -29,19 +36,13 @@ self.onmessage = async (e) => {
 
     else if (type === 'load') {
         const { file, codecConfig, width, height, samples, durationMs } = data;
-
-        if (!wasmModule) {
-            wasmModule = new IklippaEngine(width, height);
-        } else {
-            wasmModule.resize(width, height);
-        }
+        if (!wasmModule) { wasmModule = new IklippaEngine(width, height); }
+        else { wasmModule.resize(width, height); }
 
         frameView = new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), wasmModule.frame_len());
         clips = [{ file, codecConfig, samples }];
 
-        // Initialize our persistent conversion canvas
         setupOffscreenCanvas(width, height);
-
         setupDecoder(codecConfig, width, height);
         await seekAndDecodeFrame(0);
         self.postMessage({ type: 'ready', durationMs, width, height });
@@ -51,8 +52,13 @@ self.onmessage = async (e) => {
         await seekAndDecodeFrame(data.ms);
     }
 
-    else if (type === 'decode_next') {
-        await decodeNextSamples(data.count);
+    else if (type === 'sync') {
+        currentPlayheadMs = data.playheadMs;
+        isWorkerPlaying = data.isPlaying;
+
+        if (isWorkerPlaying && data.framesAhead < 15) {
+            await decodeNextSamples();
+        }
     }
 
     else if (type === 'set_grade') {
@@ -76,28 +82,29 @@ self.onmessage = async (e) => {
 
 function setupOffscreenCanvas(width, height) {
     offscreenCanvas = new OffscreenCanvas(width, height);
-    // willReadFrequently forces system RAM storage, optimized for fast CPU readback on M1
     offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
 }
 
 function setupDecoder(codecConfig, width, height) {
+    decoderGeneration++; // Invalidate any running tasks
     if (decoder && decoder.state !== 'closed') decoder.close();
 
     decoder = new VideoDecoder({
         output: async (videoFrame) => {
             const tsMs = Math.round(videoFrame.timestamp / 1000);
 
-            // WebCodecs HEVC 10-bit opaque hardware check
+            // Drop late frames during normal playback
+            if (isWorkerPlaying && tsMs < currentPlayheadMs - 66) {
+                videoFrame.close();
+                return;
+            }
+
             if (videoFrame.format === null) {
-                // Draw the opaque frame onto our canvas to let the GPU resolve colorspace
                 offscreenCtx.drawImage(videoFrame, 0, 0);
                 videoFrame.close();
-
-                // Grab the converted RGBA pixels
                 const imgData = offscreenCtx.getImageData(0, 0, width, height);
                 frameView.set(imgData.data);
             } else {
-                // Standard H.264 fast-path
                 await videoFrame.copyTo(frameView, { format: 'RGBA' });
                 videoFrame.close();
             }
@@ -106,37 +113,32 @@ function setupDecoder(codecConfig, width, height) {
             wasmModule.process_frame();
             const gradeMs = performance.now() - gradeStart;
 
-            // Extract the finished pixels
             const len = wasmModule.frame_len();
             const ownedPixels = new Uint8ClampedArray(len);
             ownedPixels.set(new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), len));
 
-            // ZERO-COPY TRANSFER: Hand the memory back to the UI thread
             self.postMessage({
-                type: 'frame',
-                ms: tsMs,
-                gradeMs,
-                buffer: ownedPixels.buffer
+                type: 'frame', ms: tsMs, gradeMs, buffer: ownedPixels.buffer
             }, [ownedPixels.buffer]);
         },
         error: (e) => console.error('[Worker Decoder]', e),
     });
 
     decoder.configure({
-        codec: codecConfig.codec,
-        codedWidth: width,
-        codedHeight: height,
-        description: codecConfig.description,
-        hardwareAcceleration: 'prefer-hardware',
-        optimizeForLatency: true,
+        codec: codecConfig.codec, codedWidth: width, codedHeight: height,
+        description: codecConfig.description, hardwareAcceleration: 'prefer-hardware', optimizeForLatency: true,
     });
 }
 
 async function seekAndDecodeFrame(targetMs) {
-    if (!clips.length || !decoder) return;
-    if (isSeeking) return;
+    if (isSeeking) {
+        pendingSeekMs = targetMs;
+        return;
+    }
+
     isSeeking = true;
     decoderSeeded = false;
+    decoderGeneration++; // Increment generation to kill any active decodeNextSamples tasks
 
     const { samples, file, codecConfig } = clips[0];
     let keyframeIdx = 0;
@@ -148,27 +150,28 @@ async function seekAndDecodeFrame(targetMs) {
 
     decoder.reset();
     decoder.configure({
-        codec: codecConfig.codec,
-        codedWidth: codecConfig.codedWidth,
-        codedHeight: codecConfig.codedHeight,
-        description: codecConfig.description,
-        hardwareAcceleration: 'prefer-hardware',
-        optimizeForLatency: true,
+        codec: codecConfig.codec, codedWidth: codecConfig.codedWidth, codedHeight: codecConfig.codedHeight,
+        description: codecConfig.description, hardwareAcceleration: 'prefer-hardware', optimizeForLatency: true,
     });
+
+    const myGeneration = decoderGeneration;
 
     for (let i = keyframeIdx; i < samples.length; i++) {
         const s = samples[i];
         const sMs = Math.round((s.cts / s.timescale) * 1000);
         const data = await readSampleData(file, s);
+
+        // Concurrency Check: If a newer seek was triggered while we were reading disk, abort!
+        if (myGeneration !== decoderGeneration) {
+            isSeeking = false;
+            return;
+        }
+
         const tsUs = s.cts * (1_000_000 / s.timescale);
 
         self.postMessage({ type: 'decode_submit', ms: Math.round(tsUs / 1000) });
-
         decoder.decode(new EncodedVideoChunk({
-            type: s.is_sync ? 'key' : 'delta',
-            timestamp: tsUs,
-            duration: s.duration * (1_000_000 / s.timescale),
-            data,
+            type: s.is_sync ? 'key' : 'delta', timestamp: tsUs, duration: s.duration * (1_000_000 / s.timescale), data,
         }));
 
         if (sMs >= targetMs) {
@@ -178,38 +181,43 @@ async function seekAndDecodeFrame(targetMs) {
     }
     decoderSeeded = true;
     isSeeking = false;
+
+    if (pendingSeekMs !== null) {
+        const nextMs = pendingSeekMs;
+        pendingSeekMs = null;
+        seekAndDecodeFrame(nextMs);
+    }
 }
 
-async function decodeNextSamples(count) {
+async function decodeNextSamples() {
     if (!clips.length || !decoder || decoder.state !== 'configured') return;
     if (!decoderSeeded || isSeeking || isDecodingNext) return;
-    if (decoder.decodeQueueSize >= MAX_DECODE_QUEUE) return;
 
     isDecodingNext = true;
+    const myGeneration = decoderGeneration; // Capture the generation at the start of this batch
     const { samples, file } = clips[0];
-    const startIdx = lastDecodedSampleIdx + 1;
 
-    if (startIdx >= samples.length) { isDecodingNext = false; return; }
+    while (decoder.decodeQueueSize < MAX_DECODE_QUEUE) {
+        const startIdx = lastDecodedSampleIdx + 1;
+        if (startIdx >= samples.length) break;
 
-    let fed = 0;
-    for (let i = startIdx; i < samples.length && fed < count; i++) {
-        if (decoder.decodeQueueSize >= MAX_DECODE_QUEUE) break;
-
-        const s = samples[i];
+        const s = samples[startIdx];
         const data = await readSampleData(file, s);
+
+        // Concurrency Check: If a seek occurred while we were awaiting file data, discard this stale chunk!
+        if (myGeneration !== decoderGeneration) {
+            isDecodingNext = false;
+            return;
+        }
+
         const tsUs = s.cts * (1_000_000 / s.timescale);
 
         self.postMessage({ type: 'decode_submit', ms: Math.round(tsUs / 1000) });
-
         decoder.decode(new EncodedVideoChunk({
-            type: s.is_sync ? 'key' : 'delta',
-            timestamp: tsUs,
-            duration: s.duration * (1_000_000 / s.timescale),
-            data,
+            type: s.is_sync ? 'key' : 'delta', timestamp: tsUs, duration: s.duration * (1_000_000 / s.timescale), data,
         }));
 
-        lastDecodedSampleIdx = i;
-        fed++;
+        lastDecodedSampleIdx = startIdx;
     }
     isDecodingNext = false;
 }

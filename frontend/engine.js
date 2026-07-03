@@ -283,7 +283,15 @@ function renderLoop(ts) {
   lastRafTs = ts;
 
   paintFrameAtTime(playheadMs);
-  worker.postMessage({ type: 'decode_next', count: DECODE_LOOKAHEAD });
+
+  // --- BACKPRESSURE METRICS ---
+  let framesAhead = 0;
+  for (const frameMs of pendingFrames.keys()) {
+    if (frameMs >= playheadMs) framesAhead++;
+  }
+
+  // Sync state to worker. The worker uses this to regulate the queue and drop late frames
+  worker.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead });
 
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
   rafHandle = requestAnimationFrame(renderLoop);
@@ -297,34 +305,45 @@ function paintFrameAtTime(ms) {
   }
   if (bestMs >= 0) ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
 
-  const pruneBeforeMs = ms - 2000;
+  const pruneBeforeMs = ms - 1000; // Tighter memory cleanup
   for (const [frameMs] of pendingFrames) {
     if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
   }
+}
+
+function syncWorkerState() {
+  if (worker) worker.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead: 0 });
 }
 
 export function startPlayback() {
   if (isPlaying) return;
   isPlaying = true;
   lastRafTs = null;
+  syncWorkerState();
   rafHandle = requestAnimationFrame(renderLoop);
 }
+
 export function pausePlayback() {
   isPlaying = false;
   lastRafTs = null;
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
+  syncWorkerState();
   if (window.onPlaybackPaused) window.onPlaybackPaused();
 }
+
 export function togglePlayback() {
   isPlaying ? pausePlayback() : startPlayback();
   return isPlaying;
 }
+
 export async function seekTo(ms) {
   playheadMs = ms;
   pendingFrames.clear();
   worker.postMessage({ type: 'seek', ms });
+  syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
 }
+
 export function setColorGrade(params) {
   worker.postMessage({ type: 'set_grade', params, forceRenderMs: isPlaying ? undefined : playheadMs });
 }
