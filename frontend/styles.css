@@ -562,174 +562,6 @@ textarea {
   opacity: 1;
 }
 
-/* ── Color Grading Panel ── */
-.grade-panel {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 25;
-  background: rgba(14, 14, 16, 0.92);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
-  width: 280px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-}
-
-.grade-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.grade-title {
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-main);
-}
-
-.grade-title svg {
-  width: 14px;
-  height: 14px;
-  color: var(--accent-primary);
-}
-
-.grade-close {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  transition: all 0.15s;
-}
-
-.grade-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-main);
-}
-
-.grade-close svg {
-  width: 14px;
-  height: 14px;
-}
-
-.grade-sliders {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.grade-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.grade-row label {
-  width: 72px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.grade-row input[type="range"] {
-  flex: 1;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 2px;
-  outline: none;
-}
-
-.grade-row input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  border: 2px solid #fff;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-}
-
-.grade-row input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  border: 2px solid #fff;
-  cursor: pointer;
-}
-
-.grade-val {
-  width: 32px;
-  text-align: right;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.grade-lut {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.grade-lut label {
-  width: 72px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.grade-lut select {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  color: var(--text-main);
-  font-size: 10px;
-  font-weight: 500;
-  padding: 5px 8px;
-  outline: none;
-  font-family: var(--font-sans);
-}
-
-.grade-lut select:focus {
-  border-color: var(--accent-primary);
-}
-
-.grade-reset {
-  margin-top: 12px;
-  width: 100%;
-  padding: 7px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-muted);
-  transition: all 0.15s;
-}
-
-.grade-reset:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #ef4444;
-}
-
 /* Score Badge */
 .score-badge {
   position: absolute;
@@ -1141,6 +973,7 @@ textarea {
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   padding: 0 20px 12px 2px;
+  margin: 0 -20px -12px -2px;
 }
 .ai-actions-scroll::-webkit-scrollbar {
   height: 2px;
@@ -1634,7 +1467,7 @@ textarea {
 }
 .playhead-knob {
   position: absolute;
-  top: 0,
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
   width: 9px;
