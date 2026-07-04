@@ -587,23 +587,28 @@ impl Project {
             }
         }
 
-        // Compute the right half first by cloning, then truncate the left.
         let new_id = self.alloc_clip_id();
-        let (left_end_us, right_source_start_us) = {
+        // Capture the original end values BEFORE truncating the left half so
+        // the cloned right half keeps them — clone-after-truncate would
+        // otherwise copy the truncated ends onto the right clip.
+        let (left_end_us, right_source_start_us, orig_timeline_end_us, orig_source_end_us) = {
             let clip = &mut self.tracks[track_idx].clips[clip_idx];
             let left_timeline_us = split_at_us - clip.timeline_start_us;
             let left_source_us = ((left_timeline_us as f32) / clip.speed) as i64;
             let right_source_start = clip.source_start_us + left_source_us;
-            let left_end = split_at_us;
-            clip.timeline_end_us = left_end;
+            let orig_timeline_end = clip.timeline_end_us;
+            let orig_source_end = clip.source_end_us;
+            clip.timeline_end_us = split_at_us;
             clip.source_end_us = right_source_start;
-            (left_end, right_source_start)
+            (split_at_us, right_source_start, orig_timeline_end, orig_source_end)
         };
 
         let mut right = self.tracks[track_idx].clips[clip_idx].clone();
         right.id = new_id;
         right.timeline_start_us = left_end_us;
+        right.timeline_end_us = orig_timeline_end_us;
         right.source_start_us = right_source_start_us;
+        right.source_end_us = orig_source_end_us;
 
         // Insert right after left; track stays sorted since left_end == right_start.
         self.tracks[track_idx].clips.insert(clip_idx + 1, right);
