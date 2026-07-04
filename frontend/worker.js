@@ -18,7 +18,14 @@ let isDecodingNext = false;
 let lastDecodedSampleIdx = -1;
 let lastDecodedAudioIdx = -1;
 let decoderSeeded = false;
-let decodeSessionId = 0;
+
+// --- Sync tokens ---
+let decodeSessionId = 0;       // Prevents async video race conditions
+let audioConfigVersion = 0;    // Stamped on audio chunks to validate active session [1]
+
+// --- Timeline Normalization Offsets ---
+let videoOffset = 0;           // Normalizes video track to start at 0ms [1]
+let audioOffset = 0;           // Normalizes audio track to start at 0ms [1]
 
 // Sync State from Main Thread
 let currentPlayheadMs = 0;
@@ -46,8 +53,14 @@ self.onmessage = async (e) => {
         frameView = new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), wasmModule.frame_len());
         clips = [{ file, codecConfig, samples }];
 
+        // Mount the Audio data
         audioConfig = data.audioConfig;
         audioSamples = data.audioSamples || [];
+        audioConfigVersion = data.audioConfigVersion || 0;
+
+        // CALCULATE TIMELINE OFFSETS: Solves the container delay bug [1]
+        videoOffset = samples.length > 0 ? samples[0].cts : 0;
+        audioOffset = audioSamples.length > 0 ? audioSamples[0].cts : 0;
 
         setupOffscreenCanvas(width, height);
         setupDecoder(codecConfig, width, height);
@@ -70,6 +83,10 @@ self.onmessage = async (e) => {
         }
     }
 
+    else if (type === 'set_audio_version') {
+        audioConfigVersion = data.version;
+    }
+
     else if (type === 'set_grade') {
         if (!wasmModule) return;
         const p = data.params;
@@ -82,7 +99,10 @@ self.onmessage = async (e) => {
         if (p.vignette !== undefined) wasmModule.set_vignette(p.vignette);
         if (p.grain !== undefined) wasmModule.set_grain(p.grain);
         if (p.lut !== undefined) wasmModule.set_lut(p.lut);
-        if (data.forceRenderMs !== undefined) await seekAndDecodeFrame(data.forceRenderMs);
+
+        if (data.forceRenderMs !== undefined) {
+            await seekAndDecodeFrame(data.forceRenderMs);
+        }
     }
 };
 
@@ -96,6 +116,7 @@ function setupAudioDecoder(config) {
 
     audioDecoder = new AudioDecoder({
         output: (audioData) => {
+            // FIX: Already normalized during decode feed! No offset subtraction needed here. [1]
             const tsMs = Math.round(audioData.timestamp / 1000);
 
             // Skip late audio chunks
@@ -138,7 +159,7 @@ function setupAudioDecoder(config) {
             audioData.close();
 
             self.postMessage({
-                type: 'audio_chunk', ms: tsMs, channels, sampleRate, length, buffers
+                type: 'audio_chunk', ms: tsMs, channels, sampleRate, length, buffers, configVersion: audioConfigVersion
             }, buffers);
         },
         error: e => console.error('[AudioDecoder]', e)
@@ -152,6 +173,7 @@ function setupDecoder(codecConfig, width, height) {
 
     decoder = new VideoDecoder({
         output: async (videoFrame) => {
+            // FIX: Already normalized during decode feed! No offset subtraction needed here. [1]
             const tsMs = Math.round(videoFrame.timestamp / 1000);
 
             if (isWorkerPlaying && tsMs < currentPlayheadMs - 66) {
@@ -200,15 +222,15 @@ async function seekAndDecodeFrame(targetMs) {
     }
 
     isSeeking = true;
-    decodeSessionId++; // Wipes out any active background decodes
+    decodeSessionId++;
     decoderSeeded = false;
 
     const { samples, file } = clips[0];
 
-    // 1. SEEK VIDEO (From Keyframe)
+    // 1. SEEK VIDEO (With track normalization) [1]
     let vKeyIdx = 0;
     for (let i = 0; i < samples.length; i++) {
-        const sMs = Math.round((samples[i].cts / samples[i].timescale) * 1000);
+        const sMs = Math.round(((samples[i].cts - videoOffset) / samples[i].timescale) * 1000);
         if (sMs <= targetMs && samples[i].is_sync) vKeyIdx = i;
         if (sMs > targetMs) break;
     }
@@ -220,9 +242,9 @@ async function seekAndDecodeFrame(targetMs) {
         if (pendingSeekMs !== null) break;
 
         const s = samples[i];
-        const sMs = Math.round((s.cts / s.timescale) * 1000);
+        const sMs = Math.round(((s.cts - videoOffset) / s.timescale) * 1000);
         const data = await readSampleData(file, s);
-        const tsUs = s.cts * (1_000_000 / s.timescale);
+        const tsUs = (s.cts - videoOffset) * (1_000_000 / s.timescale);
 
         self.postMessage({ type: 'decode_submit', ms: Math.round(tsUs / 1000) });
         decoder.decode(new EncodedVideoChunk({
@@ -235,20 +257,19 @@ async function seekAndDecodeFrame(targetMs) {
         }
     }
 
-    // 2. INSTANT SEEK AUDIO (0 disk reads, no lag!)
+    // 2. INSTANT SEEK AUDIO (With track normalization) [1]
     if (audioDecoder && audioSamples.length > 0) {
         audioDecoder.reset();
         audioDecoder.configure(audioConfig);
 
         let targetIdx = 0;
         for (let i = 0; i < audioSamples.length; i++) {
-            const sMs = Math.round((audioSamples[i].cts / audioSamples[i].timescale) * 1000);
+            const sMs = Math.round(((audioSamples[i].cts - audioOffset) / audioSamples[i].timescale) * 1000);
             if (sMs >= targetMs) {
                 targetIdx = i;
                 break;
             }
         }
-        // Set the index so the very next play chunk aligns perfectly to targetMs
         lastDecodedAudioIdx = targetIdx - 1;
     }
 
@@ -279,7 +300,7 @@ async function decodeNextSamples() {
         const data = await readSampleData(file, s);
         if (session !== decodeSessionId) { isDecodingNext = false; return; }
 
-        const tsUs = s.cts * (1_000_000 / s.timescale);
+        const tsUs = (s.cts - videoOffset) * (1_000_000 / s.timescale);
         self.postMessage({ type: 'decode_submit', ms: Math.round(tsUs / 1000) });
         decoder.decode(new EncodedVideoChunk({
             type: s.is_sync ? 'key' : 'delta', timestamp: tsUs, duration: s.duration * (1_000_000 / s.timescale), data,
@@ -298,7 +319,7 @@ async function decodeNextSamples() {
             const data = await readSampleData(file, s);
             if (session !== decodeSessionId) { isDecodingNext = false; return; }
 
-            const tsUs = s.cts * (1_000_000 / s.timescale);
+            const tsUs = (s.cts - audioOffset) * (1_000_000 / s.timescale);
             audioDecoder.decode(new EncodedAudioChunk({
                 type: 'key', timestamp: tsUs, duration: s.duration * (1_000_000 / s.timescale), data,
             }));
