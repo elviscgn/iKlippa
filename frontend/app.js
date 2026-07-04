@@ -11,9 +11,6 @@ import {
     getThumbnails,
     getCurrentFileName,
     captureThumbnail,
-    getRustClipId,
-    trimClip,
-    splitClip,
 } from "./engine.js";
 
 const canvasEl = document.getElementById("canvas-img");
