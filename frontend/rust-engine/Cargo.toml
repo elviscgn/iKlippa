@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+# `cdylib` for the wasm-pack output; `rlib` so `cargo test` can link the unit
+# tests in timeline_state.rs against this crate on the host target.
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen = "0.2"
@@ -14,6 +16,12 @@ web-sys      = { version = "0.3", features = [
   "CanvasRenderingContext2d",
   "ImageData",
 ] }
+
+# Phase 1 Task 1 — serialisable data model. serde_json works in wasm32 (pure
+# parser, no filesystem). Used by timeline_state.rs for Project round-tripping
+# and the .iklippa save/load format (Task 5).
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
 
 # Surfaces Rust panics as readable messages in the browser devtools console.
 # Enabled by default in all builds; add --no-default-features to disable in
