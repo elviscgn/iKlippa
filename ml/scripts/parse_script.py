@@ -71,9 +71,7 @@ def parse_script(script_text):
     """
     Master function that runs all three analyses and returns a single dictionary.
     """
-    # TODO 4: Call the three functions above and build the output dictionary.
-    # The returned dict should look like:
-    
+   
     result = {
         "keywords": extract_keywords(script_text),    
         "mood": analyze_mood(script_text),          
@@ -83,9 +81,12 @@ def parse_script(script_text):
     return result
 
 
-# --- Main Block ---
 if __name__ == "__main__":
-    # TODO 5: Create a test_script string with 2-3 sentences of sample script text.
-    # Then call parse_script() on it and print the result nicely.
-    # Hint: Use a horror or action script to see interesting mood/pacing results.
-    pass
+    horror_text = "The floorboards creak in the heavy silence. A shadow stretches slowly across the bedroom door, freezing Sarah in place. Deep breathing echoes from the darkness."
+    action_text = "Suddenly, the glass shatters! Max spins around instantly, draws his weapon, and fires three rapid shots into the smoke. The car roars to life!"
+
+    print("=== Horror Script ===")
+    print(parse_script(horror_text))
+
+    print("\n=== Action Script ===")
+    print(parse_script(action_text))
