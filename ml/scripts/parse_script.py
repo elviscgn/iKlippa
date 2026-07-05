@@ -73,12 +73,12 @@ def parse_script(script_text):
     """
     # TODO 4: Call the three functions above and build the output dictionary.
     # The returned dict should look like:
-    # {
-    #     "keywords": [...],       <-- from extract_keywords()
-    #     "mood": {...},           <-- from analyze_mood()
-    #     "pacing": {...},         <-- from estimate_pacing()
-    # }
-    result = {}  # <-- Replace this
+    
+    result = {
+        "keywords": extract_keywords(script_text),    
+        "mood": analyze_mood(script_text),          
+        "pacing": estimate_pacing(script_text),
+    }
 
     return result
 
