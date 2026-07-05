@@ -57,13 +57,13 @@ def estimate_pacing(script_text):
     
     avg_words = 0 if len(sentences) == 0 else sum(len(sentence) for sentence in sentences) / len(sentences)
 
-    # TODO 3: Assign a pacing_label based on avg_words.
-    # Rules:
-    #   - If avg_words < 8, pacing_label = "fast"
-    #   - If avg_words > 15, pacing_label = "slow"
-    #   - Otherwise, pacing_label = "medium"
-    pacing_label = ""  # <-- Replace this
-
+   
+    if avg_words<8:
+        pacing_label = "fast"
+    elif avg_words>15:
+        pacing_label = "slow"
+    else:
+        pacing_label = "medium"
     return {"avg_words_per_sentence": round(avg_words, 1), "label": pacing_label}
 
 
