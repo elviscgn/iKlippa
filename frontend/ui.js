@@ -33,13 +33,17 @@ window.mediaPool = {
 };
 
 // FIX #1: Start empty — no fake placeholder clips
-window.videoClips = [];
-window.audioClips = [];
+// window.videoClips / window.audioClips are now live getters defined in
+// state.js that return clips from IKState.project.tracks.
 window.aiNodes = [];
 
 const picUrl = (id, w, h) => `https://picsum.photos/id/${id}/${w}/${h}`;
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
+
+// µs → seconds helper for timeline display math (UI stays in seconds for
+// pixel positioning; the canonical model in state.js uses µs).
+const us2s = (us) => us / 1_000_000;
 
 // ── Toast ──────────────────────────────────────────────────────────────
 window.showToast = function (msg, iconStr) {
@@ -366,33 +370,45 @@ function applyDragLogic(el, clip, clipArray, tw) {
             const clickX =
                 e.clientX - rect.left + el.parentElement.parentElement.scrollLeft;
             const t = (clickX / tw) * window.S.dur;
-            if (t > clip.start + 0.5 && t < clip.end - 0.5) {
-                const i = clipArray.findIndex((c) => c.id === clip.id);
-                const c1 = { ...clip, id: "c" + Date.now(), end: t };
-                const c2 = { ...clip, id: "c" + (Date.now() + 1), start: t };
-                clipArray.splice(i, 1, c1, c2);
-                showToast("Clip Split", "scissors");
-                window.renderClips();
+            const clipStartSec = us2s(clip.timeline_start_us);
+            const clipEndSec = us2s(clip.timeline_end_us);
+            if (t > clipStartSec + 0.5 && t < clipEndSec - 0.5) {
+                const splitAtUs = Math.round(t * 1_000_000);
+                const newId = IKState.splitClip(clip.id, splitAtUs);
+                if (newId !== null) {
+                    showToast("Clip Split", "scissors");
+                    window.renderClips();
+                }
             }
         } else if (window.S.tool === "select") {
             $$(".tl-clip").forEach((c) => c.classList.remove("active"));
             el.classList.add("active");
-            let startX = e.clientX,
-                initialStart = clip.start;
+            let startX = e.clientX;
+            let initialStartUs = clip.timeline_start_us;
+            let durationUs = clip.timeline_end_us - clip.timeline_start_us;
             const move = (e2) => {
                 const dx = e2.clientX - startX;
-                const dt = (dx / tw) * window.S.dur;
-                let newStart = Math.max(
-                    0,
-                    Math.min(initialStart + dt, window.S.dur - (clip.end - clip.start)),
-                );
-                clip.end = newStart + (clip.end - clip.start);
-                clip.start = newStart;
+                const dtSec = (dx / tw) * window.S.dur;
+                let newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
+                let newStartUs = Math.round(newStartSec * 1_000_000);
+                clip.timeline_start_us = newStartUs;
+                clip.timeline_end_us = newStartUs + durationUs;
+                
+                // Extend timeline duration if clip moves past current end
+                const newEndSec = us2s(clip.timeline_end_us);
+                if (newEndSec > window.S.dur) {
+                    window.S.dur = newEndSec;
+                }
+                
                 window.renderClips();
+                window.renderRuler();
             };
             const up = () => {
                 document.removeEventListener("mousemove", move);
                 document.removeEventListener("mouseup", up);
+                // Commit to state on pointer-up (duration/project already
+                // updated since clip is a live ref; just recompute duration).
+                IKState.computeDuration();
             };
             document.addEventListener("mousemove", move);
             document.addEventListener("mouseup", up);
@@ -423,8 +439,10 @@ window.renderClips = function () {
     window.videoClips.forEach((clip) => {
         const el = document.createElement("div");
         el.className = "tl-clip";
-        const left = (clip.start / dur) * tw;
-        const w = ((clip.end - clip.start) / dur) * tw;
+        const clipStartSec = us2s(clip.timeline_start_us);
+        const clipDurSec = us2s(clip.timeline_end_us) - clipStartSec;
+        const left = (clipStartSec / dur) * tw;
+        const w = (clipDurSec / dur) * tw;
         el.style.left = left + "px";
         el.style.width = w + "px";
 
@@ -475,8 +493,10 @@ window.renderClips = function () {
     window.audioClips.forEach((clip) => {
         const el = document.createElement("div");
         el.className = "tl-clip tl-clip-audio";
-        const left = (clip.start / dur) * tw;
-        const w = ((clip.end - clip.start) / dur) * tw;
+        const clipStartSec = us2s(clip.timeline_start_us);
+        const clipDurSec = us2s(clip.timeline_end_us) - clipStartSec;
+        const left = (clipStartSec / dur) * tw;
+        const w = (clipDurSec / dur) * tw;
         el.style.left = left + "px";
         el.style.width = w + "px";
         // FIX #4: deterministic bars — no Math.random()
@@ -509,9 +529,13 @@ $("#lane-v1").ondrop = (e) => {
     const rect = $("#lane-v1").getBoundingClientRect();
     const t =
         ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur;
-    data.start = t;
-    data.end = Math.min(t + 4.0, window.S.dur);
-    window.videoClips.push(data);
+    const startUs = Math.round(t * 1_000_000);
+    const endUs = Math.min(Math.round((t + 4.0) * 1_000_000), Math.round(window.S.dur * 1_000_000));
+    IKState.addVideoClip("stock_" + data.id, startUs, endUs, {
+        name: data.name,
+        isReal: false,
+        picId: data.picId || 0,
+    });
     showToast("Stock Inserted", "film");
     window.renderClips();
 };
@@ -694,12 +718,17 @@ window.applyAiAction = function (type) {
         if (window.videoClips.length === 1 && window.videoClips[0].isReal) {
             // Real video: simulate trim by shortening ~8%
             const clip = window.videoClips[0];
-            const originalDur = clip.end - clip.start;
-            const trimmedDur = originalDur * 0.92;
-            clip.end = clip.start + trimmedDur;
-            window.S.dur = trimmedDur;
-            window.audioClips.forEach(ac => { if (ac.isReal) ac.end = trimmedDur; });
-            window.aiNodes.push({ time: trimmedDur, label: "Silence Trimmed", icon: "scissors" });
+            const startUs = clip.timeline_start_us;
+            const origDurUs = clip.timeline_end_us - clip.timeline_start_us;
+            const trimmedDurUs = Math.round(origDurUs * 0.92);
+            IKState.trimClip(clip.id, startUs, startUs + trimmedDurUs, clip.source_start_us);
+            const trimmedDurSec = us2s(trimmedDurUs);
+            window.S.dur = trimmedDurSec;
+            // Trim audio clips to match
+            window.audioClips.forEach(ac => {
+                if (ac.isReal) IKState.trimClip(ac.id, ac.timeline_start_us, ac.timeline_start_us + trimmedDurUs, ac.source_start_us);
+            });
+            window.aiNodes.push({ time: trimmedDurSec, label: "Silence Trimmed", icon: "scissors" });
             $("#insight-score").textContent = "93";
             $("#insight-bar").style.width = "93%";
             $("#insight-box").classList.add("optimized");
@@ -707,20 +736,22 @@ window.applyAiAction = function (type) {
             showToast("AI Smart Trim Applied", "scissors");
             acts.trim = true;
         } else if (window.videoClips.length >= 2) {
-            // Multiple clips: tighten gaps
-            const firstStart = window.videoClips[0].start;
-            let cursor = window.videoClips[0].end;
-            for (let i = 1; i < window.videoClips.length; i++) {
-                const gap = window.videoClips[i].start - cursor;
-                if (gap > 0) {
-                    const dur = window.videoClips[i].end - window.videoClips[i].start;
-                    window.videoClips[i].start = cursor;
-                    window.videoClips[i].end = cursor + dur;
+            // Multiple clips: tighten gaps by moving clips to close gaps
+            const clips = window.videoClips;
+            const firstStartSec = us2s(clips[0].timeline_start_us);
+            let cursorUs = clips[0].timeline_end_us;
+            for (let i = 1; i < clips.length; i++) {
+                const clip = clips[i];
+                if (clip.timeline_start_us > cursorUs) {
+                    const durUs = clip.timeline_end_us - clip.timeline_start_us;
+                    clip.timeline_start_us = cursorUs;
+                    clip.timeline_end_us = cursorUs + durUs;
                 }
-                cursor = window.videoClips[i].end;
+                cursorUs = clip.timeline_end_us;
             }
-            window.S.dur = cursor;
-            window.aiNodes.push({ time: firstStart, label: "Gaps Trimmed", icon: "scissors" });
+            IKState.computeDuration();
+            window.S.dur = us2s(cursorUs);
+            window.aiNodes.push({ time: firstStartSec, label: "Gaps Trimmed", icon: "scissors" });
             $("#insight-score").textContent = "96";
             $("#insight-bar").style.width = "96%";
             $("#insight-box").classList.add("optimized");
