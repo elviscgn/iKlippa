@@ -20,6 +20,8 @@
 
 use wasm_bindgen::prelude::*;
 
+mod timeline_state;
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_TRACKS:         usize = 8;
@@ -374,11 +376,17 @@ fn clamp_u8(v: f32) -> u8 {
 // ── WASM Public API (called from JS via wasm-bindgen) ────────────────────────
 
 /// The top-level engine instance. JS holds this as an opaque handle.
+///
+/// Phase 1 Task 1: `project` is the new canonical data model (µs timestamps,
+/// serde-serialisable, multi-track). The legacy `timeline` + `grade` fields
+/// stay until Task 2 compositing is verified against `project`, then they get
+/// deleted along with the legacy `Clip`/`Timeline`/`ColorGrade` above.
 #[wasm_bindgen]
 pub struct IklippaEngine {
     timeline: Timeline,
     pool:     FramePool,
     grade:    ColorGrade,
+    project:  timeline_state::Project,
 }
 
 #[wasm_bindgen]
@@ -395,6 +403,12 @@ impl IklippaEngine {
             timeline: Timeline::new(),
             pool:     FramePool::new(width, height),
             grade:    ColorGrade::default(),
+            project:  timeline_state::Project::new(
+                "Untitled".to_string(),
+                width,
+                height,
+                timeline_state::Rational::fps(30),
+            ),
         }
     }
 
@@ -491,5 +505,203 @@ impl IklippaEngine {
     #[wasm_bindgen]
     pub fn active_track_count(&self) -> u32 {
         self.timeline.clip_count.iter().filter(|&&c| c > 0).count() as u32
+    }
+
+    // ── Project API (Phase 1 Task 1 — new canonical model) ───────────────────
+    //
+    // All timestamps in this API are i64 microseconds. JSON shapes match the
+    // `timeline_state` serde layout — see `timeline_state.rs` for the schema.
+    //
+    // The legacy `add_clip`/`source_ms_for_playhead`/`duration_ms`/grade setters
+    // above stay callable until Task 2 compositing switches to `project`, after
+    // which they get deleted.
+
+    /// Replace the whole project from a JSON string (the `.iklippa` format or
+    /// a fresh project built on the JS side). Returns Err with a parse message
+    /// on bad JSON.
+    #[wasm_bindgen]
+    pub fn set_timeline(&mut self, json: &str) -> Result<(), String> {
+        let project = timeline_state::Project::load_project(json)
+            .map_err(|e| format!("set_timeline: {e}"))?;
+        self.project = project;
+        Ok(())
+    }
+
+    /// Alias for `set_timeline` — semantically "load from a saved file".
+    #[wasm_bindgen]
+    pub fn from_json(&mut self, json: &str) -> Result<(), String> {
+        self.set_timeline(json)
+    }
+
+    /// Serialise the whole project to a pretty JSON string (the `.iklippa`
+    /// format). Used by Save Project (Task 5) and undo/redo snapshots (Task 11).
+    #[wasm_bindgen]
+    pub fn to_json(&self) -> String {
+        match self.project.serialize_project() {
+            Ok(s) => s,
+            Err(e) => {
+                web_sys::console::error_1(&format!("to_json: {e}").into());
+                String::from("{}")
+            }
+        }
+    }
+
+    /// JSON array of clips active at `ts_us` on visible, non-muted tracks,
+    /// sorted by track order (compositor bottom→top). The compositor (Task 2)
+    // will consume this internally; exposing it to JS helps the UI highlight
+    // the active clip under the playhead.
+    #[wasm_bindgen]
+    pub fn clips_at_us(&self, ts_us: i64) -> String {
+        let active = self.project.clips_at(ts_us);
+        serde_json::to_string(&active).unwrap_or_else(|_| String::from("[]"))
+    }
+
+    /// Insert a clip (JSON, id ignored — allocator assigns) into `track_id`.
+    /// Returns the new clip id, or Err if the track doesn't exist.
+    #[wasm_bindgen]
+    pub fn insert_clip(&mut self, track_id: u32, clip_json: &str) -> Result<u32, String> {
+        let mut clip: timeline_state::Clip =
+            serde_json::from_str(clip_json).map_err(|e| format!("insert_clip: {e}"))?;
+        // Reset id to 0 so insert_clip() allocates; the JSON value is ignored.
+        clip.id = 0;
+        self.project
+            .insert_clip(track_id, clip)
+            .ok_or_else(|| format!("insert_clip: track {track_id} not found"))
+    }
+
+    /// Trim a clip in place. `new_source_start_us` lets the caller keep the
+    /// source window in sync with the timeline window.
+    #[wasm_bindgen]
+    pub fn trim_clip(
+        &mut self,
+        track_id: u32,
+        clip_id: u32,
+        new_start_us: i64,
+        new_end_us: i64,
+        new_source_start_us: i64,
+    ) -> Result<(), String> {
+        self.project
+            .trim_clip(track_id, clip_id, new_start_us, new_end_us, new_source_start_us)
+            .map_err(|e| format!("trim_clip: {e}"))
+    }
+
+    /// Split a clip at `split_at_us` (timeline µs). Returns the new (right
+    /// half) clip id.
+    #[wasm_bindgen]
+    pub fn split_clip(&mut self, track_id: u32, clip_id: u32, split_at_us: i64) -> Result<u32, String> {
+        self.project
+            .split_clip(track_id, clip_id, split_at_us)
+            .map_err(|e| format!("split_clip: {e}"))
+    }
+
+    /// Move a clip to a new timeline start (duration preserved).
+    #[wasm_bindgen]
+    pub fn move_clip(&mut self, track_id: u32, clip_id: u32, new_start_us: i64) -> Result<(), String> {
+        self.project
+            .move_clip(track_id, clip_id, new_start_us)
+            .map_err(|e| format!("move_clip: {e}"))
+    }
+
+    /// Remove a clip. Returns true if a clip was actually removed.
+    #[wasm_bindgen]
+    pub fn remove_clip(&mut self, track_id: u32, clip_id: u32) -> bool {
+        self.project.remove_clip(track_id, clip_id)
+    }
+
+    /// Reorder tracks. `track_ids_json` is a JSON array of track ids in the
+    /// desired order, e.g. `"[1,0,2]"`. Tracks not listed keep their relative
+    /// order at the end.
+    #[wasm_bindgen]
+    pub fn reorder_tracks(&mut self, track_ids_json: &str) -> Result<(), String> {
+        let ids: Vec<u32> =
+            serde_json::from_str(track_ids_json).map_err(|e| format!("reorder_tracks: {e}"))?;
+        self.project
+            .reorder_tracks(&ids)
+            .map_err(|e| format!("reorder_tracks: {e}"))
+    }
+
+    /// Recompute and return the project duration in microseconds.
+    #[wasm_bindgen]
+    pub fn compute_duration_us(&mut self) -> i64 {
+        self.project.compute_duration()
+    }
+
+    /// Cached project duration in microseconds (no recompute).
+    #[wasm_bindgen]
+    pub fn project_duration_us(&self) -> i64 {
+        self.project.duration_us
+    }
+
+    /// Project output width (export resolution).
+    #[wasm_bindgen]
+    pub fn project_width(&self) -> u32 {
+        self.project.width
+    }
+
+    /// Project output height (export resolution).
+    #[wasm_bindgen]
+    pub fn project_height(&self) -> u32 {
+        self.project.height
+    }
+
+    /// Update a clip's `ColourSettings` from JSON. Used by the per-clip colour
+    /// panel (Task 3).
+    #[wasm_bindgen]
+    pub fn set_clip_colour(&mut self, clip_id: u32, json: &str) -> Result<(), String> {
+        let cs: timeline_state::ColourSettings =
+            serde_json::from_str(json).map_err(|e| format!("set_clip_colour: {e}"))?;
+        let clip = self
+            .project
+            .find_clip_mut(clip_id)
+            .ok_or_else(|| format!("set_clip_colour: clip {clip_id} not found"))?;
+        clip.colour_settings = cs;
+        Ok(())
+    }
+
+    /// Update a clip's `ClipTransform` (position/scale/rotation/opacity/blend)
+    /// from JSON. Used by the overlay/transform UI (Task 6).
+    #[wasm_bindgen]
+    pub fn set_clip_transform(&mut self, clip_id: u32, json: &str) -> Result<(), String> {
+        let t: timeline_state::ClipTransform =
+            serde_json::from_str(json).map_err(|e| format!("set_clip_transform: {e}"))?;
+        let clip = self
+            .project
+            .find_clip_mut(clip_id)
+            .ok_or_else(|| format!("set_clip_transform: clip {clip_id} not found"))?;
+        clip.transform = t;
+        Ok(())
+    }
+
+    /// Replace a clip's `effects` Vec from JSON (a JSON array of Effect).
+    /// Used by the effects panel + LUT import (Tasks 3, 9).
+    #[wasm_bindgen]
+    pub fn set_clip_effects(&mut self, clip_id: u32, json: &str) -> Result<(), String> {
+        let effects: Vec<timeline_state::Effect> =
+            serde_json::from_str(json).map_err(|e| format!("set_clip_effects: {e}"))?;
+        let clip = self
+            .project
+            .find_clip_mut(clip_id)
+            .ok_or_else(|| format!("set_clip_effects: clip {clip_id} not found"))?;
+        clip.effects = effects;
+        Ok(())
+    }
+
+    /// Allocate and return a fresh clip id without inserting anything. Useful
+    /// when the JS side wants to reserve an id before building the clip JSON.
+    #[wasm_bindgen]
+    pub fn alloc_clip_id(&mut self) -> u32 {
+        self.project.alloc_clip_id()
+    }
+
+    /// Allocate and return a fresh track id.
+    #[wasm_bindgen]
+    pub fn alloc_track_id(&mut self) -> u32 {
+        self.project.alloc_track_id()
+    }
+
+    /// Allocate and return a fresh effect id.
+    #[wasm_bindgen]
+    pub fn alloc_effect_id(&mut self) -> u32 {
+        self.project.alloc_effect_id()
     }
 }
