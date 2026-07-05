@@ -379,6 +379,32 @@ function renderLoop(ts) {
 
 function paintFrameAtTime(ms) {
   if (!ctx) return;
+  
+  // Check if there's a clip at the playhead time (gap-aware playback)
+  const msUs = Math.round(ms * 1_000_000);
+  let activeClip = null;
+  if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
+    const clips = IKState.getVideoClips();
+    for (const clip of clips) {
+      if (msUs >= clip.timeline_start_us && msUs < clip.timeline_end_us) {
+        activeClip = clip;
+        break;
+      }
+    }
+  }
+  
+  if (!activeClip) {
+    // No clip at this time — clear the canvas (show black for gaps)
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    maybeCaptureThumbnail(ms);
+    const pruneBeforeMs = ms - 1500;
+    for (const [frameMs] of pendingFrames) { if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs); }
+    for (const [audioMs] of pendingAudio) { if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs); }
+    return;
+  }
+  
+  // There's a clip — find the best frame from pendingFrames
   let bestMs = -1;
   for (const [frameMs] of pendingFrames) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
