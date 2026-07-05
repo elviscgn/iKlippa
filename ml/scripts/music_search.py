@@ -25,11 +25,11 @@ def search_background_music(tags, limit=3):
         "audioformat": "mp32"
     }
 
-    # TODO 1: Make a GET request using the `requests` library
-    # Pass in the `url` and `params=params` (Note: Jamendo doesn't use headers for auth!)
     response = requests.get(url=url, params=params)
 
-    # TODO 2: Check if response.status_code != 200, print error, return []
+    if response.status_code != 200:
+        print(f"Error: Jamendo API returned status code {response.status_code}")
+        return []
     
     # TODO 3: Parse response to JSON
     # data = ...
