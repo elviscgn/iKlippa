@@ -34,6 +34,7 @@ window.IKState = (() => {
         return {
             id,
             source_id: sourceId,
+            group_id: null, // Will be set when added to track
             timeline_start_us: startUs,
             timeline_end_us: endUs,
             source_start_us: 0,
@@ -114,11 +115,12 @@ window.IKState = (() => {
     }
 
     // ── Clip CRUD ───────────────────────────────────────────────────────
-    function addVideoClip(sourceId, startUs, endUs, meta) {
+    function addVideoClip(sourceId, startUs, endUs, meta, groupId) {
         const track = getVideoTrack();
         if (!track) return null;
         const id = project.next_clip_id++;
         const clip = makeClip(id, sourceId, startUs, endUs);
+        clip.group_id = groupId || `group_${id}`;
         track.clips.push(clip);
         track.clips.sort((a, b) => a.timeline_start_us - b.timeline_start_us);
         clipMeta[id] = meta || {};
@@ -127,11 +129,12 @@ window.IKState = (() => {
         return clip;
     }
 
-    function addAudioClip(sourceId, startUs, endUs, meta) {
+    function addAudioClip(sourceId, startUs, endUs, meta, groupId) {
         const track = getAudioTrack();
         if (!track) return null;
         const id = project.next_clip_id++;
         const clip = makeClip(id, sourceId, startUs, endUs);
+        clip.group_id = groupId || `group_${id}`;
         track.clips.push(clip);
         track.clips.sort((a, b) => a.timeline_start_us - b.timeline_start_us);
         clipMeta[id] = meta || {};
@@ -185,9 +188,9 @@ window.IKState = (() => {
         clip.timeline_end_us = splitAtUs;
         clip.source_end_us = rightSourceStart;
 
-        // Create right half (clone + override)
+        // Create right half with NEW group ID (independent from left)
         const newId = project.next_clip_id++;
-        const right = { ...clip, id: newId, timeline_start_us: splitAtUs, timeline_end_us: origEndUs, source_start_us: rightSourceStart, source_end_us: origSourceEnd };
+        const right = { ...clip, id: newId, group_id: `group_${newId}`, timeline_start_us: splitAtUs, timeline_end_us: origEndUs, source_start_us: rightSourceStart, source_end_us: origSourceEnd };
         track.clips.splice(idx + 1, 0, right);
 
         // Copy display meta to the new clip
@@ -195,6 +198,12 @@ window.IKState = (() => {
         if (meta) {
             clipMeta[newId] = { ...meta, thumbnails: meta.thumbnails ? [...meta.thumbnails] : [] };
             _mergeMeta(right);
+        }
+
+        // Split linked clips too (same group_id)
+        const linkedIds = getLinkedClipIds(clipId).filter(id => id !== clipId);
+        for (const linkedId of linkedIds) {
+            splitClip(linkedId, splitAtUs);
         }
 
         computeDuration();
@@ -205,10 +214,25 @@ window.IKState = (() => {
         const clip = findClip(clipId);
         if (!clip) return false;
         const dur = clip.timeline_end_us - clip.timeline_start_us;
+        const deltaUs = newStartUs - clip.timeline_start_us;
+        
         clip.timeline_start_us = newStartUs;
         clip.timeline_end_us = newStartUs + dur;
         const track = findClipTrack(clipId);
         if (track) track.clips.sort((a, b) => a.timeline_start_us - b.timeline_start_us);
+        
+        // Move linked clips too
+        const linkedIds = getLinkedClipIds(clipId).filter(id => id !== clipId);
+        for (const linkedId of linkedIds) {
+            const linkedClip = findClip(linkedId);
+            if (linkedClip) {
+                linkedClip.timeline_start_us += deltaUs;
+                linkedClip.timeline_end_us += deltaUs;
+                const linkedTrack = findClipTrack(linkedId);
+                if (linkedTrack) linkedTrack.clips.sort((a, b) => a.timeline_start_us - b.timeline_start_us);
+            }
+        }
+        
         computeDuration();
         return true;
     }
@@ -217,6 +241,12 @@ window.IKState = (() => {
         const clip = findClip(clipId);
         if (!clip) return false;
         if (newEndUs <= newStartUs) return false;
+        
+        const origStartUs = clip.timeline_start_us;
+        const origEndUs = clip.timeline_end_us;
+        const deltaStartUs = newStartUs - origStartUs;
+        const deltaEndUs = newEndUs - origEndUs;
+        
         clip.timeline_start_us = newStartUs;
         clip.timeline_end_us = newEndUs;
         clip.source_start_us = newSourceStartUs;
@@ -224,8 +254,38 @@ window.IKState = (() => {
         clip.source_end_us = newSourceStartUs + Math.round(timelineUs / clip.speed);
         const track = findClipTrack(clipId);
         if (track) track.clips.sort((a, b) => a.timeline_start_us - b.timeline_start_us);
+        
+        // Trim linked clips too
+        const linkedIds = getLinkedClipIds(clipId).filter(id => id !== clipId);
+        for (const linkedId of linkedIds) {
+            const linkedClip = findClip(linkedId);
+            if (linkedClip) {
+                const linkedNewStart = linkedClip.timeline_start_us + deltaStartUs;
+                const linkedNewEnd = linkedClip.timeline_end_us + deltaEndUs;
+                const linkedNewSourceStart = linkedClip.source_start_us + Math.round(deltaStartUs / linkedClip.speed);
+                trimClip(linkedId, linkedNewStart, linkedNewEnd, linkedNewSourceStart);
+            }
+        }
+        
         computeDuration();
         return true;
+    }
+
+    function getLinkedClipIds(clipId) {
+        const clip = findClip(clipId);
+        if (!clip || !clip.group_id) return [];
+        const groupId = clip.group_id;
+        const linkedIds = [];
+        
+        for (const track of project.tracks) {
+            for (const c of track.clips) {
+                if (c.group_id === groupId && c.id !== clipId) {
+                    linkedIds.push(c.id);
+                }
+            }
+        }
+        
+        return linkedIds;
     }
 
     function setClipMeta(clipId, metaPatch) {
@@ -309,7 +369,7 @@ window.IKState = (() => {
         setClipMeta,
         computeDuration, getDurationSec,
         toRustJson, loadFromRustJson, verifyRoundTrip,
-        getProject,
+        getProject, getLinkedClipIds,
     };
 })();
 
