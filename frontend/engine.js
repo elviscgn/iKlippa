@@ -1,7 +1,6 @@
 /**
  * iKlippa — engine.js (Stable Audio & Catch-Up Fix)
  */
-
 const DECODE_LOOKAHEAD = 12;
 
 let worker = null;
@@ -25,19 +24,15 @@ let exportFrames = [];
 let audioCtx = null;
 let pendingAudio = new Map();
 let scheduledAudioNodes = [];
-let nextAudioScheduleTime = 0;
+let nextAudioStartTime = 0; // Used for chaining audio chunks
 let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
-
 let audioPlayStartCtxTime = 0;  // audioCtx.currentTime when play began
 let audioPlayStartMs = 0;       // playheadMs when play began
-
-let nextAudioStartTime = 0;
 
 // ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
   constructor() { this.reset(); }
-
   reset() {
     this._frameTimes = [];
     this._gradeTimes = [];
@@ -47,7 +42,6 @@ export class PerformanceMonitor {
     this._lastRaf = null;
     this._pendingDecodes = new Map();
   }
-
   recordRaf(ts) {
     if (this._lastRaf !== null) {
       const dt = ts - this._lastRaf;
@@ -60,9 +54,7 @@ export class PerformanceMonitor {
     }
     this._lastRaf = ts;
   }
-
   recordDecodeSubmit(tsMs) { this._pendingDecodes.set(tsMs, performance.now()); }
-
   recordFrameArrival(tsMs, gradeMs) {
     if (this._pendingDecodes.has(tsMs)) {
       this._decodeTimes.push(performance.now() - this._pendingDecodes.get(tsMs));
@@ -72,7 +64,6 @@ export class PerformanceMonitor {
     this._gradeTimes.push(gradeMs);
     if (this._gradeTimes.length > 120) this._gradeTimes.shift();
   }
-
   score() {
     const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
     const avgFrameMs = avg(this._frameTimes);
@@ -93,24 +84,22 @@ export class PerformanceMonitor {
       totalFrames: this._totalFrames, targetFps: Math.round(1000 / targetMs),
     };
   }
-
   report() {
     const s = this.score();
     console.group('%ciKlippa Performance Report', 'color:#0d9488;font-weight:700;font-size:14px');
     console.log(`%c🎯 Composite Score: ${s.composite} / 100 (${s.targetFps} FPS Target)`,
       `font-size:16px;font-weight:800;color:${s.composite >= 70 ? '#10b981' : s.composite >= 40 ? '#f59e0b' : '#ef4444'}`);
     console.table({
-      'Smoothness': `${s.smoothness}/100  (avg ${s.avgFrameMs} ms/frame)`,
-      'Grade Perf': `${s.gradePerf}/100  (avg ${s.avgGradeMs} ms/grade)`,
-      'Decode Perf': `${s.decodePerf}/100  (avg ${s.avgDecodeMs} ms decode→output)`,
-      'Drop Score': `${s.dropScore}/100  (${s.dropRatePct}% frames dropped)`,
+      'Smoothness': `${s.smoothness}/100 (avg ${s.avgFrameMs} ms/frame)`,
+      'Grade Perf': `${s.gradePerf}/100 (avg ${s.avgGradeMs} ms/grade)`,
+      'Decode Perf': `${s.decodePerf}/100 (avg ${s.avgDecodeMs} ms decode→output)`,
+      'Drop Score': `${s.dropScore}/100 (${s.dropRatePct}% frames dropped)`,
       'Total Frames': s.totalFrames,
     });
     console.groupEnd();
     return s.composite;
   }
 }
-
 export const perf = new PerformanceMonitor();
 window.iklippaScore = () => perf.report();
 
@@ -130,13 +119,12 @@ async function initAudio() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
   if (audioCtx.state !== 'running') {
-    await audioCtx.resume();   // ← was fire-and-forget before
+    await audioCtx.resume();
   }
 }
 
 function handleWorkerMessage(e) {
   const { type, ...data } = e.data;
-
   if (type === 'status') logStatus(data.msg);
 
   if (type === 'ready') {
@@ -165,12 +153,10 @@ function handleWorkerMessage(e) {
 
   if (type === 'audio_chunk') {
     if (!audioCtx || data.configVersion !== audioConfigVersion) return;
-
     const audioBuffer = audioCtx.createBuffer(data.channels, data.length, data.sampleRate);
     for (let c = 0; c < data.channels; c++) {
       audioBuffer.copyToChannel(new Float32Array(data.buffers[c]), c);
     }
-
     pendingAudio.set(data.ms, audioBuffer);
     if (isPlaying) scheduleAudioNode(data.ms, audioBuffer);
   }
@@ -208,7 +194,6 @@ function scheduleAudioNode(chunkMs, audioBuffer) {
   scheduledAudioNodes.push(source);
 }
 
-
 function stopAllAudioNodes() {
   scheduledAudioNodes.forEach(n => { try { n.stop(); } catch { } });
   scheduledAudioNodes = [];
@@ -218,11 +203,10 @@ function stopAllAudioNodes() {
 export async function importFile(file) {
   logStatus(`Importing: ${file.name}`);
   initAudio();
-
   pendingFrames.clear();
   pendingAudio.clear();
   stopAllAudioNodes();
-  nextAudioScheduleTime = 0;
+  nextAudioStartTime = 0;
   lastScheduledChunkMs = -1;
   audioConfigVersion++;
   playheadMs = 0;
@@ -287,11 +271,26 @@ export async function importFile(file) {
       if (offset >= file.size) {
         mp4.flush();
         if (trackInfo && codecConfigResult) {
+          // FIX: Calculate duration more robustly
+          let durationSec = trackInfo.duration / trackInfo.timescale;
+
+          // If duration is 0, try to calculate it from the last sample
+          if (durationSec === 0 && samplesArray.length > 0) {
+            const lastSample = samplesArray[samplesArray.length - 1];
+            durationSec = (lastSample.cts + lastSample.duration) / lastSample.timescale;
+          }
+
+          // Fallback for audio if video duration is still weird
+          if (durationSec === 0 && audioSamplesArray.length > 0) {
+            const lastAudio = audioSamplesArray[audioSamplesArray.length - 1];
+            durationSec = (lastAudio.cts + lastAudio.duration) / lastAudio.timescale;
+          }
+
           resolve({
             codecConfig: codecConfigResult,
             width: trackInfo.track_width,
             height: trackInfo.track_height,
-            durationMs: Math.round((trackInfo.duration / trackInfo.timescale) * 1000),
+            durationMs: Math.round(durationSec * 1000), // Use the calculated duration
             samples: samplesArray,
             audioConfig: audioConfigResult,
             audioSamples: audioSamplesArray,
@@ -349,7 +348,6 @@ function getAudioDescription(mp4, track) {
 function renderLoop(ts) {
   perf.recordRaf(ts);
   if (!isPlaying) return;
-
   if (lastRafTs !== null) {
     playheadMs += ts - lastRafTs;
     if (playheadMs >= videoDurationMs) {
@@ -358,15 +356,12 @@ function renderLoop(ts) {
     }
   }
   lastRafTs = ts;
-
   paintFrameAtTime(playheadMs);
-
   let framesAhead = 0;
   for (const frameMs of pendingFrames.keys()) {
     if (frameMs >= playheadMs) framesAhead++;
   }
   worker.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead });
-
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
   rafHandle = requestAnimationFrame(renderLoop);
 }
@@ -378,7 +373,6 @@ function paintFrameAtTime(ms) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
   }
   if (bestMs >= 0) ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
-
   const pruneBeforeMs = ms - 1500;
   for (const [frameMs] of pendingFrames) {
     if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
@@ -391,14 +385,16 @@ function paintFrameAtTime(ms) {
 // ── Playback control ──────────────────────────────────────────────────
 export async function startPlayback() {
   if (isPlaying) return;
-  isPlaying = true;     // set BEFORE await so togglePlayback() reads it correctly
+  isPlaying = true;
   lastRafTs = null;
-
-  await initAudio();    // now properly awaited
+  await initAudio();
 
   // Anchor: sync AudioContext time to playhead position
   audioPlayStartCtxTime = audioCtx.currentTime;
   audioPlayStartMs = playheadMs;
+
+  // Reset chaining timer
+  nextAudioStartTime = 0;
 
   // Schedule anything already buffered (from primeAudioDecode)
   const sortedAudio = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
@@ -417,7 +413,7 @@ export function pausePlayback() {
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
   stopAllAudioNodes();
 
-  nextAudioStartTime = 0;
+  nextAudioStartTime = 0; // Reset so it recalculates cleanly on resume
   lastScheduledChunkMs = -1;
   syncWorkerState();
   if (window.onPlaybackPaused) window.onPlaybackPaused();
@@ -450,7 +446,7 @@ export async function seekTo(ms) {
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
 
-  nextAudioStartTime = 0;
+  nextAudioStartTime = 0; // Reset on seek
 
   if (wasPlaying) startPlayback();
 }
@@ -473,18 +469,15 @@ export async function exportVideo(onProgress) {
   pausePlayback();
   isExporting = true;
   exportFrames = [];
-
   const frameMs = 1000 / 30;
   const totalFrames = Math.ceil(videoDurationMs / frameMs);
   logStatus('Export: collecting frames…');
-
   for (let i = 0; i < totalFrames; i++) {
     const ms = Math.round(i * frameMs);
     worker.postMessage({ type: 'seek', ms });
     while (!pendingFrames.has(ms)) { await new Promise(r => setTimeout(r, 10)); }
     if (onProgress) onProgress(i / totalFrames * 0.5);
   }
-
   logStatus('Export: encoding…');
   const encodedChunks = [];
   const encoder = new VideoEncoder({
@@ -496,7 +489,6 @@ export async function exportVideo(onProgress) {
     error: (e) => console.error(e),
   });
   encoder.configure({ codec: 'avc1.42001f', width: sourceVideoWidth, height: sourceVideoHeight, bitrate: 8_000_000, framerate: 30, hardwareAcceleration: 'prefer-hardware', latencyMode: 'quality' });
-
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i];
@@ -507,21 +499,18 @@ export async function exportVideo(onProgress) {
   }
   await encoder.flush();
   encoder.close();
-
   logStatus('Export: muxing…');
   if (!window.Mp4Muxer) {
     await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js');
   }
   const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: 'avc', width: sourceVideoWidth, height: sourceVideoHeight }, fastStart: 'in-memory' });
   for (const { buf, timestamp, type } of encodedChunks) { muxer.addVideoChunkRaw(buf, type, timestamp, frameMs * 1000); }
-
   if (onProgress) onProgress(0.95);
   const { buffer } = muxer.finalize();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([buffer], { type: 'video/mp4' }));
   a.download = `iklippa-export-${Date.now()}.mp4`;
   a.click();
-
   isExporting = false;
   exportFrames = [];
   logStatus('Export complete ✓');
@@ -535,6 +524,7 @@ function loadScript(src) {
     s.src = src; s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
   });
 }
+
 function logStatus(msg) { console.log(`[iKlippa] ${msg}`); if (window.onEngineStatus) window.onEngineStatus(msg); }
 export function wireDropTarget(dropEl) { /* omitted for brevity */ }
 export function wireFileInput(inputEl) { /* omitted for brevity */ }
