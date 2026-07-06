@@ -52,4 +52,4 @@ if __name__ == "__main__":
     print("Searching for: dark cinematic music...")
     results = search_background_music("dark, cinematic")
     for r in results:
-        print(f"- Track ID {r['id']} ({r['duration']}s): {r['name']} -> {r['audio'][:50]}...")
+            print(f"- Track ID {r['id']} ({r['duration']}s): {r['name']} -> {r['audio']}")
