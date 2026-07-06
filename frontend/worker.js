@@ -326,37 +326,39 @@ async function decodeNextSamples() {
     const session = decodeSessionId;
     const { samples, file } = clips[0];
 
-    while (decoder.decodeQueueSize < MAX_DECODE_QUEUE) {
-        const startIdx = lastDecodedSampleIdx + 1;
-        if (startIdx >= samples.length) break;
-
-        const s = samples[startIdx];
-        const data = await readSampleData(file, s);
-        if (session !== decodeSessionId) { isDecodingNext = false; return; }
-
-        self.postMessage({ type: 'decode_submit', ms: Math.round((s.cts * 1000) / s.timescale) });
-        decoder.decode(new EncodedVideoChunk({
-            type: s.is_sync ? 'key' : 'delta', timestamp: s.cts * 1_000_000 / s.timescale, duration: s.duration * 1_000_000 / s.timescale, data,
-        }));
-
-        lastDecodedSampleIdx = startIdx;
-    }
-
-    if (audioDecoder && audioSamples.length > 0) {
+    // ── Audio first (cheaper, more urgent for A/V sync) ──────────────
+    if (audioDecoder && audioDecoder.state === 'configured' && audioSamples.length > 0) {
         while (audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE) {
             const startIdx = lastDecodedAudioIdx + 1;
             if (startIdx >= audioSamples.length) break;
-
             const s = audioSamples[startIdx];
             const data = await readSampleData(file, s);
             if (session !== decodeSessionId) { isDecodingNext = false; return; }
-
             audioDecoder.decode(new EncodedAudioChunk({
-                type: 'key', timestamp: s.cts * 1_000_000 / s.timescale, duration: s.duration * 1_000_000 / s.timescale, data,
+                type: 'key',
+                timestamp: s.cts * 1_000_000 / s.timescale,
+                duration: s.duration * 1_000_000 / s.timescale,
+                data,
             }));
-
             lastDecodedAudioIdx = startIdx;
         }
+    }
+
+    // ── Video second ──────────────────────────────────────────────────
+    while (decoder.decodeQueueSize < MAX_DECODE_QUEUE) {
+        const startIdx = lastDecodedSampleIdx + 1;
+        if (startIdx >= samples.length) break;
+        const s = samples[startIdx];
+        const data = await readSampleData(file, s);
+        if (session !== decodeSessionId) { isDecodingNext = false; return; }
+        self.postMessage({ type: 'decode_submit', ms: Math.round((s.cts * 1000) / s.timescale) });
+        decoder.decode(new EncodedVideoChunk({
+            type: s.is_sync ? 'key' : 'delta',
+            timestamp: s.cts * 1_000_000 / s.timescale,
+            duration: s.duration * 1_000_000 / s.timescale,
+            data,
+        }));
+        lastDecodedSampleIdx = startIdx;
     }
 
     isDecodingNext = false;
