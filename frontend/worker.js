@@ -65,11 +65,13 @@ self.onmessage = async (e) => {
         if (audioConfig) setupAudioDecoder(audioConfig);
 
         await seekAndDecodeFrame(0);
+        await primeAudioDecode();
         self.postMessage({ type: 'ready', durationMs, width, height });
     }
 
     else if (type === 'seek') {
         await seekAndDecodeFrame(data.ms);
+        await primeAudioDecode();
     }
 
     else if (type === 'sync') {
@@ -285,6 +287,34 @@ async function seekAndDecodeFrame(targetMs) {
         const nextMs = pendingSeekMs;
         pendingSeekMs = null;
         seekAndDecodeFrame(nextMs);
+    }
+}
+
+// Add this function
+async function primeAudioDecode() {
+    if (!audioDecoder || audioDecoder.state !== 'configured') return;
+    if (!audioSamples.length || !clips.length) return;
+
+    const { file } = clips[0];
+    const startIdx = lastDecodedAudioIdx + 1;
+    if (startIdx >= audioSamples.length) return;
+
+    const startMs = Math.round((audioSamples[startIdx].cts * 1000) / audioSamples[startIdx].timescale);
+    const targetMs = startMs + 600; // pre-buffer 600ms
+
+    for (let i = startIdx; i < audioSamples.length; i++) {
+        const s = audioSamples[i];
+        const sMs = Math.round((s.cts * 1000) / s.timescale);
+        if (sMs > targetMs) break;
+
+        const data = await readSampleData(file, s);
+        audioDecoder.decode(new EncodedAudioChunk({
+            type: 'key',
+            timestamp: s.cts * 1_000_000 / s.timescale,
+            duration: s.duration * 1_000_000 / s.timescale,
+            data,
+        }));
+        lastDecodedAudioIdx = i;
     }
 }
 
