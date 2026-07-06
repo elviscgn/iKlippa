@@ -650,6 +650,16 @@ $$(".tl-tool").forEach((btn) => {
     };
 });
 
+// ADDITIONAL: Keyboard shortcuts
+document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.code === "KeyV") {
+        deactivateSplitTool();
+    } else if (e.code === "KeyS") {
+        activateSplitTool();
+    }
+});
+
 // ── Time Formatting and Playhead Sync ───────────────────────────────
 function fmtTime(sec) {
     // FIX #6: compact format for sub-hour clips
