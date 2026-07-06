@@ -29,6 +29,9 @@ let nextAudioScheduleTime = 0;
 let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
 
+let audioPlayStartCtxTime = 0;  // audioCtx.currentTime when play began
+let audioPlayStartMs = 0;       // playheadMs when play began
+
 // ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
   constructor() { this.reset(); }
@@ -120,11 +123,13 @@ export async function initEngine(canvasEl) {
   return true;
 }
 
-function initAudio() {
+async function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state !== 'running') {
+    await audioCtx.resume();   // ← was fire-and-forget before
+  }
 }
 
 function handleWorkerMessage(e) {
@@ -172,34 +177,18 @@ function handleWorkerMessage(e) {
 function scheduleAudioNode(chunkMs, audioBuffer) {
   if (!audioCtx) return;
 
-  const timeAheadMs = chunkMs - playheadMs;
+  // Deterministic: calculate exactly when this chunk should play
+  // relative to when play was pressed. No chaining, no clock drift.
+  const idealCtxTime = audioPlayStartCtxTime + (chunkMs - audioPlayStartMs) / 1000;
 
-  // THE FIX: Only drop if the audio chunk is more than 500ms in the past!
-  // If it's just slightly behind due to seek latency, we let it play instantly to catch up!
-  if (timeAheadMs < -500) return;
-
-  const gap = Math.abs(chunkMs - lastScheduledChunkMs);
-
-  if (nextAudioScheduleTime === 0 || nextAudioScheduleTime < audioCtx.currentTime || gap > 100) {
-    // If it's slightly late (timeAheadMs is negative), clamp it to 0 so it plays right now
-    const safeAheadSecs = Math.max(0, timeAheadMs / 1000);
-    nextAudioScheduleTime = audioCtx.currentTime + safeAheadSecs;
-  }
-
-  // Final safety cap
-  if (nextAudioScheduleTime < audioCtx.currentTime) {
-    nextAudioScheduleTime = audioCtx.currentTime;
-  }
+  // Drop if more than 250ms late (already missed its window)
+  if (idealCtxTime < audioCtx.currentTime - 0.25) return;
 
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(audioCtx.destination);
-
-  source.start(nextAudioScheduleTime);
+  source.start(Math.max(audioCtx.currentTime, idealCtxTime));
   scheduledAudioNodes.push(source);
-
-  nextAudioScheduleTime += audioBuffer.duration;
-  lastScheduledChunkMs = chunkMs + (audioBuffer.duration * 1000);
 }
 
 function stopAllAudioNodes() {
@@ -382,19 +371,21 @@ function paintFrameAtTime(ms) {
 }
 
 // ── Playback control ──────────────────────────────────────────────────
-export function startPlayback() {
+export async function startPlayback() {
   if (isPlaying) return;
-  initAudio();
-
-  isPlaying = true;
+  isPlaying = true;     // set BEFORE await so togglePlayback() reads it correctly
   lastRafTs = null;
 
-  nextAudioScheduleTime = 0;
-  lastScheduledChunkMs = -1;
+  await initAudio();    // now properly awaited
 
+  // Anchor: sync AudioContext time to playhead position
+  audioPlayStartCtxTime = audioCtx.currentTime;
+  audioPlayStartMs = playheadMs;
+
+  // Schedule anything already buffered (from primeAudioDecode)
   const sortedAudio = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
   for (const [ms, buffer] of sortedAudio) {
-    if (ms >= playheadMs - 100) scheduleAudioNode(ms, buffer);
+    scheduleAudioNode(ms, buffer);
   }
 
   syncWorkerState();
@@ -417,7 +408,11 @@ export function pausePlayback() {
 }
 
 export function togglePlayback() {
-  isPlaying ? pausePlayback() : startPlayback();
+  if (isPlaying) {
+    pausePlayback();
+  } else {
+    startPlayback().catch(console.error);
+  }
   return isPlaying;
 }
 
@@ -431,10 +426,9 @@ export async function seekTo(ms) {
   }
 
   playheadMs = ms;
+  audioPlayStartMs = ms;  // ← anchor reset for when play resumes
   pendingFrames.clear();
-  pendingAudio.clear(); // Seek clears the cache
-  nextAudioScheduleTime = 0;
-  lastScheduledChunkMs = -1;
+  pendingAudio.clear();
 
   audioConfigVersion++;
   worker.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
