@@ -1,6 +1,7 @@
 # Python / ML
 ml/venv/
 ml/.env
+.vscode
 __pycache__/
 *.pyc
 ml/data/*.csv
