@@ -256,6 +256,9 @@ pub struct Clip {
     pub id: u32,
     /// References a media pool entry by id (media bytes stay client-side).
     pub source_id: String,
+    /// Groups linked clips together (e.g., video+audio from same import).
+    /// When split, new clips get new group IDs so they're independent.
+    pub group_id: Option<String>,
     /// Timeline placement, microseconds.
     pub timeline_start_us: i64,
     pub timeline_end_us: i64,
@@ -279,6 +282,7 @@ impl Clip {
         Clip {
             id,
             source_id,
+            group_id: None,
             timeline_start_us,
             timeline_end_us,
             source_start_us: 0,
