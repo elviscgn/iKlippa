@@ -31,15 +31,19 @@ def search_background_music(tags, limit=3):
         print(f"Error: Jamendo API returned status code {response.status_code}")
         return []
     
-    # TODO 3: Parse response to JSON
-    # data = ...
+    data = response.json()
 
     tracks = []
     
-    # TODO 4: Iterate over data.get("results", [])
-    # Inside the loop, append a dictionary to `tracks` with the keys:
-    # "id", "name", "duration", and "audio" (this holds the direct mp3 link)
-    # Example: tracks.append({"id": track.get("id"), ...})
+   
+
+    for track in data.get("results", []):
+        tracks.append({
+            "id":track.get("id"),
+            "name":track.get("name"),
+            "duration": track.get("duration"),
+            "audio":track.get("audio")
+        })
 
     return tracks
 
