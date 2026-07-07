@@ -79,19 +79,15 @@ if __name__ == "__main__":
     
     model.fit(X_train, y_train)
 
-  
     predictions = model.predict(X_test)
     
-    # Metrics (Already written for you)
     mae = mean_absolute_error(y_test, predictions)
     print(f"Test MAE (Log Views): {mae:.4f}")
     
-    # TODO 5: Save the model to `ml/model.json`
-    # model_path = os.path.join(os.path.dirname(__file__), 'model.json')
-    # Use model.save_model(...) to save it
+    model_path = os.path.join(os.path.dirname(__file__), 'model.json')
+    model.save_model(model_path)
+
     
-    
-    # Save feature schema for Go (Already written for you)
     schema_path = os.path.join(os.path.dirname(__file__), 'feature_schema.json')
     with open(schema_path, 'w') as f:
         json.dump(feature_names, f)
