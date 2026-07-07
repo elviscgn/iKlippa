@@ -122,7 +122,7 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
 
 // ── Trim applied: update duration ──────────────────────────────────
 window.onTrimApplied = ({ durationMs }) => {
-    window.S.dur = durationMs / 1000;
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
@@ -130,10 +130,10 @@ window.onTrimApplied = ({ durationMs }) => {
 
 // ── Split result: update UI clips ──────────────────────────────────
 window.onSplitResult = ({ newClipId, originalClipId, splitAtMs, durationMs }) => {
-    window.S.dur = durationMs / 1000;
+    window.calculateTimelineDuration();
     window.renderRuler();
+    window.renderClips();
     window.updatePlayhead();
-    // The UI clips are already updated by performSplit in ui.js
 };
 
 // ── Connect Playback Control to Engine ───────────────────────────────
