@@ -75,16 +75,12 @@ if __name__ == "__main__":
     
     
     print(f"Training XGBoost Regressor...")
-    # TODO 2: Initialize the XGBoost model
     model = xgb.XGBRegressor(n_estimators=150, learning_rate=0.1, max_depth=6)
     
-    # TODO 3: Fit the model on your training data
-    # model.fit(...)
     model.fit(X_train, y_train)
 
-    # TODO 4: Make predictions on your test data
-    # predictions = model.predict(...)
-    
+  
+    predictions = model.predict(X_test)
     
     # Metrics (Already written for you)
     mae = mean_absolute_error(y_test, predictions)
