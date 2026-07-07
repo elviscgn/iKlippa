@@ -71,10 +71,8 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
         isReal: true,
         thumbnails: getThumbnails ? getThumbnails() : [],
     }, groupId);
-    IKState.addAudioClip(sourceId, 0, durationUs, {
-        name: displayName.replace(/\.[^.]+$/, ""),
-        isReal: true,
-    }, groupId);
+    // NO audio clip for video imports — audio track is for standalone MP3s only.
+    // The engine plays audio from video clips directly.
 
     // Sync to Rust + verify round-trip (Task 1 acceptance criterion)
     const rustJson = IKState.toRustJson();
@@ -102,9 +100,13 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
-    window.updatePlayhead();
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
+
+    // Paint the first frame in the canvas preview
+    window.S.time = 0;
+    window.updatePlayhead();
+    await seekTo(0);
 
     let thumbAttempts = 0;
     const tryCaptureThumb = () => {
