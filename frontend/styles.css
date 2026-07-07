@@ -1236,6 +1236,49 @@ textarea {
   font-weight: 600;
   font-family: var(--font-mono);
   color: var(--text-muted);
+  min-width: 40px;
+  text-align: center;
+}
+.tl-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-card);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  padding: 2px 4px;
+}
+.tl-zoom-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  padding: 0;
+}
+.tl-zoom-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+.tl-zoom-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.tl-resize-handle {
+  height: 4px;
+  background: var(--border-subtle);
+  cursor: ns-resize;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.tl-resize-handle:hover {
+  background: var(--accent-primary);
 }
 
 .tl-body {
