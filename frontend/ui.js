@@ -808,18 +808,12 @@ window.resetAiActions = function () {
 window.applyAiAction = function (type) {
     if (type === "silence" && !acts.trim) {
         if (window.videoClips.length === 1 && window.videoClips[0].isReal) {
-            // Real video: simulate trim by shortening ~8%
             const clip = window.videoClips[0];
             const startUs = clip.timeline_start_us;
             const origDurUs = clip.timeline_end_us - clip.timeline_start_us;
             const trimmedDurUs = Math.round(origDurUs * 0.92);
             IKState.trimClip(clip.id, startUs, startUs + trimmedDurUs, clip.source_start_us);
             const trimmedDurSec = us2s(trimmedDurUs);
-            window.S.dur = trimmedDurSec;
-            // Trim audio clips to match
-            window.audioClips.forEach(ac => {
-                if (ac.isReal) IKState.trimClip(ac.id, ac.timeline_start_us, ac.timeline_start_us + trimmedDurUs, ac.source_start_us);
-            });
             window.aiNodes.push({ time: trimmedDurSec, label: "Silence Trimmed", icon: "scissors" });
             $("#insight-score").textContent = "93";
             $("#insight-bar").style.width = "93%";
@@ -828,20 +822,17 @@ window.applyAiAction = function (type) {
             showToast("AI Smart Trim Applied", "scissors");
             acts.trim = true;
         } else if (window.videoClips.length >= 2) {
-            // Multiple clips: tighten gaps by moving clips to close gaps
             const clips = window.videoClips;
             const firstStartSec = us2s(clips[0].timeline_start_us);
             let cursorUs = clips[0].timeline_end_us;
             for (let i = 1; i < clips.length; i++) {
                 const clip = clips[i];
                 if (clip.timeline_start_us > cursorUs) {
-                    // Use IKState.moveClip to handle linked clips
                     IKState.moveClip(clip.id, cursorUs);
                 }
                 cursorUs = clip.timeline_end_us;
             }
             IKState.computeDuration();
-            window.S.dur = us2s(cursorUs);
             window.aiNodes.push({ time: firstStartSec, label: "Gaps Trimmed", icon: "scissors" });
             $("#insight-score").textContent = "96";
             $("#insight-bar").style.width = "96%";
@@ -873,6 +864,7 @@ window.applyAiAction = function (type) {
         showToast("Action already applied!", "check");
         return;
     }
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
