@@ -99,6 +99,7 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
         { id: sourceId, name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null },
     ];
 
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
