@@ -49,7 +49,11 @@ func (c *WatsonxClient) GenerateText(prompt string) (string, error) {
 
 	req.Header.Add("Content-Type", "application/json")
 
-	// TODO 4: Execute the request with c.HttpClient.Do(req)
+	resp, err := c.HttpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
 
 	// TODO 5: Read the response body, unmarshal the JSON, and return the generated text!
 	// Hint: The text will be located in responseJSON["response"]
