@@ -503,7 +503,9 @@
 
         <div class="panel-timeline">
           <div class="tl-toolbar">
-            <div class="tl-tools" id="tl-tools">
+            <div class="tl-toolbar-left">
+              <span class="tl-section-label">TIMELINE</span>
+              <div class="tl-tools" id="tl-tools">
               <button class="tl-tool active" data-tool="select">
                 <i data-lucide="mouse-pointer-2"></i> Select
               </button>
@@ -518,6 +520,7 @@
               <button class="tl-tool" data-tool="split">
                 <i data-lucide="scissors"></i> Split
               </button>
+            </div>
             </div>
             <div class="tl-zoom-controls">
               <button class="tl-zoom-btn" id="zoom-out" title="Zoom out"><i data-lucide="minus"></i></button>
@@ -562,7 +565,7 @@
                 <div class="track-lane" id="lane-a1"></div>
               </div>
             </div>
-            <div class="playhead" id="ph-tracks" style="left: 80px">
+            <div class="playhead" id="ph-tracks" style="left: 100px">
               <div class="playhead-knob"></div>
             </div>
           </div>

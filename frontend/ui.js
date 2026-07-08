@@ -707,8 +707,8 @@ window.updatePlayhead = function () {
     const dur = window.S.dur;
     if (dur <= 0) return;
     const px = (window.S.time / dur) * tw;
-    // Playhead offset = gutter width (80px)
-    const gutterWidth = 80;
+    // Playhead offset = gutter width (80px) + left padding (20px)
+    const gutterWidth = 100;
     $("#ph-tracks").style.left = (gutterWidth + px) + "px";
     $("#timecode").textContent = fmtTime(window.S.time);
 };
@@ -755,9 +755,9 @@ window.skipTime = function (delta) {
 function handleTimelineScrub(e, el) {
     const rect = el.getBoundingClientRect();
     const isRuler = (el.id === "tl-ruler");
-    // Ruler is already positioned after the gutter, so no offset needed.
-    // Tracks container includes the gutter, so subtract 80px.
-    const headOffset = isRuler ? 0 : 80;
+    // Ruler starts after gutter + padding, so no offset needed.
+    // Tracks include left padding (20px) + gutter (80px), so subtract 100px.
+    const headOffset = isRuler ? 0 : 100;
     const x = Math.max(0, e.clientX - rect.left - headOffset);
     const tw = getLaneW();
     const dur = window.S.dur;
@@ -785,10 +785,10 @@ $("#tl-ruler").onmousedown = (e) => handleTimelineScrub(e, $("#tl-ruler"));
         if (dur <= 0 || tw <= 0) return;
         const onMove = (e2) => {
             const rect = tracks.getBoundingClientRect();
-            const x = Math.max(0, e2.clientX - rect.left - 80);
+            const x = Math.max(0, e2.clientX - rect.left - 100);
             const t = Math.max(0, Math.min((x / tw) * dur, dur));
             window.S.time = t;
-            $("#ph-tracks").style.left = (80 + (t / dur) * tw) + "px";
+            $("#ph-tracks").style.left = (100 + (t / dur) * tw) + "px";
             if (window.onPlayheadScrub) window.onPlayheadScrub(t);
         };
         const onUp = () => {
