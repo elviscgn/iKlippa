@@ -40,6 +40,15 @@ func (c *WatsonxClient) GenerateText(prompt string) (string, error) {
 	}
 
 	// TODO 2: Marshal the JSON and create an http.NewRequest("POST", ollamaURL, bytes.NewBuffer(jsonData))
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", ollamaURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", err
+	}
 
 	// TODO 3: Add the Header!
 	// req.Header.Add("Content-Type", "application/json")
