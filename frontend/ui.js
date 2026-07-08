@@ -421,35 +421,105 @@ function applyDragLogic(el, clip, clipArray, tw) {
         } else if (window.S.tool === "select") {
             $$(".tl-clip").forEach((c) => c.classList.remove("active"));
             el.classList.add("active");
-            const startX = e.clientX;
-            const initialStartUs = clip.timeline_start_us;
             const dur = window.S.dur;
             if (dur <= 0) return;
 
-            const move = (e2) => {
-                const dx = e2.clientX - startX;
-                const dtSec = (dx / tw) * dur;
-                const newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
-                const newStartPx = (newStartSec / dur) * tw;
-                // Update only the dragged element's position — no full re-render
-                el.style.left = newStartPx + "px";
-            };
-            const up = () => {
-                document.removeEventListener("mousemove", move);
-                document.removeEventListener("mouseup", up);
-                // Commit final position to data model
-                const finalLeft = parseFloat(el.style.left);
-                const finalStartSec = (finalLeft / tw) * dur;
-                const finalStartUs = Math.round(finalStartSec * 1_000_000);
-                IKState.moveClip(clip.id, finalStartUs);
-                IKState.computeDuration();
-                window.calculateTimelineDuration();
-                window.renderRuler();
-                window.renderClips();
-                window.updatePlayhead();
-            };
-            document.addEventListener("mousemove", move);
-            document.addEventListener("mouseup", up);
+            // ── Detect trim vs move ──────────────────────────────────────
+            const clipRect = el.getBoundingClientRect();
+            const clickXInClip = e.clientX - clipRect.left;
+            const trimZone = 8;
+            const isLeftTrim = clickXInClip < trimZone;
+            const isRightTrim = clickXInClip > clipRect.width - trimZone;
+
+            if (isLeftTrim || isRightTrim) {
+                // ── TRIM MODE ────────────────────────────────────────────
+                const origStartUs = clip.timeline_start_us;
+                const origEndUs = clip.timeline_end_us;
+                const origSourceStartUs = clip.source_start_us;
+                const speed = clip.speed || 1;
+                const minDurUs = 500_000;
+                const lane = el.parentElement;
+
+                const move = (e2) => {
+                    const laneRect = lane.getBoundingClientRect();
+                    const scrollLeft = lane.parentElement ? lane.parentElement.scrollLeft : 0;
+                    const mx = e2.clientX - laneRect.left + scrollLeft;
+                    const mouseSec = (mx / tw) * dur;
+
+                    if (isLeftTrim) {
+                        const newStartUs = Math.round(
+                            Math.max(0, Math.min(mouseSec * 1_000_000, origEndUs - minDurUs))
+                        );
+                        const newEndUs = origEndUs;
+                        const newSourceStartUs = origSourceStartUs + Math.round((newStartUs - origStartUs) / speed);
+                        const leftPx = (us2s(newStartUs) / dur) * tw;
+                        const widthPx = (us2s(newEndUs - newStartUs) / dur) * tw;
+                        el.style.left = leftPx + "px";
+                        el.style.width = widthPx + "px";
+                        el._trimNewStart = newStartUs;
+                        el._trimNewSourceStart = Math.max(0, newSourceStartUs);
+                    } else {
+                        const newEndUs = Math.round(
+                            Math.max(origStartUs + minDurUs, mouseSec * 1_000_000)
+                        );
+                        const widthPx = (us2s(newEndUs - origStartUs) / dur) * tw;
+                        el.style.width = widthPx + "px";
+                        el._trimNewEnd = newEndUs;
+                    }
+                };
+
+                const up = () => {
+                    document.removeEventListener("mousemove", move);
+                    document.removeEventListener("mouseup", up);
+                    if (!document.body.contains(el)) return;
+                    if (isLeftTrim && el._trimNewStart !== undefined) {
+                        IKState.trimClip(clip.id, el._trimNewStart, origEndUs, el._trimNewSourceStart);
+                    } else if (isRightTrim && el._trimNewEnd !== undefined) {
+                        IKState.trimClip(clip.id, origStartUs, el._trimNewEnd, origSourceStartUs);
+                    }
+                    delete el._trimNewStart;
+                    delete el._trimNewEnd;
+                    delete el._trimNewSourceStart;
+                    IKState.computeDuration();
+                    window.calculateTimelineDuration();
+                    window.renderRuler();
+                    window.renderClips();
+                    window.updatePlayhead();
+                };
+
+                document.addEventListener("mousemove", move);
+                document.addEventListener("mouseup", up);
+                e.preventDefault();
+            } else {
+                // ── MOVE MODE ──────────────────────────────────────────────
+                const startX = e.clientX;
+                const initialStartUs = clip.timeline_start_us;
+
+                const move = (e2) => {
+                    const dx = e2.clientX - startX;
+                    const dtSec = (dx / tw) * dur;
+                    const newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
+                    const newStartPx = (newStartSec / dur) * tw;
+                    el.style.left = newStartPx + "px";
+                };
+                const up = () => {
+                    document.removeEventListener("mousemove", move);
+                    document.removeEventListener("mouseup", up);
+                    if (!document.body.contains(el)) return;
+                    const finalLeft = parseFloat(el.style.left);
+                    const finalStartSec = (finalLeft / tw) * dur;
+                    const finalStartUs = Math.round(finalStartSec * 1_000_000);
+                    IKState.moveClip(clip.id, finalStartUs);
+                    IKState.computeDuration();
+                    window.calculateTimelineDuration();
+                    window.renderRuler();
+                    window.renderClips();
+                    window.updatePlayhead();
+                };
+                document.addEventListener("mousemove", move);
+                document.addEventListener("mouseup", up);
+                e.preventDefault();
+            }
         }
     };
 }
@@ -502,6 +572,7 @@ window.renderClips = function () {
         
         const el = document.createElement("div");
         el.className = "tl-clip";
+        el.dataset.clipId = clip.id;
         const clipStartSec = us2s(clip.timeline_start_us);
         const clipDurSec = us2s(clip.timeline_end_us) - clipStartSec;
         const left = (clipStartSec / dur) * tw;
@@ -560,6 +631,7 @@ window.renderClips = function () {
     standaloneAudio.forEach((clip) => {
         const el = document.createElement("div");
         el.className = "tl-clip tl-clip-audio";
+        el.dataset.clipId = clip.id;
         const clipStartSec = us2s(clip.timeline_start_us);
         const clipDurSec = us2s(clip.timeline_end_us) - clipStartSec;
         const left = (clipStartSec / dur) * tw;
@@ -686,6 +758,21 @@ document.addEventListener("keydown", (e) => {
         deactivateSplitTool();
     } else if (e.code === "KeyS") {
         activateSplitTool();
+    } else if (e.code === "Delete" || e.code === "Backspace") {
+        const activeEl = document.querySelector(".tl-clip.active");
+        if (!activeEl) return;
+        const clipId = parseInt(activeEl.dataset.clipId);
+        if (isNaN(clipId)) return;
+        const idsToRemove = [clipId, ...IKState.getLinkedClipIds(clipId)];
+        for (const id of idsToRemove) {
+            IKState.removeClip(id);
+        }
+        IKState.computeDuration();
+        window.calculateTimelineDuration();
+        window.renderRuler();
+        window.renderClips();
+        window.updatePlayhead();
+        showToast("Clip deleted", "trash-2");
     }
 });
 
