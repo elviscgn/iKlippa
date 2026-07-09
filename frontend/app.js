@@ -66,6 +66,7 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     const groupId = `group_${Date.now()}`;
     const sourceId = "imported_" + Date.now();
     
+    window.saveSnapshot();
     IKState.addVideoClip(sourceId, 0, durationUs, {
         name: displayName,
         isReal: true,
