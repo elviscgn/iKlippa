@@ -295,6 +295,9 @@ window.IKState = (() => {
         const clip = findClip(clipId);
         if (clip) _mergeMeta(clip);
     }
+    function getClipMeta(clipId) {
+        return clipMeta[clipId] ? JSON.parse(JSON.stringify(clipMeta[clipId])) : null;
+    }
 
     function computeDuration() {
         if (!project) return 0;
@@ -379,7 +382,7 @@ window.IKState = (() => {
         getVideoClips, getAudioClips,
         addVideoClip, addAudioClip,
         findClip, findClipTrack, removeClip, splitClip, moveClip, trimClip,
-        setClipMeta,
+        setClipMeta, getClipMeta,
         computeDuration, getDurationSec,
         toRustJson, loadFromRustJson, verifyRoundTrip,
         getProject, getLinkedClipIds,
