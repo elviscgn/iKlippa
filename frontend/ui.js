@@ -347,6 +347,19 @@ window.calculateTimelineDuration = function () {
     return buffered;
 };
 
+// Auto-zoom to show ~60s of timeline in the visible track width
+window.autoFitZoom = function () {
+    const lane = $("#lane-v1");
+    if (!lane || window.S.dur <= 0) return;
+    const laneW = lane.getBoundingClientRect().width;
+    if (laneW <= 0) return;
+    const targetVisible = 60;
+    const ideal = window.S.dur / targetVisible;
+    window.S.zoom = Math.max(0.5, Math.min(4, ideal));
+    const zt = $("#zoom-text");
+    if (zt) zt.textContent = Math.round(window.S.zoom * 100) + "%";
+};
+
 function getLaneW() {
     const lane = $("#lane-v1");
     if (!lane) return 100;

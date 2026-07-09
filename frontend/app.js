@@ -257,8 +257,9 @@ canvasWrapper.addEventListener("drop", async (e) => {
                 picId: data.picId || 0,
             });
             IKState.computeDuration();
-            window.calculateTimelineDuration();
-            window.renderRuler();
+    window.calculateTimelineDuration();
+    window.autoFitZoom();
+    window.renderRuler();
             window.renderClips();
             window.updatePlayhead();
             showToast("Stock added via canvas", "film");
