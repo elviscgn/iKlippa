@@ -1,5 +1,5 @@
 /**
- * iKlippa — engine.js (rev 3 — Rust timeline, trim/split support)
+ * iKlippa — engine.js (Bugfix Build)
  */
 const DECODE_LOOKAHEAD = 12;
 
@@ -20,6 +20,7 @@ let videoDurationMs = 0;
 let isExporting = false;
 let exportFrames = [];
 
+// ── Web Audio State ───────────────────────────────────────────────────────────
 let audioCtx = null;
 let pendingAudio = new Map();
 let scheduledAudioNodes = [];
@@ -29,18 +30,20 @@ let audioConfigVersion = 0;
 let audioPlayStartCtxTime = 0;
 let audioPlayStartMs = 0;
 
+// ── Thumbnail Capture State ───────────────────────────────────────────────────
 let currentFileName = '';
 let timelineThumbnails = [];
 let lastThumbnailCaptureMs = -Infinity;
 const THUMBNAIL_CAPTURE_INTERVAL = 800;
 const MAX_TIMELINE_THUMBNAILS = 60;
 
+// ── BUG FIX: Seek target tracking ────────────────────────────────────────────
+// When seeking, the worker decodes every frame from the keyframe to the target.
+// Without this, each intermediate frame gets painted on the canvas, causing a
+// brief "fast-forward playback" effect. We track the seek target and only paint
+// the frame that reaches or passes it.
 let seekTargetMs = -1;
 let seekPaintTimeout = null;
-
-let rustClipId = 0;
-
-let pendingSplitResolve = null;
 
 // ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
@@ -125,6 +128,7 @@ function maybeCaptureThumbnail(ms) {
   } catch (e) { /* canvas tainted */ }
 }
 
+/** Capture the current canvas state as a JPEG data URL. Used for media pool thumbnail. */
 export function captureThumbnail() {
   if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
   try {
@@ -134,7 +138,6 @@ export function captureThumbnail() {
 
 export function getThumbnails() { return timelineThumbnails; }
 export function getCurrentFileName() { return currentFileName; }
-export function getRustClipId() { return rustClipId; }
 
 // ── Init & Worker Bridge ──────────────────────────────────────────────────────
 export async function initEngine(canvasEl) {
@@ -160,15 +163,13 @@ function handleWorkerMessage(e) {
     videoDurationMs = data.durationMs;
     sourceVideoWidth = data.width;
     sourceVideoHeight = data.height;
-    rustClipId = data.rustClipId || 0;
     canvas.width = sourceVideoWidth;
     canvas.height = sourceVideoHeight;
     logStatus(`Ready: ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s`);
     if (window.onClipImported) {
       window.onClipImported({
         width: sourceVideoWidth, height: sourceVideoHeight,
-        durationMs: videoDurationMs, fileName: currentFileName,
-        rustClipId,
+        durationMs: videoDurationMs, fileName: currentFileName
       });
     }
   }
@@ -182,13 +183,19 @@ function handleWorkerMessage(e) {
     if (isExporting) exportFrames.push({ ms: data.ms, imageData: pendingFrames.get(data.ms) });
 
     if (!isPlaying) {
+      // ── BUG FIX: Only paint the frame that reaches the seek target ──
+      // During a seek, the worker decodes every frame from keyframe to target.
+      // We skip painting intermediate frames to prevent the "fast-forward" effect.
       if (seekTargetMs >= 0) {
+        // We're in a seek — only paint if this frame reaches/passes the target
         if (data.ms >= seekTargetMs - 33) {
           clearTimeout(seekPaintTimeout);
           seekTargetMs = -1;
           paintFrameAtTime(playheadMs);
         }
+        // Otherwise: intermediate frame — store it but don't paint
       } else {
+        // Not seeking (e.g. color grade re-render) — paint immediately
         paintFrameAtTime(playheadMs);
       }
     }
@@ -202,19 +209,6 @@ function handleWorkerMessage(e) {
     }
     pendingAudio.set(data.ms, audioBuffer);
     if (isPlaying) scheduleAudioNode(data.ms, audioBuffer);
-  }
-
-  if (type === 'trim_applied') {
-    videoDurationMs = data.durationMs;
-    if (window.onTrimApplied) window.onTrimApplied(data);
-  }
-
-  if (type === 'split_result') {
-    if (pendingSplitResolve) {
-      pendingSplitResolve(data.newClipId);
-      pendingSplitResolve = null;
-    }
-    if (window.onSplitResult) window.onSplitResult(data);
   }
 }
 
@@ -253,7 +247,6 @@ export async function importFile(file) {
   nextAudioStartTime = 0; lastScheduledChunkMs = -1;
   audioConfigVersion++;
   playheadMs = 0; isPlaying = false; lastRafTs = null;
-  rustClipId = 0;
 
   if (!window.MP4Box) {
     await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
@@ -421,8 +414,10 @@ export async function seekTo(ms) {
     stopAllAudioNodes();
   }
 
+  // ── BUG FIX: Set seek target so intermediate frames aren't painted ──
   seekTargetMs = ms;
   clearTimeout(seekPaintTimeout);
+  // Fallback: if no frame reaches the target within 300ms, paint whatever we have
   seekPaintTimeout = setTimeout(() => {
     if (seekTargetMs >= 0) {
       seekTargetMs = -1;
@@ -446,33 +441,10 @@ function syncWorkerState() {
 }
 
 export function setColorGrade(params) {
+  // Grade re-renders are NOT seeks — clear seekTarget so the frame paints immediately
   seekTargetMs = -1;
   clearTimeout(seekPaintTimeout);
   worker.postMessage({ type: 'set_grade', params, forceRenderMs: isPlaying ? undefined : playheadMs });
-}
-
-// ── Trim & Split ──────────────────────────────────────────────────────
-export async function trimClip({ track, clipId, newStartMs, newEndMs, newSourceOffsetMs }) {
-  worker.postMessage({
-    type: 'trim_clip',
-    track: track || 0,
-    clipId,
-    newStartMs: Math.round(newStartMs),
-    newEndMs: Math.round(newEndMs),
-    newSourceOffsetMs: Math.round(newSourceOffsetMs),
-  });
-}
-
-export async function splitClip({ track, clipId, atMs }) {
-  return new Promise((resolve) => {
-    pendingSplitResolve = resolve;
-    worker.postMessage({
-      type: 'split_clip',
-      track: track || 0,
-      clipId,
-      atMs: Math.round(atMs),
-    });
-  });
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
