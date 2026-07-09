@@ -890,6 +890,26 @@ document.addEventListener("keydown", (e) => {
         window.renderClips();
         window.updatePlayhead();
         showToast("Pasted " + copiedClipsData.length + " clip(s)", "clipboard-paste");
+    } else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+        e.preventDefault();
+        const activeEl = document.querySelector(".tl-clip.active");
+        if (!activeEl) return;
+        const clipId = parseInt(activeEl.dataset.clipId);
+        if (isNaN(clipId)) return;
+        const deltaUs = e.shiftKey ? 1_000_000 : Math.round(1_000_000 / 30);
+        const dir = e.code === "ArrowLeft" ? -1 : 1;
+        const clip = IKState.findClip(clipId);
+        if (!clip) return;
+        const newStartUs = Math.max(0, clip.timeline_start_us + dir * deltaUs);
+        saveSnapshot();
+        IKState.moveClip(clipId, newStartUs);
+        IKState.computeDuration();
+        window.calculateTimelineDuration();
+        window.renderRuler();
+        window.renderClips();
+        window.updatePlayhead();
+        const label = e.shiftKey ? "1s" : "1 frame";
+        showToast("Nudged " + label + " " + (dir > 0 ? "right" : "left"), "move");
     } else if (e.code === "KeyV" && !(e.ctrlKey || e.metaKey)) {
         deactivateSplitTool();
     } else if (e.code === "KeyS") {
