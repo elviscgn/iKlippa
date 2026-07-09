@@ -1583,6 +1583,21 @@ textarea {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
+.snap-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--accent-primary);
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.snap-guide.active {
+  opacity: 0.8;
+}
+
 .toast-container {
   position: fixed;
   bottom: 24px;
