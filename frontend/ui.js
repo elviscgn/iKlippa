@@ -399,6 +399,18 @@ function deactivateSplitTool() {
 // ── Snap Logic ─────────────────────────────────────────────────────────
 const SNAP_THRESHOLD_PX = 8;
 
+function reRender(activeClipId) {
+    IKState.computeDuration();
+    window.calculateTimelineDuration();
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+    if (activeClipId !== undefined) {
+        const el = document.querySelector(`[data-clip-id="${activeClipId}"]`);
+        if (el) el.classList.add("active");
+    }
+}
+
 function getSnapPoints(excludeClipId) {
     const points = new Set();
     points.add(0);
@@ -450,11 +462,7 @@ window.saveSnapshot = function () {
 };
 
 function afterUndoRedo() {
-    IKState.computeDuration();
-    window.calculateTimelineDuration();
-    window.renderRuler();
-    window.renderClips();
-    window.updatePlayhead();
+    reRender();
 }
 
 window.undo = function () {
@@ -489,10 +497,7 @@ function applyDragLogic(el, clip, clipArray, tw) {
                 const newId = IKState.splitClip(clip.id, splitAtUs);
                 if (newId !== null) {
                     showToast("Clip Split", "scissors");
-                    window.calculateTimelineDuration();
-                    window.renderRuler();
-                    window.renderClips();
-                    window.updatePlayhead();
+                    reRender(newId);
                 }
             }
             deactivateSplitTool();
@@ -569,11 +574,7 @@ function applyDragLogic(el, clip, clipArray, tw) {
                     delete el._trimNewStart;
                     delete el._trimNewEnd;
                     delete el._trimNewSourceStart;
-                    IKState.computeDuration();
-                    window.calculateTimelineDuration();
-                    window.renderRuler();
-                    window.renderClips();
-                    window.updatePlayhead();
+                    reRender(clip.id);
                 };
 
                 document.addEventListener("mousemove", move);
@@ -605,11 +606,7 @@ function applyDragLogic(el, clip, clipArray, tw) {
                     const finalStartUs = Math.round(finalStartSec * 1_000_000);
                     saveSnapshot();
                     IKState.moveClip(clip.id, finalStartUs);
-                    IKState.computeDuration();
-                    window.calculateTimelineDuration();
-                    window.renderRuler();
-                    window.renderClips();
-                    window.updatePlayhead();
+                    reRender(clip.id);
                 };
                 document.addEventListener("mousemove", move);
                 document.addEventListener("mouseup", up);
@@ -771,7 +768,7 @@ $("#lane-v1").ondrop = (e) => {
         picId: data.picId || 0,
     });
     showToast("Stock Inserted", "film");
-    window.renderClips();
+    reRender();
 };
 
 $("#tl-body").addEventListener(
@@ -884,11 +881,7 @@ document.addEventListener("keydown", (e) => {
             cursorUs += dur;
         };
         for (const data of copiedClipsData) addClip(data.clip, data.meta);
-        IKState.computeDuration();
-        window.calculateTimelineDuration();
-        window.renderRuler();
-        window.renderClips();
-        window.updatePlayhead();
+        reRender();
         showToast("Pasted " + copiedClipsData.length + " clip(s)", "clipboard-paste");
     } else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
         e.preventDefault();
@@ -903,11 +896,7 @@ document.addEventListener("keydown", (e) => {
         const newStartUs = Math.max(0, clip.timeline_start_us + dir * deltaUs);
         saveSnapshot();
         IKState.moveClip(clipId, newStartUs);
-        IKState.computeDuration();
-        window.calculateTimelineDuration();
-        window.renderRuler();
-        window.renderClips();
-        window.updatePlayhead();
+        reRender(clipId);
         const label = e.shiftKey ? "1s" : "1 frame";
         showToast("Nudged " + label + " " + (dir > 0 ? "right" : "left"), "move");
     } else if (e.code === "KeyV" && !(e.ctrlKey || e.metaKey)) {
@@ -934,11 +923,7 @@ document.addEventListener("keydown", (e) => {
         for (const id of idsToRemove) {
             IKState.removeClip(id);
         }
-        IKState.computeDuration();
-        window.calculateTimelineDuration();
-        window.renderRuler();
-        window.renderClips();
-        window.updatePlayhead();
+        reRender();
         showToast("Clip deleted", "trash-2");
     }
 });
@@ -1178,9 +1163,7 @@ window.applyAiAction = function (type) {
         return;
     }
     window.calculateTimelineDuration();
-    window.renderRuler();
-    window.renderClips();
-    window.updatePlayhead();
+    reRender();
 };
 
 // ─ Track Control Icons ──────────────────────────────────────────────
