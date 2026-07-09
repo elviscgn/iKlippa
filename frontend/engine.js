@@ -1,5 +1,5 @@
 /**
- * iKlippa — engine.js (Timeline Sync Build)
+ * iKlippa — engine.js (Bugfix Build)
  */
 const DECODE_LOOKAHEAD = 12;
 
@@ -36,6 +36,14 @@ let timelineThumbnails = [];
 let lastThumbnailCaptureMs = -Infinity;
 const THUMBNAIL_CAPTURE_INTERVAL = 800;
 const MAX_TIMELINE_THUMBNAILS = 60;
+
+// ── BUG FIX: Seek target tracking ────────────────────────────────────────────
+// When seeking, the worker decodes every frame from the keyframe to the target.
+// Without this, each intermediate frame gets painted on the canvas, causing a
+// brief "fast-forward playback" effect. We track the seek target and only paint
+// the frame that reaches or passes it.
+let seekTargetMs = -1;
+let seekPaintTimeout = null;
 
 // ── Performance Monitor ───────────────────────────────────────────────────────
 export class PerformanceMonitor {
@@ -109,7 +117,7 @@ window.iklippaScore = () => perf.report();
 // ── Thumbnail Capture ─────────────────────────────────────────────────────────
 function maybeCaptureThumbnail(ms) {
   if (!canvas || canvas.width === 0 || canvas.height === 0) return;
-  if (videoDurationMs === 0) return;  // no video loaded yet
+  if (videoDurationMs === 0) return;
   if (ms - lastThumbnailCaptureMs < THUMBNAIL_CAPTURE_INTERVAL) return;
   if (timelineThumbnails.length >= MAX_TIMELINE_THUMBNAILS) return;
   try {
@@ -117,7 +125,15 @@ function maybeCaptureThumbnail(ms) {
     timelineThumbnails.push({ ms, dataUrl });
     lastThumbnailCaptureMs = ms;
     if (window.onThumbnailsUpdated) window.onThumbnailsUpdated(timelineThumbnails);
-  } catch (e) { /* canvas tainted — skip */ }
+  } catch (e) { /* canvas tainted */ }
+}
+
+/** Capture the current canvas state as a JPEG data URL. Used for media pool thumbnail. */
+export function captureThumbnail() {
+  if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
+  try {
+    return canvas.toDataURL('image/jpeg', 0.5);
+  } catch (e) { return null; }
 }
 
 export function getThumbnails() { return timelineThumbnails; }
@@ -165,7 +181,24 @@ function handleWorkerMessage(e) {
     const arr = new Uint8ClampedArray(data.buffer);
     pendingFrames.set(data.ms, new ImageData(arr, sourceVideoWidth, sourceVideoHeight));
     if (isExporting) exportFrames.push({ ms: data.ms, imageData: pendingFrames.get(data.ms) });
-    if (!isPlaying) paintFrameAtTime(playheadMs);
+
+    if (!isPlaying) {
+      // ── BUG FIX: Only paint the frame that reaches the seek target ──
+      // During a seek, the worker decodes every frame from keyframe to target.
+      // We skip painting intermediate frames to prevent the "fast-forward" effect.
+      if (seekTargetMs >= 0) {
+        // We're in a seek — only paint if this frame reaches/passes the target
+        if (data.ms >= seekTargetMs - 33) {
+          clearTimeout(seekPaintTimeout);
+          seekTargetMs = -1;
+          paintFrameAtTime(playheadMs);
+        }
+        // Otherwise: intermediate frame — store it but don't paint
+      } else {
+        // Not seeking (e.g. color grade re-render) — paint immediately
+        paintFrameAtTime(playheadMs);
+      }
+    }
   }
 
   if (type === 'audio_chunk') {
@@ -206,6 +239,8 @@ export async function importFile(file) {
   currentFileName = file.name;
   timelineThumbnails = [];
   lastThumbnailCaptureMs = -Infinity;
+  seekTargetMs = -1;
+  clearTimeout(seekPaintTimeout);
 
   initAudio();
   pendingFrames.clear(); pendingAudio.clear(); stopAllAudioNodes();
@@ -336,9 +371,7 @@ function paintFrameAtTime(ms) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
   }
   if (bestMs >= 0) ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
-
   maybeCaptureThumbnail(ms);
-
   const pruneBeforeMs = ms - 1500;
   for (const [frameMs] of pendingFrames) { if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs); }
   for (const [audioMs] of pendingAudio) { if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs); }
@@ -380,6 +413,18 @@ export async function seekTo(ms) {
     if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
     stopAllAudioNodes();
   }
+
+  // ── BUG FIX: Set seek target so intermediate frames aren't painted ──
+  seekTargetMs = ms;
+  clearTimeout(seekPaintTimeout);
+  // Fallback: if no frame reaches the target within 300ms, paint whatever we have
+  seekPaintTimeout = setTimeout(() => {
+    if (seekTargetMs >= 0) {
+      seekTargetMs = -1;
+      paintFrameAtTime(playheadMs);
+    }
+  }, 300);
+
   playheadMs = ms; audioPlayStartMs = ms;
   pendingFrames.clear(); pendingAudio.clear();
   audioConfigVersion++;
@@ -396,6 +441,9 @@ function syncWorkerState() {
 }
 
 export function setColorGrade(params) {
+  // Grade re-renders are NOT seeks — clear seekTarget so the frame paints immediately
+  seekTargetMs = -1;
+  clearTimeout(seekPaintTimeout);
   worker.postMessage({ type: 'set_grade', params, forceRenderMs: isPlaying ? undefined : playheadMs });
 }
 
@@ -403,6 +451,8 @@ export function setColorGrade(params) {
 export async function exportVideo(onProgress) {
   if (isExporting) return;
   pausePlayback(); isExporting = true; exportFrames = [];
+  seekTargetMs = -1; clearTimeout(seekPaintTimeout);
+
   const frameMs = 1000 / 30;
   const totalFrames = Math.ceil(videoDurationMs / frameMs);
   logStatus('Export: collecting frames…');
