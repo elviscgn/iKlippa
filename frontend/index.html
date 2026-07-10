@@ -12,6 +12,8 @@
     />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <link rel="stylesheet" href="styles.css" />
+    <!-- Deferred classic script for canonical project state (loaded before ui.js) -->
+    <script src="state.js" defer></script>
     <!-- Deferred classic script for UI state and rendering -->
     <script src="ui.js" defer></script>
     <!-- ES module to hook up UI events to engine.js -->
@@ -35,13 +37,15 @@
           <div class="topnav-actions">
             <button
               class="nav-btn"
-              onclick="showToast('Undo performed', 'undo-2')"
+              onclick="window.undo()"
+              title="Undo (Ctrl+Z)"
             >
               <i data-lucide="undo-2"></i>
             </button>
             <button
               class="nav-btn"
-              onclick="showToast('Redo performed', 'redo-2')"
+              onclick="window.redo()"
+              title="Redo (Ctrl+Shift+Z)"
             >
               <i data-lucide="redo-2"></i>
             </button>
@@ -501,7 +505,9 @@
 
         <div class="panel-timeline">
           <div class="tl-toolbar">
-            <div class="tl-tools" id="tl-tools">
+            <div class="tl-toolbar-left">
+              <span class="tl-section-label">TIMELINE</span>
+              <div class="tl-tools" id="tl-tools">
               <button class="tl-tool active" data-tool="select">
                 <i data-lucide="mouse-pointer-2"></i> Select
               </button>
@@ -517,99 +523,55 @@
                 <i data-lucide="scissors"></i> Split
               </button>
             </div>
-            <div class="tl-zoom-text" id="zoom-text">100% Zoom</div>
+            </div>
+            <div class="tl-zoom-controls">
+              <button class="tl-zoom-btn" id="zoom-out" title="Zoom out"><i data-lucide="minus"></i></button>
+              <span class="tl-zoom-text" id="zoom-text">100%</span>
+              <button class="tl-zoom-btn" id="zoom-in" title="Zoom in"><i data-lucide="plus"></i></button>
+            </div>
           </div>
+          <div class="tl-resize-handle" id="tl-resize-handle"></div>
 
           <div class="tl-body" id="tl-body">
-            <div class="tl-ruler" id="tl-ruler">
-              <div class="playhead" id="ph-ruler" style="left: 0px">
-                <div class="playhead-knob"></div>
-              </div>
+            <div class="tl-ruler-wrapper">
+              <div class="tl-gutter"></div>
+              <div class="tl-ruler" id="tl-ruler"></div>
             </div>
             <div class="tl-tracks" id="tl-tracks">
               <div class="track ai-track">
-                <div class="track-head">
-                  <span class="track-title" style="color: var(--accent-primary)"
-                    ><i data-lucide="sparkles"></i> AI Insights</span
-                  >
+                <div class="track-gutter">
+                  <div class="track-icons">
+                    <i data-lucide="sparkles"></i>
+                  </div>
                 </div>
                 <div class="track-lane" id="lane-ai"></div>
               </div>
-              <div class="track">
-                <div class="track-head">
-                  <span class="track-title"
-                    ><i data-lucide="film"></i> Video Track</span
-                  >
+              <div class="track video-track" data-track-id="v1">
+                <div class="track-gutter">
                   <div class="track-icons">
-                    <i
-                      data-lucide="eye"
-                      onclick="
-                        document.querySelector('#canvas-img').style.opacity =
-                          this.style.color === 'red' ? '1' : '0';
-                        this.style.color =
-                          this.style.color === 'red' ? '' : 'red';
-                      "
-                    ></i>
-                    <i
-                      data-lucide="lock"
-                      onclick="
-                        showToast(
-                          this.style.color === 'red'
-                            ? 'Track Unlocked'
-                            : 'Track Locked',
-                          'lock',
-                        );
-                        this.style.color =
-                          this.style.color === 'red' ? '' : 'red';
-                      "
-                    ></i>
+                    <i data-lucide="lock" class="track-lock"></i>
+                    <i data-lucide="eye" class="track-visibility"></i>
+                    <i data-lucide="volume-2" class="track-volume-icon"></i>
                   </div>
                 </div>
                 <div class="track-lane" id="lane-v1"></div>
               </div>
-              <div class="track">
-                <div class="track-head">
-                  <span class="track-title"
-                    ><i data-lucide="music"></i> Audio Track</span
-                  >
+              <div class="track audio-track" data-track-id="a1">
+                <div class="track-gutter">
                   <div class="track-icons">
-                    <i
-                      data-lucide="volume-2"
-                      onclick="
-                        showToast(
-                          this.style.color === 'red'
-                            ? 'Audio Unmuted'
-                            : 'Audio Muted',
-                          'volume-x',
-                        );
-                        this.style.color =
-                          this.style.color === 'red' ? '' : 'red';
-                      "
-                    ></i>
+                    <i data-lucide="lock" class="track-lock"></i>
+                    <i data-lucide="eye" class="track-visibility"></i>
+                    <i data-lucide="volume-2" class="track-volume-icon"></i>
                   </div>
                 </div>
-                <div class="track-lane" id="lane-a1">
-                  <div
-                    class="tl-clip tl-clip-audio"
-                    style="left: 0; width: 100%"
-                  >
-                    <div class="waveform" id="waveform-container"></div>
-                    <span
-                      class="tl-clip-label"
-                      style="position: absolute; bottom: 6px; left: 8px"
-                      >Amapiano_LogDrum_Drop.mp3</span
-                    >
-                  </div>
-                </div>
+                <div class="track-lane" id="lane-a1"></div>
               </div>
-              <div
-                class="playhead"
-                id="ph-tracks"
-                style="left: 140px; top: 0; opacity: 0.6"
-              ></div>
             </div>
+            <div class="playhead" id="ph-tracks" style="left: 100px">
+              <div class="playhead-knob"></div>
+            </div>
+            <div class="snap-guide" id="snap-guide"></div>
           </div>
-        </div>
       </div>
     </div>
 
