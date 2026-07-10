@@ -490,6 +490,7 @@ export async function startPlayback() {
   }
   
   syncWorkerState();
+  paintFrameAtTime(playheadMs); // paint current frame immediately
   rafHandle = requestAnimationFrame(renderLoop);
 }
 
