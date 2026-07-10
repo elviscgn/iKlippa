@@ -11,9 +11,8 @@ import {
     getThumbnails,
     getCurrentFileName,
     captureThumbnail,
-    getRustClipId,
-    trimClip,
-    splitClip,
+    setTimeline,
+    getProjectJson,
 } from "./engine.js";
 
 const canvasEl = document.getElementById("canvas-img");
@@ -41,8 +40,9 @@ window.onPlayheadUpdate = (ms) => {
 let thumbnailRenderDebounce = null;
 window.onThumbnailsUpdated = (thumbnails) => {
     if (!hasRealVideo) return;
-    if (window.videoClips.length > 0 && window.videoClips[0].isReal) {
-        window.videoClips[0].thumbnails = thumbnails;
+    const clips = IKState.getVideoClips();
+    if (clips.length > 0 && clips[0].isReal) {
+        IKState.setClipMeta(clips[0].id, { thumbnails });
     }
     clearTimeout(thumbnailRenderDebounce);
     thumbnailRenderDebounce = setTimeout(() => {
@@ -50,32 +50,42 @@ window.onThumbnailsUpdated = (thumbnails) => {
     }, 600);
 };
 
-// ── Import complete: Replace empty clips with real video ────────────
-window.onClipImported = ({ width, height, durationMs, fileName, rustClipId }) => {
+// ── Import complete: build project model + sync to Rust + verify round-trip
+window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     hasRealVideo = true;
     const durationSec = durationMs / 1000;
     window.S.dur = durationSec;
 
     const displayName = fileName || "Imported Video";
 
-    window.videoClips = [{
-        id: "real_v1",
-        rustClipId: rustClipId || 0,
+    // Build the canonical project model (µs timestamps, Rust shape)
+    IKState.init(width, height);
+    const durationUs = Math.round(durationSec * 1_000_000);
+    IKState.addVideoClip("imported_real", 0, durationUs, {
         name: displayName,
-        start: 0,
-        end: durationSec,
-        sourceOffset: 0,
         isReal: true,
         thumbnails: getThumbnails ? getThumbnails() : [],
-    }];
-
-    window.audioClips = [{
-        id: "real_a1",
+    });
+    IKState.addAudioClip("imported_real", 0, durationUs, {
         name: displayName.replace(/\.[^.]+$/, ""),
-        start: 0,
-        end: durationSec,
         isReal: true,
-    }];
+    });
+
+    // Sync to Rust + verify round-trip (Task 1 acceptance criterion)
+    const rustJson = IKState.toRustJson();
+    const syncResult = await setTimeline(rustJson);
+    if (syncResult.ok) {
+        const receivedJson = await getProjectJson();
+        const roundTripOk = IKState.verifyRoundTrip(rustJson, receivedJson);
+        console.log("%c[iKlippa] Project round-trip: " + (roundTripOk ? "PASS ✓" : "FAIL ✗"),
+            "color:" + (roundTripOk ? "#10b981" : "#ef4444") + ";font-weight:700;");
+        if (!roundTripOk) {
+            console.warn("Sent:     ", rustJson);
+            console.warn("Received: ", receivedJson);
+        }
+    } else {
+        console.error("[iKlippa] Rust timeline sync failed:", syncResult.error);
+    }
 
     window.aiNodes = [];
     if (window.resetAiActions) window.resetAiActions();
