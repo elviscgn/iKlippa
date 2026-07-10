@@ -355,6 +355,7 @@ window.autoFitZoom = function () {
     if (laneW <= 0) return;
     const minPxPerSec = 20;
     window.S.zoom = Math.max(0.5, (minPxPerSec * window.S.dur) / laneW);
+    console.log("[autoFitZoom] dur=" + window.S.dur + " laneW=" + laneW + " zoom=" + window.S.zoom);
     const zt = $("#zoom-text");
     if (zt) zt.textContent = Math.round(window.S.zoom * 100) + "%";
 };
