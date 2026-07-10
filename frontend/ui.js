@@ -371,6 +371,7 @@ window.renderRuler = function () {
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
     r.style.width = tw + "px";
+    r.style.flex = "none";
     const dur = window.S.dur;
     if (dur <= 0) return;
 
