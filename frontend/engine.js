@@ -210,6 +210,19 @@ function handleWorkerMessage(e) {
     pendingAudio.set(data.ms, audioBuffer);
     if (isPlaying) scheduleAudioNode(data.ms, audioBuffer);
   }
+
+  if (type === 'timeline_set') {
+    if (data.ok) {
+      console.log('[iKlippa] Timeline synced to Rust ✓');
+    } else {
+      console.error('[iKlippa] Timeline sync failed:', data.error);
+    }
+    if (window.onTimelineSynced) window.onTimelineSynced(data.ok, data.error);
+  }
+
+  if (type === 'project_json') {
+    if (window.onProjectJsonReceived) window.onProjectJsonReceived(data.json);
+  }
 }
 
 function scheduleAudioNode(chunkMs, audioBuffer) {
@@ -366,6 +379,32 @@ function renderLoop(ts) {
 
 function paintFrameAtTime(ms) {
   if (!ctx) return;
+  
+  // Check if there's a clip at the playhead time (gap-aware playback)
+  const msUs = Math.round(ms * 1_000_000);
+  let activeClip = null;
+  if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
+    const clips = IKState.getVideoClips();
+    for (const clip of clips) {
+      if (msUs >= clip.timeline_start_us && msUs < clip.timeline_end_us) {
+        activeClip = clip;
+        break;
+      }
+    }
+  }
+  
+  if (!activeClip) {
+    // No clip at this time — clear the canvas (show black for gaps)
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    maybeCaptureThumbnail(ms);
+    const pruneBeforeMs = ms - 1500;
+    for (const [frameMs] of pendingFrames) { if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs); }
+    for (const [audioMs] of pendingAudio) { if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs); }
+    return;
+  }
+  
+  // There's a clip — find the best frame from pendingFrames
   let bestMs = -1;
   for (const [frameMs] of pendingFrames) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
@@ -496,6 +535,39 @@ function loadScript(src) {
     if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
     const s = document.createElement('script');
     s.src = src; s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+  });
+}
+
+// ── Rust Project Sync (Phase 1 Task 1.2) ─────────────────────────────────────
+// Send the project JSON to the Rust engine via the worker. The worker calls
+// wasmModule.set_timeline(json) which deserialises it into the Rust Project
+// struct. Returns a promise that resolves to { ok, error }.
+export function setTimeline(json) {
+  return new Promise((resolve) => {
+    const handler = (e) => {
+      if (e.data.type === 'timeline_set') {
+        worker.removeEventListener('message', handler);
+        resolve({ ok: e.data.ok, error: e.data.error });
+      }
+    };
+    worker.addEventListener('message', handler);
+    worker.postMessage({ type: 'set_timeline', json });
+  });
+}
+
+// Request the current project JSON back from Rust (via worker). The worker
+// calls wasmModule.to_json() which serialises the Rust Project struct. Used
+// for the round-trip verification (Task 1 acceptance criterion).
+export function getProjectJson() {
+  return new Promise((resolve) => {
+    const handler = (e) => {
+      if (e.data.type === 'project_json') {
+        worker.removeEventListener('message', handler);
+        resolve(e.data.json);
+      }
+    };
+    worker.addEventListener('message', handler);
+    worker.postMessage({ type: 'get_project_json' });
   });
 }
 
