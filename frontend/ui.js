@@ -389,14 +389,19 @@ function applyDragLogic(el, clip, clipArray, tw) {
             const move = (e2) => {
                 const dx = e2.clientX - startX;
                 const dtSec = (dx / tw) * window.S.dur;
-                let newStartSec = Math.max(
-                    0,
-                    Math.min(initialStartUs / 1_000_000 + dtSec, window.S.dur - us2s(durationUs)),
-                );
+                let newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
                 let newStartUs = Math.round(newStartSec * 1_000_000);
                 clip.timeline_start_us = newStartUs;
                 clip.timeline_end_us = newStartUs + durationUs;
+                
+                // Extend timeline duration if clip moves past current end
+                const newEndSec = us2s(clip.timeline_end_us);
+                if (newEndSec > window.S.dur) {
+                    window.S.dur = newEndSec;
+                }
+                
                 window.renderClips();
+                window.renderRuler();
             };
             const up = () => {
                 document.removeEventListener("mousemove", move);
