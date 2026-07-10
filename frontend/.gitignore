@@ -67,6 +67,7 @@ web_modules/
 *.tgz
 
 *.png
+*.webp
 
 # Yarn Integrity file
 .yarn-integrity
