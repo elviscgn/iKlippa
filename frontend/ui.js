@@ -633,7 +633,7 @@ $("#tl-body").addEventListener(
                 0.5,
                 Math.min(4, window.S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)),
             );
-            $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "% Zoom";
+            $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
             window.renderRuler();
             window.renderClips();
             window.updatePlayhead();
@@ -641,6 +641,53 @@ $("#tl-body").addEventListener(
     },
     { passive: false },
 );
+
+// ISSUE 3: Zoom control buttons
+$("#zoom-in")?.addEventListener("click", () => {
+    window.S.zoom = Math.min(4, window.S.zoom + 0.25);
+    $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+});
+$("#zoom-out")?.addEventListener("click", () => {
+    window.S.zoom = Math.max(0.5, window.S.zoom - 0.25);
+    $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+});
+
+// ISSUE 3: Vertical resize handle for timeline
+(function initResizeHandle() {
+    const handle = $("#tl-resize-handle");
+    if (!handle) return;
+    const panel = document.querySelector(".panel-timeline");
+    if (!panel) return;
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+    handle.addEventListener("mousedown", (e) => {
+        isResizing = true;
+        startY = e.clientY;
+        startHeight = panel.offsetHeight;
+        document.body.style.cursor = "ns-resize";
+        e.preventDefault();
+    });
+    document.addEventListener("mousemove", (e) => {
+        if (!isResizing) return;
+        const dy = e.clientY - startY;
+        const newHeight = Math.max(120, Math.min(window.innerHeight * 0.5, startHeight - dy));
+        panel.style.height = newHeight + "px";
+        window.S.timelineHeight = newHeight;
+    });
+    document.addEventListener("mouseup", () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = "";
+        }
+    });
+})();
 
 $$(".tl-tool").forEach((btn) => {
     btn.onclick = () => {
@@ -808,18 +855,12 @@ window.resetAiActions = function () {
 window.applyAiAction = function (type) {
     if (type === "silence" && !acts.trim) {
         if (window.videoClips.length === 1 && window.videoClips[0].isReal) {
-            // Real video: simulate trim by shortening ~8%
             const clip = window.videoClips[0];
             const startUs = clip.timeline_start_us;
             const origDurUs = clip.timeline_end_us - clip.timeline_start_us;
             const trimmedDurUs = Math.round(origDurUs * 0.92);
             IKState.trimClip(clip.id, startUs, startUs + trimmedDurUs, clip.source_start_us);
             const trimmedDurSec = us2s(trimmedDurUs);
-            window.S.dur = trimmedDurSec;
-            // Trim audio clips to match
-            window.audioClips.forEach(ac => {
-                if (ac.isReal) IKState.trimClip(ac.id, ac.timeline_start_us, ac.timeline_start_us + trimmedDurUs, ac.source_start_us);
-            });
             window.aiNodes.push({ time: trimmedDurSec, label: "Silence Trimmed", icon: "scissors" });
             $("#insight-score").textContent = "93";
             $("#insight-bar").style.width = "93%";
@@ -828,20 +869,17 @@ window.applyAiAction = function (type) {
             showToast("AI Smart Trim Applied", "scissors");
             acts.trim = true;
         } else if (window.videoClips.length >= 2) {
-            // Multiple clips: tighten gaps by moving clips to close gaps
             const clips = window.videoClips;
             const firstStartSec = us2s(clips[0].timeline_start_us);
             let cursorUs = clips[0].timeline_end_us;
             for (let i = 1; i < clips.length; i++) {
                 const clip = clips[i];
                 if (clip.timeline_start_us > cursorUs) {
-                    // Use IKState.moveClip to handle linked clips
                     IKState.moveClip(clip.id, cursorUs);
                 }
                 cursorUs = clip.timeline_end_us;
             }
             IKState.computeDuration();
-            window.S.dur = us2s(cursorUs);
             window.aiNodes.push({ time: firstStartSec, label: "Gaps Trimmed", icon: "scissors" });
             $("#insight-score").textContent = "96";
             $("#insight-bar").style.width = "96%";
@@ -873,6 +911,7 @@ window.applyAiAction = function (type) {
         showToast("Action already applied!", "check");
         return;
     }
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
@@ -913,6 +952,7 @@ document.addEventListener("click", (e) => {
 // ── Initialization Trigger ─────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
     window.renderMedia("footage");
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
