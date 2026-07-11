@@ -198,9 +198,6 @@ function handleWorkerMessage(e) {
         // Not seeking (e.g. color grade re-render) — paint immediately
         paintFrameAtTime(playheadMs);
       }
-    } else {
-      // During playback, paint the best available frame so the canvas keeps updating
-      paintFrameAtTime(playheadMs);
     }
   }
 
@@ -399,7 +396,7 @@ function renderLoop(ts) {
   
   if (lastRafTs !== null) {
     playheadMs += ts - lastRafTs;
-    if (playheadMs >= durationMs) { playheadMs = durationMs; pausePlayback(); return; }
+    if (playheadMs >= durationMs) { playheadMs = durationMs; pausePlayback(); }
   }
   lastRafTs = ts;
   paintFrameAtTime(playheadMs);
@@ -490,7 +487,6 @@ export async function startPlayback() {
   }
   
   syncWorkerState();
-  paintFrameAtTime(playheadMs); // paint current frame immediately
   rafHandle = requestAnimationFrame(renderLoop);
 }
 
