@@ -407,25 +407,53 @@ function renderLoop(ts) {
   rafHandle = requestAnimationFrame(renderLoop);
 }
 
+// Reusable offscreen canvas for multi-track compositing
+let _compositeCanvas = null;
+let _compositeCtx = null;
+let _frameCanvas = null;
+let _frameCtx = null;
+
+function _getCompositeCanvas(w, h) {
+  if (!_compositeCanvas) {
+    _compositeCanvas = document.createElement('canvas');
+    _compositeCtx = _compositeCanvas.getContext('2d');
+  }
+  if (_compositeCanvas.width !== w || _compositeCanvas.height !== h) {
+    _compositeCanvas.width = w;
+    _compositeCanvas.height = h;
+  }
+  return [_compositeCanvas, _compositeCtx];
+}
+
+function _getFrameCanvas(w, h) {
+  if (!_frameCanvas) {
+    _frameCanvas = document.createElement('canvas');
+    _frameCtx = _frameCanvas.getContext('2d');
+  }
+  if (_frameCanvas.width !== w || _frameCanvas.height !== h) {
+    _frameCanvas.width = w;
+    _frameCanvas.height = h;
+  }
+  return [_frameCanvas, _frameCtx];
+}
+
 function paintFrameAtTime(ms) {
   if (!ctx) return;
   
-  // Check if there's a clip at the playhead time (gap-aware playback)
+  // Find ALL active video clips at this playhead time
   const msUs = Math.round(ms * 1_000);
-  let activeClip = null;
+  let activeClips = [];
   
   if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
     const clips = IKState.getVideoClips();
     for (const clip of clips) {
       if (msUs >= clip.timeline_start_us && msUs < clip.timeline_end_us) {
-        activeClip = clip;
-        break;
+        activeClips.push(clip);
       }
     }
   }
   
-  if (!activeClip) {
-    // No clip at this time — clear the canvas (show black for gaps)
+  if (activeClips.length === 0) {
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     maybeCaptureThumbnail(ms);
@@ -435,14 +463,53 @@ function paintFrameAtTime(ms) {
     return;
   }
   
-  // There's a clip — find the best frame from pendingFrames
-  let bestMs = -1;
-  for (const [frameMs] of pendingFrames) {
-    if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
+  // Resolve each clip to its best source frame
+  const resolved = [];
+  for (const clip of activeClips) {
+    const timelineOffsetMs = ms - (clip.timeline_start_us / 1000);
+    const sourceMs = (clip.source_start_us / 1000) + timelineOffsetMs;
+    let bestMs = -1;
+    for (const [frameMs] of pendingFrames) {
+      if (frameMs <= sourceMs && frameMs > bestMs) bestMs = frameMs;
+    }
+    if (bestMs >= 0) {
+      resolved.push({ clip, imageData: pendingFrames.get(bestMs) });
+    }
   }
   
-  if (bestMs >= 0) {
-    ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
+  if (resolved.length === 0) {
+    // Active clips exist but no frames decoded yet
+    maybeCaptureThumbnail(ms);
+    const pruneBeforeMs = ms - 1500;
+    for (const [frameMs] of pendingFrames) { if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs); }
+    for (const [audioMs] of pendingAudio) { if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs); }
+    return;
+  }
+  
+  if (resolved.length === 1) {
+    // Single track fast path — no compositing needed
+    ctx.putImageData(resolved[0].imageData, 0, 0);
+  } else {
+    // Multi-track compositing: draw bottom layer first, overlays with alpha
+    const [cc, cctx] = _getCompositeCanvas(canvas.width, canvas.height);
+    const [fc, fctx] = _getFrameCanvas(canvas.width, canvas.height);
+    
+    cctx.globalCompositeOperation = 'source-over';
+    cctx.globalAlpha = 1;
+    cctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    for (let i = 0; i < resolved.length; i++) {
+      const { clip, imageData } = resolved[i];
+      const opacity = clip.transform ? clip.transform.opacity : 1;
+      
+      // ImageData → temp canvas → draw onto composite with alpha
+      fctx.putImageData(imageData, 0, 0);
+      cctx.globalAlpha = Math.max(0, Math.min(1, opacity));
+      cctx.drawImage(fc, 0, 0);
+    }
+    cctx.globalAlpha = 1;
+    
+    ctx.drawImage(cc, 0, 0);
   }
   
   maybeCaptureThumbnail(ms);
