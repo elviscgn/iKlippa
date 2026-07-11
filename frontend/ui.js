@@ -396,6 +396,48 @@ function deactivateSplitTool() {
     if (selectBtn) selectBtn.classList.add("active");
 }
 
+// ── Snap Logic ─────────────────────────────────────────────────────────
+const SNAP_THRESHOLD_PX = 8;
+
+function getSnapPoints(excludeClipId) {
+    const points = new Set();
+    points.add(0);
+    points.add(Math.round(window.S.time * 1_000_000));
+    const allClips = [...window.videoClips, ...window.audioClips];
+    for (const c of allClips) {
+        if (c.id === excludeClipId) continue;
+        points.add(c.timeline_start_us);
+        points.add(c.timeline_end_us);
+    }
+    return Array.from(points);
+}
+
+function applySnap(rawUs, excludeClipId, tw) {
+    const thresholdUs = Math.round((SNAP_THRESHOLD_PX / tw) * window.S.dur * 1_000_000);
+    const points = getSnapPoints(excludeClipId);
+    let best = null;
+    for (const p of points) {
+        if (Math.abs(rawUs - p) <= thresholdUs) {
+            if (best === null || Math.abs(rawUs - p) < Math.abs(rawUs - best)) {
+                best = p;
+            }
+        }
+    }
+    return best;
+}
+
+const snapGuide = $("#snap-guide");
+
+function showSnapGuide(timeUs, tw) {
+    const px = (us2s(timeUs) / window.S.dur) * tw;
+    snapGuide.style.left = (100 + px) + "px";
+    snapGuide.classList.add("active");
+}
+
+function hideSnapGuide() {
+    snapGuide.classList.remove("active");
+}
+
 function applyDragLogic(el, clip, clipArray, tw) {
     el.onmousedown = (e) => {
         if (window.S.tool === "split") {
@@ -421,35 +463,119 @@ function applyDragLogic(el, clip, clipArray, tw) {
         } else if (window.S.tool === "select") {
             $$(".tl-clip").forEach((c) => c.classList.remove("active"));
             el.classList.add("active");
-            const startX = e.clientX;
-            const initialStartUs = clip.timeline_start_us;
             const dur = window.S.dur;
             if (dur <= 0) return;
 
-            const move = (e2) => {
-                const dx = e2.clientX - startX;
-                const dtSec = (dx / tw) * dur;
-                const newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
-                const newStartPx = (newStartSec / dur) * tw;
-                // Update only the dragged element's position — no full re-render
-                el.style.left = newStartPx + "px";
-            };
-            const up = () => {
-                document.removeEventListener("mousemove", move);
-                document.removeEventListener("mouseup", up);
-                // Commit final position to data model
-                const finalLeft = parseFloat(el.style.left);
-                const finalStartSec = (finalLeft / tw) * dur;
-                const finalStartUs = Math.round(finalStartSec * 1_000_000);
-                IKState.moveClip(clip.id, finalStartUs);
-                IKState.computeDuration();
-                window.calculateTimelineDuration();
-                window.renderRuler();
-                window.renderClips();
-                window.updatePlayhead();
-            };
-            document.addEventListener("mousemove", move);
-            document.addEventListener("mouseup", up);
+            // ── Detect trim vs move ──────────────────────────────────────
+            const clipRect = el.getBoundingClientRect();
+            const clickXInClip = e.clientX - clipRect.left;
+            const trimZone = 8;
+            const isLeftTrim = clickXInClip < trimZone;
+            const isRightTrim = clickXInClip > clipRect.width - trimZone;
+
+            if (isLeftTrim || isRightTrim) {
+                // ── TRIM MODE ────────────────────────────────────────────
+                const origStartUs = clip.timeline_start_us;
+                const origEndUs = clip.timeline_end_us;
+                const origSourceStartUs = clip.source_start_us;
+                const speed = clip.speed || 1;
+                const minDurUs = 500_000;
+                const lane = el.parentElement;
+
+                const move = (e2) => {
+                    const laneRect = lane.getBoundingClientRect();
+                    const scrollLeft = lane.parentElement ? lane.parentElement.scrollLeft : 0;
+                    const mx = e2.clientX - laneRect.left + scrollLeft;
+                    const mouseSec = (mx / tw) * dur;
+
+                    if (isLeftTrim) {
+                        const rawUs = Math.round(mouseSec * 1_000_000);
+                        const snapped = applySnap(rawUs, clip.id, tw);
+                        const newStartUs = Math.round(
+                            Math.max(0, Math.min(snapped !== null ? snapped : rawUs, origEndUs - minDurUs))
+                        );
+                        const newEndUs = origEndUs;
+                        const newSourceStartUs = origSourceStartUs + Math.round((newStartUs - origStartUs) / speed);
+                        const leftPx = (us2s(newStartUs) / dur) * tw;
+                        const widthPx = (us2s(newEndUs - newStartUs) / dur) * tw;
+                        el.style.left = leftPx + "px";
+                        el.style.width = widthPx + "px";
+                        el._trimNewStart = newStartUs;
+                        el._trimNewSourceStart = Math.max(0, newSourceStartUs);
+                        if (snapped !== null) showSnapGuide(newStartUs, tw);
+                        else hideSnapGuide();
+                    } else {
+                        const rawUs = Math.round(mouseSec * 1_000_000);
+                        const snapped = applySnap(rawUs, clip.id, tw);
+                        const newEndUs = Math.round(
+                            Math.max(origStartUs + minDurUs, snapped !== null ? snapped : rawUs)
+                        );
+                        const widthPx = (us2s(newEndUs - origStartUs) / dur) * tw;
+                        el.style.width = widthPx + "px";
+                        el._trimNewEnd = newEndUs;
+                        if (snapped !== null) showSnapGuide(newEndUs, tw);
+                        else hideSnapGuide();
+                    }
+                };
+
+                const up = () => {
+                    document.removeEventListener("mousemove", move);
+                    document.removeEventListener("mouseup", up);
+                    hideSnapGuide();
+                    if (!document.body.contains(el)) return;
+                    if (isLeftTrim && el._trimNewStart !== undefined) {
+                        IKState.trimClip(clip.id, el._trimNewStart, origEndUs, el._trimNewSourceStart);
+                    } else if (isRightTrim && el._trimNewEnd !== undefined) {
+                        IKState.trimClip(clip.id, origStartUs, el._trimNewEnd, origSourceStartUs);
+                    }
+                    delete el._trimNewStart;
+                    delete el._trimNewEnd;
+                    delete el._trimNewSourceStart;
+                    IKState.computeDuration();
+                    window.calculateTimelineDuration();
+                    window.renderRuler();
+                    window.renderClips();
+                    window.updatePlayhead();
+                };
+
+                document.addEventListener("mousemove", move);
+                document.addEventListener("mouseup", up);
+                e.preventDefault();
+            } else {
+                // ── MOVE MODE ──────────────────────────────────────────────
+                const startX = e.clientX;
+                const initialStartUs = clip.timeline_start_us;
+
+                const move = (e2) => {
+                    const dx = e2.clientX - startX;
+                    const dtSec = (dx / tw) * dur;
+                    const rawUs = Math.round((initialStartUs / 1_000_000 + dtSec) * 1_000_000);
+                    const snapped = applySnap(rawUs, clip.id, tw);
+                    const newStartUs = Math.max(0, snapped !== null ? snapped : rawUs);
+                    const newStartPx = (us2s(newStartUs) / dur) * tw;
+                    el.style.left = newStartPx + "px";
+                    if (snapped !== null) showSnapGuide(newStartUs, tw);
+                    else hideSnapGuide();
+                };
+                const up = () => {
+                    document.removeEventListener("mousemove", move);
+                    document.removeEventListener("mouseup", up);
+                    hideSnapGuide();
+                    if (!document.body.contains(el)) return;
+                    const finalLeft = parseFloat(el.style.left);
+                    const finalStartSec = (finalLeft / tw) * dur;
+                    const finalStartUs = Math.round(finalStartSec * 1_000_000);
+                    IKState.moveClip(clip.id, finalStartUs);
+                    IKState.computeDuration();
+                    window.calculateTimelineDuration();
+                    window.renderRuler();
+                    window.renderClips();
+                    window.updatePlayhead();
+                };
+                document.addEventListener("mousemove", move);
+                document.addEventListener("mouseup", up);
+                e.preventDefault();
+            }
         }
     };
 }
@@ -502,6 +628,7 @@ window.renderClips = function () {
         
         const el = document.createElement("div");
         el.className = "tl-clip";
+        el.dataset.clipId = clip.id;
         const clipStartSec = us2s(clip.timeline_start_us);
         const clipDurSec = us2s(clip.timeline_end_us) - clipStartSec;
         const left = (clipStartSec / dur) * tw;
@@ -560,6 +687,7 @@ window.renderClips = function () {
     standaloneAudio.forEach((clip) => {
         const el = document.createElement("div");
         el.className = "tl-clip tl-clip-audio";
+        el.dataset.clipId = clip.id;
         const clipStartSec = us2s(clip.timeline_start_us);
         const clipDurSec = us2s(clip.timeline_end_us) - clipStartSec;
         const left = (clipStartSec / dur) * tw;
@@ -686,6 +814,22 @@ document.addEventListener("keydown", (e) => {
         deactivateSplitTool();
     } else if (e.code === "KeyS") {
         activateSplitTool();
+    } else if (e.code === "Delete" || e.code === "Backspace") {
+        hideSnapGuide();
+        const activeEl = document.querySelector(".tl-clip.active");
+        if (!activeEl) return;
+        const clipId = parseInt(activeEl.dataset.clipId);
+        if (isNaN(clipId)) return;
+        const idsToRemove = [clipId, ...IKState.getLinkedClipIds(clipId)];
+        for (const id of idsToRemove) {
+            IKState.removeClip(id);
+        }
+        IKState.computeDuration();
+        window.calculateTimelineDuration();
+        window.renderRuler();
+        window.renderClips();
+        window.updatePlayhead();
+        showToast("Clip deleted", "trash-2");
     }
 });
 
@@ -707,8 +851,8 @@ window.updatePlayhead = function () {
     const dur = window.S.dur;
     if (dur <= 0) return;
     const px = (window.S.time / dur) * tw;
-    // Playhead offset = gutter width (80px)
-    const gutterWidth = 80;
+    // Playhead offset = gutter width (80px) + left padding (20px)
+    const gutterWidth = 100;
     $("#ph-tracks").style.left = (gutterWidth + px) + "px";
     $("#timecode").textContent = fmtTime(window.S.time);
 };
@@ -755,9 +899,9 @@ window.skipTime = function (delta) {
 function handleTimelineScrub(e, el) {
     const rect = el.getBoundingClientRect();
     const isRuler = (el.id === "tl-ruler");
-    // Ruler is already positioned after the gutter, so no offset needed.
-    // Tracks container includes the gutter, so subtract 80px.
-    const headOffset = isRuler ? 0 : 80;
+    // Ruler starts after gutter + padding, so no offset needed.
+    // Tracks include left padding (20px) + gutter (80px), so subtract 100px.
+    const headOffset = isRuler ? 0 : 100;
     const x = Math.max(0, e.clientX - rect.left - headOffset);
     const tw = getLaneW();
     const dur = window.S.dur;
@@ -785,10 +929,10 @@ $("#tl-ruler").onmousedown = (e) => handleTimelineScrub(e, $("#tl-ruler"));
         if (dur <= 0 || tw <= 0) return;
         const onMove = (e2) => {
             const rect = tracks.getBoundingClientRect();
-            const x = Math.max(0, e2.clientX - rect.left - 80);
+            const x = Math.max(0, e2.clientX - rect.left - 100);
             const t = Math.max(0, Math.min((x / tw) * dur, dur));
             window.S.time = t;
-            $("#ph-tracks").style.left = (80 + (t / dur) * tw) + "px";
+            $("#ph-tracks").style.left = (100 + (t / dur) * tw) + "px";
             if (window.onPlayheadScrub) window.onPlayheadScrub(t);
         };
         const onUp = () => {
