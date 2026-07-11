@@ -99,6 +99,7 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     ];
 
     window.calculateTimelineDuration();
+    window.autoFitZoom();
     window.renderRuler();
     window.renderClips();
     window.renderMedia("footage");
