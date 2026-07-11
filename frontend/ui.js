@@ -438,6 +438,41 @@ function hideSnapGuide() {
     snapGuide.classList.remove("active");
 }
 
+// ── Undo / Redo ──────────────────────────────────────────────────────────
+const MAX_UNDO = 50;
+let undoStack = [];
+let redoStack = [];
+
+window.saveSnapshot = function () {
+    undoStack.push(IKState.saveState());
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    redoStack = [];
+};
+
+function afterUndoRedo() {
+    IKState.computeDuration();
+    window.calculateTimelineDuration();
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+}
+
+window.undo = function () {
+    if (undoStack.length === 0) return;
+    redoStack.push(IKState.saveState());
+    const prev = undoStack.pop();
+    IKState.loadState(prev);
+    afterUndoRedo();
+};
+
+window.redo = function () {
+    if (redoStack.length === 0) return;
+    undoStack.push(IKState.saveState());
+    const next = redoStack.pop();
+    IKState.loadState(next);
+    afterUndoRedo();
+};
+
 function applyDragLogic(el, clip, clipArray, tw) {
     el.onmousedown = (e) => {
         if (window.S.tool === "split") {
@@ -449,6 +484,7 @@ function applyDragLogic(el, clip, clipArray, tw) {
             const clipStartSec = us2s(clip.timeline_start_us);
             const clipEndSec = us2s(clip.timeline_end_us);
             if (t > clipStartSec + 0.5 && t < clipEndSec - 0.5) {
+                saveSnapshot();
                 const splitAtUs = Math.round(t * 1_000_000);
                 const newId = IKState.splitClip(clip.id, splitAtUs);
                 if (newId !== null) {
@@ -524,8 +560,10 @@ function applyDragLogic(el, clip, clipArray, tw) {
                     hideSnapGuide();
                     if (!document.body.contains(el)) return;
                     if (isLeftTrim && el._trimNewStart !== undefined) {
+                        saveSnapshot();
                         IKState.trimClip(clip.id, el._trimNewStart, origEndUs, el._trimNewSourceStart);
                     } else if (isRightTrim && el._trimNewEnd !== undefined) {
+                        saveSnapshot();
                         IKState.trimClip(clip.id, origStartUs, el._trimNewEnd, origSourceStartUs);
                     }
                     delete el._trimNewStart;
@@ -565,6 +603,7 @@ function applyDragLogic(el, clip, clipArray, tw) {
                     const finalLeft = parseFloat(el.style.left);
                     const finalStartSec = (finalLeft / tw) * dur;
                     const finalStartUs = Math.round(finalStartSec * 1_000_000);
+                    saveSnapshot();
                     IKState.moveClip(clip.id, finalStartUs);
                     IKState.computeDuration();
                     window.calculateTimelineDuration();
@@ -725,6 +764,7 @@ $("#lane-v1").ondrop = (e) => {
         ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur;
     const startUs = Math.round(t * 1_000_000);
     const endUs = Math.min(Math.round((t + 4.0) * 1_000_000), Math.round(window.S.dur * 1_000_000));
+    saveSnapshot();
     IKState.addVideoClip("stock_" + data.id, startUs, endUs, {
         name: data.name,
         isReal: false,
@@ -807,19 +847,69 @@ $$(".tl-tool").forEach((btn) => {
     };
 });
 
+let copiedClipsData = null;
+
 // ADDITIONAL: Keyboard shortcuts
 document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-    if (e.code === "KeyV") {
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyC" && !e.shiftKey) {
+        e.preventDefault();
+        const activeEl = document.querySelector(".tl-clip.active");
+        if (!activeEl) return;
+        const clipId = parseInt(activeEl.dataset.clipId);
+        if (isNaN(clipId)) return;
+        const clip = IKState.findClip(clipId);
+        if (!clip) return;
+        const ids = [clipId, ...IKState.getLinkedClipIds(clipId)];
+        copiedClipsData = ids.map(id => {
+            const c = IKState.findClip(id);
+            if (!c) return null;
+            return { clip: JSON.parse(JSON.stringify(c)), meta: IKState.getClipMeta(id) };
+        }).filter(Boolean);
+        showToast("Copied " + copiedClipsData.length + " clip(s)", "copy");
+    } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyV") {
+        e.preventDefault();
+        if (!copiedClipsData || copiedClipsData.length === 0) return;
+        saveSnapshot();
+        const pasteTimeUs = Math.round(window.S.time * 1_000_000);
+        let cursorUs = pasteTimeUs;
+        const addClip = (c, meta) => {
+            const dur = c.timeline_end_us - c.timeline_start_us;
+            const isAudio = c.source_id && c.source_id.startsWith("audio_");
+            const addFn = isAudio ? IKState.addAudioClip : IKState.addVideoClip;
+            const newId = addFn(c.source_id, cursorUs, cursorUs + dur, meta);
+            if (newId !== null && c.source_start_us > 0) {
+                IKState.trimClip(newId, cursorUs, cursorUs + dur, c.source_start_us);
+            }
+            cursorUs += dur;
+        };
+        for (const data of copiedClipsData) addClip(data.clip, data.meta);
+        IKState.computeDuration();
+        window.calculateTimelineDuration();
+        window.renderRuler();
+        window.renderClips();
+        window.updatePlayhead();
+        showToast("Pasted " + copiedClipsData.length + " clip(s)", "clipboard-paste");
+    } else if (e.code === "KeyV" && !(e.ctrlKey || e.metaKey)) {
         deactivateSplitTool();
     } else if (e.code === "KeyS") {
         activateSplitTool();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ" && !e.shiftKey) {
+        e.preventDefault();
+        window.undo();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ" && e.shiftKey) {
+        e.preventDefault();
+        window.redo();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyY") {
+        e.preventDefault();
+        window.redo();
     } else if (e.code === "Delete" || e.code === "Backspace") {
         hideSnapGuide();
         const activeEl = document.querySelector(".tl-clip.active");
         if (!activeEl) return;
         const clipId = parseInt(activeEl.dataset.clipId);
         if (isNaN(clipId)) return;
+        saveSnapshot();
         const idsToRemove = [clipId, ...IKState.getLinkedClipIds(clipId)];
         for (const id of idsToRemove) {
             IKState.removeClip(id);
@@ -1009,6 +1099,7 @@ window.resetAiActions = function () {
 
 window.applyAiAction = function (type) {
     if (type === "silence" && !acts.trim) {
+        saveSnapshot();
         if (window.videoClips.length === 1 && window.videoClips[0].isReal) {
             const clip = window.videoClips[0];
             const startUs = clip.timeline_start_us;
