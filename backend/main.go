@@ -42,21 +42,9 @@ func main() {
 				return
 			}
 
-			return c.JSON(http.StatusOK, gin.H{"response": result})
+			c.JSON(http.StatusOK, gin.H{"response": result})
 		})
 
-		// Inside your route handler function:
-
-		// TODO 2: Parse the incoming JSON body from the React frontend
-		// Create a struct to hold the incoming prompt, like:
-		// type RequestBody struct { Prompt string `json:"prompt"` }
-		// Then bind it: c.ShouldBindJSON(&reqBody)
-
-		// TODO 3: Call your LLM!
-		// result, err := watsonClient.GenerateText(reqBody.Prompt)
-
-		// TODO 4: Return the result back to the frontend as JSON
-		// Hint: c.JSON(http.StatusOK, gin.H{"response": result})
 	}
 
 	// Start the server on port 8080
