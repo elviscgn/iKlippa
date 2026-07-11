@@ -348,18 +348,27 @@ window.calculateTimelineDuration = function () {
 };
 
 // Auto-zoom to keep ~20px per second minimum for readable ruler ticks
+let _laneRefW = 0;
 window.autoFitZoom = function () {
-    const lane = $("#lane-v1");
-    if (!lane || window.S.dur <= 0) return;
-    const laneW = lane.getBoundingClientRect().width;
-    if (laneW <= 0) return;
+    if (window.S.dur <= 0) return;
+    if (_laneRefW <= 1) {
+        const lane = $("#lane-v1");
+        if (!lane) return;
+        // Ensure no inline width when measuring the natural flex width
+        const prevW = lane.style.width;
+        lane.style.width = "";
+        _laneRefW = lane.getBoundingClientRect().width;
+        lane.style.width = prevW;
+    }
+    if (_laneRefW <= 0) return;
     const minPxPerSec = 20;
-    window.S.zoom = Math.max(0.5, (minPxPerSec * window.S.dur) / laneW);
+    window.S.zoom = Math.max(0.5, (minPxPerSec * window.S.dur) / _laneRefW);
     const zt = $("#zoom-text");
     if (zt) zt.textContent = Math.round(window.S.zoom * 100) + "%";
 };
 
 function getLaneW() {
+    if (_laneRefW > 1) return _laneRefW * window.S.zoom;
     const lane = $("#lane-v1");
     if (!lane) return 100;
     return lane.getBoundingClientRect().width * window.S.zoom;
@@ -806,10 +815,17 @@ window.renderClips = function () {
     });
     lucide.createIcons({ nodes: [$("#lane-ai"), laneV1, laneA1] });
 
-    // Set lane widths to match zoomed timeline so overflow-x:auto shows scrollbar
-    [laneV1, laneA1, $("#lane-ai")].forEach((l) => {
-        if (l) { l.style.width = tw + "px"; l.style.flex = "none"; }
-    });
+    // Force tracks container to be scrollable via a spacer in normal flow
+    // (absolutely positioned clips don't affect scroll dimensions)
+    const spacer = (w) => {
+        const s = document.createElement("div");
+        s.style.cssText = `width:${w}px;height:0;pointer-events:none;`;
+        return s;
+    };
+    laneV1.appendChild(spacer(tw));
+    if (laneA1 !== laneV1) laneA1.appendChild(spacer(tw));
+    const aiLane = $("#lane-ai");
+    if (aiLane) aiLane.appendChild(spacer(tw));
 };
 
 $("#lane-v1").ondragover = (e) => e.preventDefault();
