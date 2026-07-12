@@ -1307,6 +1307,12 @@ textarea {
   display: flex;
   height: 32px;
   padding: 8px 16px 0 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.tl-ruler-wrapper::-webkit-scrollbar {
+  display: none;
 }
 .tl-gutter {
   min-width: 80px;
@@ -1315,7 +1321,6 @@ textarea {
   border-right: 1px solid var(--border-subtle);
 }
 .tl-ruler {
-  flex: 1;
   position: relative;
   cursor: text;
   background: rgba(0, 0, 0, 0.3);
@@ -1349,7 +1354,7 @@ textarea {
 .tl-tracks {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   position: relative;
   padding: 8px 16px 8px 20px;
 }
