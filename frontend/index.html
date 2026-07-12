@@ -12,7 +12,9 @@
     />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <link rel="stylesheet" href="styles.css" />
+    <!-- Deferred classic script for UI state and rendering -->
     <script src="ui.js" defer></script>
+    <!-- ES module to hook up UI events to engine.js -->
     <script type="module" src="app.js"></script>
   </head>
   <body>
@@ -200,134 +202,6 @@
                   VIBRANT CITY
                 </div>
               </div>
-            </div>
-
-            <!-- Color Grading Panel -->
-            <div class="grade-panel" id="grade-panel" style="display: none">
-              <div class="grade-header">
-                <span class="grade-title"
-                  ><i data-lucide="sliders-horizontal"></i> Color Grade</span
-                >
-                <button
-                  class="grade-close"
-                  onclick="
-                    document.getElementById('grade-panel').style.display =
-                      'none'
-                  "
-                >
-                  <i data-lucide="x"></i>
-                </button>
-              </div>
-              <div class="grade-sliders">
-                <div class="grade-row">
-                  <label>Exposure</label>
-                  <input
-                    type="range"
-                    min="-2"
-                    max="2"
-                    step="0.05"
-                    value="0"
-                    data-grade="exposure"
-                  />
-                  <span class="grade-val">0</span>
-                </div>
-                <div class="grade-row">
-                  <label>Contrast</label>
-                  <input
-                    type="range"
-                    min="-1"
-                    max="1"
-                    step="0.02"
-                    value="0"
-                    data-grade="contrast"
-                  />
-                  <span class="grade-val">0</span>
-                </div>
-                <div class="grade-row">
-                  <label>Saturation</label>
-                  <input
-                    type="range"
-                    min="-1"
-                    max="1"
-                    step="0.02"
-                    value="0"
-                    data-grade="saturation"
-                  />
-                  <span class="grade-val">0</span>
-                </div>
-                <div class="grade-row">
-                  <label>Temperature</label>
-                  <input
-                    type="range"
-                    min="-1"
-                    max="1"
-                    step="0.02"
-                    value="0"
-                    data-grade="temperature"
-                  />
-                  <span class="grade-val">0</span>
-                </div>
-                <div class="grade-row">
-                  <label>Highlights</label>
-                  <input
-                    type="range"
-                    min="-1"
-                    max="1"
-                    step="0.02"
-                    value="0"
-                    data-grade="highlights"
-                  />
-                  <span class="grade-val">0</span>
-                </div>
-                <div class="grade-row">
-                  <label>Shadows</label>
-                  <input
-                    type="range"
-                    min="-1"
-                    max="1"
-                    step="0.02"
-                    value="0"
-                    data-grade="shadows"
-                  />
-                  <span class="grade-val">0</span>
-                </div>
-                <div class="grade-row">
-                  <label>Vignette</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.02"
-                    value="0"
-                    data-grade="vignette"
-                  />
-                  <span class="grade-val">0</span>
-                </div>
-                <div class="grade-row">
-                  <label>Grain</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.02"
-                    value="0"
-                    data-grade="grain"
-                  />
-                  <span class="grade-val">0</span>
-                </div>
-              </div>
-              <div class="grade-lut">
-                <label>LUT Preset</label>
-                <select data-grade="lut">
-                  <option value="0">None</option>
-                  <option value="1">Fuji Superia</option>
-                  <option value="2">Kodak Vision</option>
-                  <option value="3">Teal-Orange</option>
-                </select>
-              </div>
-              <button class="grade-reset" onclick="resetGrade()">
-                Reset All
-              </button>
             </div>
 
             <!-- Performance Score Badge -->
