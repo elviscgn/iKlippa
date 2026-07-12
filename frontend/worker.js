@@ -104,6 +104,22 @@ self.onmessage = async (e) => {
             await seekAndDecodeFrame(data.forceRenderMs);
         }
     }
+
+    else if (type === 'set_timeline') {
+        if (!wasmModule) return;
+        try {
+            wasmModule.set_timeline(data.json);
+            self.postMessage({ type: 'timeline_set', ok: true });
+        } catch (err) {
+            self.postMessage({ type: 'timeline_set', ok: false, error: String(err) });
+        }
+    }
+
+    else if (type === 'get_project_json') {
+        if (!wasmModule) return;
+        const json = wasmModule.to_json();
+        self.postMessage({ type: 'project_json', json });
+    }
 };
 
 function setupOffscreenCanvas(width, height) {
