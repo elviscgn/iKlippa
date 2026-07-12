@@ -445,7 +445,7 @@ function paintFrameAtTime(ms) {
   let activeClips = [];
   
   if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
-    const clips = IKState.getVideoClips();
+    const clips = IKState.getAllVideoClips ? IKState.getAllVideoClips() : IKState.getVideoClips();
     for (const clip of clips) {
       if (msUs >= clip.timeline_start_us && msUs < clip.timeline_end_us) {
         activeClips.push(clip);
