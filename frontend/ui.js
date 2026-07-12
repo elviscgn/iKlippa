@@ -4,7 +4,7 @@ lucide.createIcons();
 
 window.S = {
     time: 0,
-    dur: 10,          // FIX #5: sensible default, not 24
+    dur: 10,
     playing: false,
     rafId: null,
     lastTs: null,
@@ -32,7 +32,6 @@ window.mediaPool = {
     },
 };
 
-// FIX #1: Start empty — no fake placeholder clips
 window.videoClips = [];
 window.audioClips = [];
 window.aiNodes = [];
@@ -88,7 +87,6 @@ window.triggerSparkle = function (el) {
 
 // ── Toolbar UI Actions ─────────────────────────────────────────────────
 let isTextActive = false;
-let isEffectActive = false;
 
 $("#t-text").onclick = () => {
     isTextActive = !isTextActive;
@@ -100,16 +98,15 @@ $("#t-text").onclick = () => {
     );
 };
 
+// Color grade panel toggle (replaces old CSS filter toggle)
 $("#t-effects").onclick = () => {
-    isEffectActive = !isEffectActive;
-    $("#t-effects").classList.toggle("active");
-    $("#canvas-frame").style.filter = isEffectActive
-        ? "contrast(1.1) saturate(1.2) sepia(0.1) hue-rotate(-10deg)"
-        : "none";
-    showToast(
-        isEffectActive ? "Cinematic Grade Applied" : "Grade Removed",
-        "sparkles",
-    );
+    const panel = document.getElementById("grade-panel");
+    if (panel.style.display === "none" || !panel.style.display) {
+        panel.style.display = "block";
+        lucide.createIcons({ nodes: [panel] });
+    } else {
+        panel.style.display = "none";
+    }
 };
 
 window.toggleFcb = () => {
@@ -146,98 +143,6 @@ $$(".ai-tab").forEach((tab) => {
         );
         $("#" + tab.dataset.target).style.display = "flex";
     };
-});
-
-// ── Chat Autocomplete ─────────────────────────────────────────────────
-const cmdInput = $("#ai-cmd");
-const acMenu = $("#ac-menu");
-
-cmdInput.addEventListener("input", (e) => {
-    const lastWord = e.target.value.split(" ").pop();
-    if (lastWord.startsWith("/")) {
-        acMenu.innerHTML =
-            '<div class="ac-section">Commands</div>' +
-            '<div class="ac-item" onclick="insertAC(\'/trim-silence \')"><i data-lucide="scissors"></i> /trim-silence</div>' +
-            '<div class="ac-item" onclick="insertAC(\'/sync-audio \')"><i data-lucide="music"></i> /sync-audio</div>' +
-            '<div class="ac-item" onclick="insertAC(\'/auto-broll \')"><i data-lucide="sparkles"></i> /auto-broll</div>' +
-            '<div class="ac-item" onclick="insertAC(\'/add-captions \')"><i data-lucide="captions"></i> /add-captions</div>';
-        lucide.createIcons({ nodes: [acMenu] });
-        acMenu.classList.add("active");
-    } else if (lastWord.startsWith("@")) {
-        // FIX: Build @ mention list from actual clips
-        const clipItems = window.videoClips.map(c =>
-            `<div class="ac-item" onclick="insertAC('@${c.name.replace(/[^a-zA-Z0-9_]/g, '_')} ')"><i data-lucide="film"></i> @${c.name}</div>`
-        ).join("");
-        acMenu.innerHTML =
-            '<div class="ac-section">Clips</div>' +
-            (clipItems || '<div class="ac-item" style="color:var(--text-muted);">No clips yet</div>');
-        lucide.createIcons({ nodes: [acMenu] });
-        acMenu.classList.add("active");
-    } else {
-        acMenu.classList.remove("active");
-    }
-});
-
-window.insertAC = function (text) {
-    const words = cmdInput.value.split(" ");
-    words.pop();
-    cmdInput.value = (words.join(" ") + " " + text).trim() + " ";
-    acMenu.classList.remove("active");
-    cmdInput.focus();
-};
-
-// ── Canvas resizing and Aspect Ratio ────────────────────────────────────
-window.resizeCanvas = function () {
-    const wrapper = $("#canvas-wrapper");
-    const frame = $("#canvas-frame");
-    if (!wrapper || !frame) return;
-    const [wStr, hStr] = window.S.selectedAR.split("/");
-    const targetRatio = parseFloat(wStr) / parseFloat(hStr);
-    const wrapperRatio = wrapper.clientWidth / wrapper.clientHeight;
-    if (wrapperRatio > targetRatio) {
-        frame.style.height = "100%";
-        frame.style.width = "auto";
-    } else {
-        frame.style.width = "100%";
-        frame.style.height = "auto";
-    }
-};
-window.addEventListener("resize", window.resizeCanvas);
-
-$("#ar-btn").onclick = (e) => {
-    e.stopPropagation();
-    $("#ar-menu").classList.toggle("open");
-};
-
-window.addEventListener("click", () => $("#ar-menu").classList.remove("open"));
-
-$$(".ar-option").forEach((opt) => {
-    opt.onclick = () => {
-        $$(".ar-option").forEach((o) => o.classList.remove("active"));
-        opt.classList.add("active");
-        $("#ar-label").textContent = opt.dataset.label.split(" ")[0];
-        $("#ar-icon").setAttribute("data-lucide", opt.dataset.icon);
-        window.S.selectedAR = opt.dataset.ar;
-        $("#canvas-frame").style.aspectRatio = window.S.selectedAR;
-        window.resizeCanvas();
-        $("#panel-right").style.width =
-            window.S.selectedAR === "9/16" || window.S.selectedAR === "4/5"
-                ? "340px"
-                : "300px";
-        lucide.createIcons({ nodes: [$("#ar-btn")] });
-        showToast("Canvas set to " + opt.dataset.label, "monitor");
-    };
-});
-
-document.addEventListener("keydown", (e) => {
-    if (
-        e.code === "Space" &&
-        e.target.tagName !== "INPUT" &&
-        e.target.tagName !== "TEXTAREA"
-    ) {
-        e.preventDefault();
-        window.togglePlay();
-    }
 });
 
 // ── Media Rendering Logic ──────────────────────────────────────────────
@@ -287,7 +192,7 @@ window.renderMedia = function (type, subType = null) {
                         JSON.stringify({
                             id: "vc_" + Date.now(),
                             name: item.name,
-                            picId: item.picId || 0,
+                            picId: item.picId,
                             start: 0,
                             end: 4.0,
                         }),
@@ -327,7 +232,7 @@ $$(".stock-subtab").forEach((tab) => {
 // ── Timeline Rules and Rendering ───────────────────────────────────────
 function getLaneW() {
     const lane = $("#lane-v1");
-    if (!lane) return 100;   // FIX #5: safe fallback
+    if (!lane) return 100;
     return lane.getBoundingClientRect().width * window.S.zoom;
 }
 
@@ -336,9 +241,8 @@ window.renderRuler = function () {
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
     const dur = window.S.dur;
-    if (dur <= 0) return;    // FIX #5: guard
+    if (dur <= 0) return;
 
-    // Adaptive tick interval based on duration & zoom
     let interval;
     if (dur <= 10) interval = window.S.zoom > 1.5 ? 0.5 : 1;
     else if (dur <= 30) interval = window.S.zoom > 1.5 ? 1 : 2;
@@ -359,52 +263,159 @@ window.renderRuler = function () {
     }
 };
 
+// ── Clip Drag Logic (with trim handles) ──────────────────────────────────
+const TRIM_ZONE = 8;
+
 function applyDragLogic(el, clip, clipArray, tw) {
     el.onmousedown = (e) => {
+        e.stopPropagation();
+        const rect = el.getBoundingClientRect();
+        const relX = e.clientX - rect.left;
+        const elWidth = rect.width;
+
+        const isTrimStart = relX < TRIM_ZONE;
+        const isTrimEnd = relX > elWidth - TRIM_ZONE;
+
+        // Highlight the clip
+        $$(".tl-clip").forEach(c => c.classList.remove("active"));
+        el.classList.add("active");
+
         if (window.S.tool === "split") {
-            const rect = el.parentElement.getBoundingClientRect();
-            const clickX =
-                e.clientX - rect.left + el.parentElement.parentElement.scrollLeft;
-            const t = (clickX / tw) * window.S.dur;
-            if (t > clip.start + 0.5 && t < clip.end - 0.5) {
-                const i = clipArray.findIndex((c) => c.id === clip.id);
-                const c1 = { ...clip, id: "c" + Date.now(), end: t };
-                const c2 = { ...clip, id: "c" + (Date.now() + 1), start: t };
-                clipArray.splice(i, 1, c1, c2);
-                showToast("Clip Split", "scissors");
-                window.renderClips();
+            const clickT = (e.clientX - el.parentElement.getBoundingClientRect().left) / tw * window.S.dur;
+            if (clickT > clip.start + 0.1 && clickT < clip.end - 0.1) {
+                performSplit(clip, clickT, clipArray);
             }
-        } else if (window.S.tool === "select") {
-            $$(".tl-clip").forEach((c) => c.classList.remove("active"));
-            el.classList.add("active");
-            let startX = e.clientX,
-                initialStart = clip.start;
+            return;
+        }
+
+        const initialStart = clip.start;
+        const initialEnd = clip.end;
+        const initialSourceOffset = clip.sourceOffset || 0;
+
+        if (isTrimStart || isTrimEnd) {
+            // TRIM DRAG
+            let lastRender = 0;
+
             const move = (e2) => {
-                const dx = e2.clientX - startX;
+                const dx = e2.clientX - e.clientX;
                 const dt = (dx / tw) * window.S.dur;
-                let newStart = Math.max(
-                    0,
-                    Math.min(initialStart + dt, window.S.dur - (clip.end - clip.start)),
-                );
-                clip.end = newStart + (clip.end - clip.start);
+
+                if (isTrimStart) {
+                    const newStart = Math.max(0, Math.min(initialStart + dt, initialEnd - 0.2));
+                    const trimDelta = newStart - initialStart;
+                    clip.start = newStart;
+                    clip.sourceOffset = initialSourceOffset + trimDelta;
+                } else {
+                    const newEnd = Math.max(initialStart + 0.2, Math.min(initialEnd + dt, window.S.dur + 5));
+                    clip.end = newEnd;
+                }
+
+                const now = Date.now();
+                if (now - lastRender > 33) {
+                    window.renderClips();
+                    lastRender = now;
+                }
+            };
+
+            const up = () => {
+                document.removeEventListener("mousemove", move);
+                document.removeEventListener("mouseup", up);
+
+                // Commit trim to engine
+                if (clip.isReal && clip.rustClipId) {
+                    trimClip({
+                        track: 0,
+                        clipId: clip.rustClipId,
+                        newStartMs: Math.round(clip.start * 1000),
+                        newEndMs: Math.round(clip.end * 1000),
+                        newSourceOffsetMs: Math.round((clip.sourceOffset || 0) * 1000),
+                    });
+                }
+
+                window.S.dur = Math.max(window.S.dur, clip.end);
+                window.renderRuler();
+                window.renderClips();
+                window.updatePlayhead();
+
+                // Seek to show the trimmed frame
+                if (window.onPlayheadScrub) {
+                    window.onPlayheadScrub(isTrimStart ? clip.start : clip.end);
+                }
+            };
+
+            document.addEventListener("mousemove", move);
+            document.addEventListener("mouseup", up);
+
+        } else {
+            // MOVE DRAG
+            const move = (e2) => {
+                const dx = e2.clientX - e.clientX;
+                const dt = (dx / tw) * window.S.dur;
+                let newStart = Math.max(0, Math.min(initialStart + dt, window.S.dur - (initialEnd - initialStart)));
+                clip.end = newStart + (initialEnd - initialStart);
                 clip.start = newStart;
                 window.renderClips();
             };
+
             const up = () => {
                 document.removeEventListener("mousemove", move);
                 document.removeEventListener("mouseup", up);
             };
+
             document.addEventListener("mousemove", move);
             document.addEventListener("mouseup", up);
         }
     };
+
+    // Visual cursor hint
+    el.onmousemove = (e) => {
+        const rect = el.getBoundingClientRect();
+        const relX = e.clientX - rect.left;
+        if (relX < TRIM_ZONE || relX > rect.width - TRIM_ZONE) {
+            el.style.cursor = 'col-resize';
+        } else {
+            el.style.cursor = 'grab';
+        }
+    };
 }
 
-// FIX #4: Deterministic pseudo-random for waveform (no Math.random)
-function seededBarHeight(i) {
-    // Simple hash-like deterministic value from index
-    let x = ((i * 2654435761) >>> 0) & 0xFF;
-    return 10 + (x % 28);
+// ── Split Function ──────────────────────────────────────────────────
+function performSplit(clip, splitAtSec, clipArray) {
+    const i = clipArray.findIndex(c => c.id === clip.id);
+    if (i === -1) return;
+
+    const sourceAtSplit = (clip.sourceOffset || 0) + (splitAtSec - clip.start);
+
+    const c1 = {
+        ...clip,
+        id: 'c' + Date.now(),
+        end: splitAtSec,
+    };
+
+    const c2 = {
+        ...clip,
+        id: 'c' + (Date.now() + 1),
+        start: splitAtSec,
+        sourceOffset: sourceAtSplit,
+    };
+
+    clipArray.splice(i, 1, c1, c2);
+    showToast('Clip Split', 'scissors');
+    window.renderClips();
+
+    // Tell the engine about the split
+    if (clip.isReal && clip.rustClipId) {
+        splitClip({
+            track: 0,
+            clipId: clip.rustClipId,
+            atMs: Math.round(splitAtSec * 1000),
+        }).then(newId => {
+            if (newId) {
+                c2.rustClipId = newId;
+                c1.rustClipId = clip.rustClipId;
+            }
+        });
+    }
 }
 
 window.renderClips = function () {
@@ -413,9 +424,8 @@ window.renderClips = function () {
     laneV1.innerHTML = laneA1.innerHTML = "";
     const tw = getLaneW();
     const dur = window.S.dur;
-    if (dur <= 0) return;    // FIX #5
+    if (dur <= 0) return;
 
-    // Show empty-state hint when no clips exist
     if (window.videoClips.length === 0) {
         laneV1.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;opacity:0.5;pointer-events:none;">Drop video here</div>';
     }
@@ -428,7 +438,6 @@ window.renderClips = function () {
         el.style.left = left + "px";
         el.style.width = w + "px";
 
-        // Real clip with captured thumbnails
         if (clip.isReal && clip.thumbnails && clip.thumbnails.length > 0) {
             const count = Math.max(1, Math.floor(w / 60));
             let thumbs = '<div class="tl-clip-thumbs">';
@@ -442,23 +451,17 @@ window.renderClips = function () {
             thumbs += "</div>";
             el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
             el.style.background = "linear-gradient(180deg, rgba(13,148,136,0.08) 0%, rgba(0,0,0,0.4) 100%)";
-        }
-        // Real clip without thumbnails yet — gradient placeholder
-        else if (clip.isReal) {
+        } else if (clip.isReal) {
             el.style.background = "linear-gradient(135deg, rgba(13,148,136,0.12), rgba(6,6,8,0.8))";
             el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${clip.name}</span>`;
-        }
-        // Stock / placeholder clip with picsum
-        else if (clip.picId) {
+        } else if (clip.picId) {
             const count = Math.max(1, Math.floor(w / 60));
             let thumbs = '<div class="tl-clip-thumbs">';
             for (let j = 0; j < count; j++)
                 thumbs += `<img src="${picUrl(clip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
             thumbs += "</div>";
             el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
-        }
-        // Fallback
-        else {
+        } else {
             el.style.background = "rgba(255,255,255,0.04)";
             el.innerHTML = `<span class="tl-clip-label">${clip.name}</span>`;
         }
@@ -467,7 +470,6 @@ window.renderClips = function () {
         laneV1.appendChild(el);
     });
 
-    // Empty audio lane hint
     if (window.audioClips.length === 0) {
         laneA1.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;opacity:0.5;pointer-events:none;">Audio track</div>';
     }
@@ -479,7 +481,6 @@ window.renderClips = function () {
         const w = ((clip.end - clip.start) / dur) * tw;
         el.style.left = left + "px";
         el.style.width = w + "px";
-        // FIX #4: deterministic bars — no Math.random()
         const bars = Array.from({ length: Math.max(1, Math.floor(w / 4)) }, (_, i) => {
             const h = seededBarHeight(i);
             return `<rect x="${i * 4}" y="${20 - h / 2}" width="2.5" height="${Math.min(h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`;
@@ -501,21 +502,81 @@ window.renderClips = function () {
     lucide.createIcons({ nodes: [$("#lane-ai"), laneV1] });
 };
 
-$("#lane-v1").ondragover = (e) => e.preventDefault();
-$("#lane-v1").ondrop = (e) => {
-    e.preventDefault();
-    const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+function seededBarHeight(i) {
+    let x = ((i * 2654435761) >>> 0) & 0xFF;
+    return 10 + (x % 28);
+}
+
+// ── Time Formatting and Playhead Sync ───────────────────────────────
+function fmtTime(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    const f = Math.floor((sec % 1) * 30);
+    if (h > 0) {
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
+    }
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
+}
+
+window.updatePlayhead = function () {
     const tw = getLaneW();
-    const rect = $("#lane-v1").getBoundingClientRect();
-    const t =
-        ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur;
-    data.start = t;
-    data.end = Math.min(t + 4.0, window.S.dur);
-    window.videoClips.push(data);
-    showToast("Stock Inserted", "film");
-    window.renderClips();
+    const dur = window.S.dur;
+    if (dur <= 0) return;
+    const px = (window.S.time / dur) * tw;
+    $("#ph-ruler").style.left = px + "px";
+    $("#ph-tracks").style.left = 140 + px + "px";
+    $("#timecode").textContent = fmtTime(window.S.time);
 };
 
+// ── Keyboard Shortcuts ───────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+    if (
+        e.target.tagName === 'INPUT' ||
+        e.target.tagName === 'TEXTAREA'
+    ) return;
+
+    if (e.code === 'Space') {
+        e.preventDefault();
+        window.togglePlay();
+    }
+
+    if (e.code === 'KeyS') {
+        e.preventDefault();
+        const playheadSec = window.S.time;
+        for (const clip of window.videoClips) {
+            if (playheadSec >= clip.start && playheadSec <= clip.end) {
+                if (playheadSec > clip.start + 0.1 && playheadSec < clip.end - 0.1) {
+                    performSplit(clip, playheadSec, window.videoClips);
+                }
+                break;
+            }
+        }
+    }
+});
+
+// ── Scrub Seek Event Handling ──────────────────────────────────────────
+let lastScrubMs = -1;
+function handleTimelineScrub(e, el) {
+    const rect = el.getBoundingClientRect();
+    const isRuler = (el.id === "tl-ruler");
+    const headOffset = isRuler ? 0 : 140;
+    const x = Math.max(0, e.clientX - rect.left - headOffset);
+    const tw = getLaneW();
+    const dur = window.S.dur;
+    if (dur <= 0 || tw <= 0) return;
+    window.S.time = Math.max(0, Math.min((x / tw) * dur, dur));
+    window.updatePlayhead();
+    if (window.onPlayheadScrub) window.onPlayheadScrub(window.S.time);
+}
+
+$("#tl-tracks").addEventListener("mousedown", (e) => {
+    if (e.target.closest(".tl-clip") || e.target.closest(".track-head")) return;
+    handleTimelineScrub(e, $("#tl-tracks"));
+});
+$("#tl-ruler").onmousedown = (e) => handleTimelineScrub(e, $("#tl-ruler"));
+
+// ── Timeline Zoom ──────────────────────────────────────────────────
 $("#tl-body").addEventListener(
     "wheel",
     (e) => {
@@ -542,91 +603,43 @@ $$(".tl-tool").forEach((btn) => {
     };
 });
 
-// ── Time Formatting and Playhead Sync ───────────────────────────────
-function fmtTime(sec) {
-    // FIX #6: compact format for sub-hour clips
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = Math.floor(sec % 60);
-    const f = Math.floor((sec % 1) * 30);
-    if (h > 0) {
-        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
-    }
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
-}
-
-window.updatePlayhead = function () {
-    const tw = getLaneW();
-    const dur = window.S.dur;
-    if (dur <= 0) return;    // FIX #5
-    const px = (window.S.time / dur) * tw;
-    $("#ph-ruler").style.left = px + "px";
-    $("#ph-tracks").style.left = 140 + px + "px";
-    $("#timecode").textContent = fmtTime(window.S.time);
-};
-
-// UI-Fallback Play Control (overridden by app.js when engine loads)
-window.togglePlay = function () {
-    if (window.S.playing) {
-        window.S.playing = false;
-        cancelAnimationFrame(window.S.rafId);
-        window.S.lastTs = null;
-        $$(".icon-play").forEach((i) => i.setAttribute("data-lucide", "play"));
-        lucide.createIcons();
-    } else {
-        if (window.S.time >= window.S.dur) window.S.time = 0;
-        window.S.playing = true;
-        window.S.lastTs = null;
-        $$(".icon-play").forEach((i) => i.setAttribute("data-lucide", "pause"));
-        lucide.createIcons();
-        window.S.rafId = requestAnimationFrame(function playLoop(ts) {
-            if (!window.S.playing) return;
-            if (window.S.lastTs) {
-                window.S.time += (ts - window.S.lastTs) / 1000;
-            }
-            if (window.S.time >= window.S.dur) {
-                window.S.time = window.S.dur;
-                window.togglePlay();
-                return;
-            }
-            window.S.lastTs = ts;
-            window.updatePlayhead();
-            window.S.rafId = requestAnimationFrame(playLoop);
-        });
-    }
-};
-
-window.skipTime = function (delta) {
-    window.S.time = Math.max(0, Math.min(window.S.dur, window.S.time + delta));
-    window.updatePlayhead();
-    if (window.onPlayheadScrub) window.onPlayheadScrub(window.S.time);
-};
-
-// ── Scrub Seek Event Handling ──────────────────────────────────────────
-// FIX #2: Ruler already has margin-left:140px, so don't subtract 140 again
-function handleTimelineScrub(e, el) {
-    const rect = el.getBoundingClientRect();
-    const isRuler = (el.id === "tl-ruler");
-    const headOffset = isRuler ? 0 : 140;
-    const x = Math.max(
-        0,
-        e.clientX - rect.left - headOffset,
-    );
-    const tw = getLaneW();
-    const dur = window.S.dur;
-    if (dur <= 0 || tw <= 0) return;
-    window.S.time = Math.max(0, Math.min((x / tw) * dur, dur));
-    window.updatePlayhead();
-    if (window.onPlayheadScrub) window.onPlayheadScrub(window.S.time);
-}
-
-$("#tl-tracks").addEventListener("mousedown", (e) => {
-    if (e.target.closest(".tl-clip") || e.target.closest(".track-head")) return;
-    handleTimelineScrub(e, $("#tl-tracks"));
-});
-$("#tl-ruler").onmousedown = (e) => handleTimelineScrub(e, $("#tl-ruler"));
-
 // ── AI Copilot Chat Interface ──────────────────────────────────────────
+const cmdInput = $("#ai-cmd");
+const acMenu = $("#ac-menu");
+
+cmdInput.addEventListener("input", (e) => {
+    const lastWord = e.target.value.split(" ").pop();
+    if (lastWord.startsWith("/")) {
+        acMenu.innerHTML =
+            '<div class="ac-section">Commands</div>' +
+            '<div class="ac-item" onclick="insertAC(\'/trim-silence \')"><i data-lucide="scissors"></i> /trim-silence</div>' +
+            '<div class="ac-item" onclick="insertAC(\'/sync-audio \')"><i data-lucide="music"></i> /sync-audio</div>' +
+            '<div class="ac-item" onclick="insertAC(\'/auto-broll \')"><i data-lucide="sparkles"></i> /auto-broll</div>' +
+            '<div class="ac-item" onclick="insertAC(\'/add-captions \')"><i data-lucide="captions"></i> /add-captions</div>';
+        lucide.createIcons({ nodes: [acMenu] });
+        acMenu.classList.add("active");
+    } else if (lastWord.startsWith("@")) {
+        const clipItems = window.videoClips.map(c =>
+            `<div class="ac-item" onclick="insertAC('@${c.name.replace(/[^a-zA-Z0-9_]/g, '_')} ')"><i data-lucide="film"></i> @${c.name}</div>`
+        ).join("");
+        acMenu.innerHTML =
+            '<div class="ac-section">Clips</div>' +
+            (clipItems || '<div class="ac-item" style="color:var(--text-muted);">No clips yet</div>');
+        lucide.createIcons({ nodes: [acMenu] });
+        acMenu.classList.add("active");
+    } else {
+        acMenu.classList.remove("active");
+    }
+});
+
+window.insertAC = function (text) {
+    const words = cmdInput.value.split(" ");
+    words.pop();
+    cmdInput.value = (words.join(" ") + " " + text).trim() + " ";
+    acMenu.classList.remove("active");
+    cmdInput.focus();
+};
+
 function appendChat(text, isUser = false) {
     const el = document.createElement("div");
     el.className = "chat-msg " + (isUser ? "user" : "ai");
@@ -692,7 +705,6 @@ window.resetAiActions = function () {
 window.applyAiAction = function (type) {
     if (type === "silence" && !acts.trim) {
         if (window.videoClips.length === 1 && window.videoClips[0].isReal) {
-            // Real video: simulate trim by shortening ~8%
             const clip = window.videoClips[0];
             const originalDur = clip.end - clip.start;
             const trimmedDur = originalDur * 0.92;
@@ -704,27 +716,6 @@ window.applyAiAction = function (type) {
             $("#insight-bar").style.width = "93%";
             $("#insight-box").classList.add("optimized");
             appendChat("Trimmed silent segments automatically.");
-            showToast("AI Smart Trim Applied", "scissors");
-            acts.trim = true;
-        } else if (window.videoClips.length >= 2) {
-            // Multiple clips: tighten gaps
-            const firstStart = window.videoClips[0].start;
-            let cursor = window.videoClips[0].end;
-            for (let i = 1; i < window.videoClips.length; i++) {
-                const gap = window.videoClips[i].start - cursor;
-                if (gap > 0) {
-                    const dur = window.videoClips[i].end - window.videoClips[i].start;
-                    window.videoClips[i].start = cursor;
-                    window.videoClips[i].end = cursor + dur;
-                }
-                cursor = window.videoClips[i].end;
-            }
-            window.S.dur = cursor;
-            window.aiNodes.push({ time: firstStart, label: "Gaps Trimmed", icon: "scissors" });
-            $("#insight-score").textContent = "96";
-            $("#insight-bar").style.width = "96%";
-            $("#insight-box").classList.add("optimized");
-            appendChat("Trimmed gaps between clips automatically.");
             showToast("AI Smart Trim Applied", "scissors");
             acts.trim = true;
         } else {
@@ -756,7 +747,86 @@ window.applyAiAction = function (type) {
     window.updatePlayhead();
 };
 
-// ── Initialization Trigger ─────────────────────────────────────────────
+// ── UI Fallback Play Control ──────────────────────────────────────────
+// This is overridden by app.js when the engine loads.
+// If the engine hasn't loaded, this provides basic timeline animation.
+window.togglePlay = function () {
+    if (window.S.playing) {
+        window.S.playing = false;
+        cancelAnimationFrame(window.S.rafId);
+        window.S.lastTs = null;
+        $$(".icon-play").forEach((i) => i.setAttribute("data-lucide", "play"));
+        lucide.createIcons();
+    } else {
+        if (window.S.time >= window.S.dur) window.S.time = 0;
+        window.S.playing = true;
+        window.S.lastTs = null;
+        $$(".icon-play").forEach((i) => i.setAttribute("data-lucide", "pause"));
+        lucide.createIcons();
+        window.S.rafId = requestAnimationFrame(function playLoop(ts) {
+            if (!window.S.playing) return;
+            if (window.S.lastTs) {
+                window.S.time += (ts - window.S.lastTs) / 1000;
+            }
+            if (window.S.time >= window.S.dur) {
+                window.S.time = window.S.dur;
+                window.togglePlay();
+                return;
+            }
+            window.S.lastTs = ts;
+            window.updatePlayhead();
+            window.S.rafId = requestAnimationFrame(playLoop);
+        });
+    }
+};
+
+window.skipTime = function (delta) {
+    window.S.time = Math.max(0, Math.min(window.S.dur, window.S.time + delta));
+    window.updatePlayhead();
+    if (window.onPlayheadScrub) window.onPlayheadScrub(window.S.time);
+};
+
+// ── Canvas Resizing ──────────────────────────────────────────────────
+window.resizeCanvas = function () {
+    const wrapper = $("#canvas-wrapper");
+    const frame = $("#canvas-frame");
+    if (!wrapper || !frame) return;
+    const [wStr, hStr] = window.S.selectedAR.split("/");
+    const targetRatio = parseFloat(wStr) / parseFloat(hStr);
+    const wrapperRatio = wrapper.clientWidth / wrapper.clientHeight;
+    if (wrapperRatio > targetRatio) {
+        frame.style.height = "100%";
+        frame.style.width = "auto";
+    } else {
+        frame.style.width = "100%";
+        frame.style.height = "auto";
+    }
+};
+window.addEventListener("resize", window.resizeCanvas);
+
+// ── AR Selector ──────────────────────────────────────────────────────
+$("#ar-btn").onclick = (e) => {
+    e.stopPropagation();
+    $("#ar-menu").classList.toggle("open");
+};
+
+window.addEventListener("click", () => $("#ar-menu").classList.remove("open"));
+
+$$(".ar-option").forEach((opt) => {
+    opt.onclick = () => {
+        $$(".ar-option").forEach((o) => o.classList.remove("active"));
+        opt.classList.add("active");
+        $("#ar-label").textContent = opt.dataset.label.split(" ")[0];
+        $("#ar-icon").setAttribute("data-lucide", opt.dataset.icon);
+        window.S.selectedAR = opt.dataset.ar;
+        $("#canvas-frame").style.aspectRatio = window.S.selectedAR;
+        window.resizeCanvas();
+        lucide.createIcons({ nodes: [$("#ar-btn")] });
+        showToast("Canvas set to " + opt.dataset.label, "monitor");
+    };
+});
+
+// ── Initialization ─────────────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
     window.renderMedia("footage");
     window.renderRuler();
