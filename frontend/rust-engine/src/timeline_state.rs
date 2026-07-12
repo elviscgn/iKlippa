@@ -699,13 +699,15 @@ impl Project {
 }
 
 fn new_project_id() -> String {
-    // Cheap, non-cryptographic, monotonic-ish id for the localStorage draft key.
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-    format!("proj_{now:x}")
+    // `std::time::SystemTime::now()` panics on wasm32 (no syscall), so we use
+    // a static monotonic counter instead. The id only has to be unique within
+    // a single session for the localStorage draft key (`iklippa:project:{id}`)
+    // — across-session collisions don't matter because the JS side owns the
+    // localStorage namespace and can override `Project.id` after `from_json`.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("proj_{n:x}")
 }
 
 // ── Unit tests (run with `cargo test`, non-wasm target) ───────────────────────
