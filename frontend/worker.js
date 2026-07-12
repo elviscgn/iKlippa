@@ -1,11 +1,9 @@
-// worker.js (Final, Audited, Synchronized)
+// worker.js (rev 3 — Rust timeline wired, trim/split support)
 import init, { IklippaEngine } from './pkg/iklippa_engine.js';
 
 let wasmModule = null;
 let wasmMemory = null;
 let frameView = null;
-let decoder = null;
-let audioDecoder = null;
 
 let clips = [];
 let audioConfig = null;
@@ -21,15 +19,10 @@ let decoderSeeded = false;
 let decodeSessionId = 0;
 let audioConfigVersion = 0;
 
-// --- THE DISCOVERY FIX ---
-// The baseline timestamp of the first decoded frame (audio or video).
-// This ensures both streams are normalized to the exact same timeline,
-// preventing desync if one track starts slightly later than the other.
 let globalStartOffsetUs = -1;
 
-// Sync State from Main Thread
 let currentPlayheadMs = 0;
-let isWorkerPlaying = false;
+let rustClipId = 0;
 
 let offscreenCanvas = null;
 let offscreenCtx = null;
@@ -46,12 +39,16 @@ self.onmessage = async (e) => {
     }
 
     else if (type === 'load') {
-        // Reset baseline on new file load
         globalStartOffsetUs = -1;
+        currentPlayheadMs = 0;
+        rustClipId = 0;
 
         const { file, codecConfig, width, height, samples, durationMs } = data;
         if (!wasmModule) { wasmModule = new IklippaEngine(width, height); }
         else { wasmModule.resize(width, height); }
+
+        // Register the clip in the Rust timeline
+        rustClipId = wasmModule.add_clip(0, 0, Math.round(durationMs), 0);
 
         frameView = new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), wasmModule.frame_len());
         clips = [{ file, codecConfig, samples }];
@@ -66,10 +63,11 @@ self.onmessage = async (e) => {
 
         await seekAndDecodeFrame(0);
         await primeAudioDecode();
-        self.postMessage({ type: 'ready', durationMs, width, height });
+        self.postMessage({ type: 'ready', durationMs, width, height, rustClipId });
     }
 
     else if (type === 'seek') {
+        currentPlayheadMs = data.ms;
         await seekAndDecodeFrame(data.ms);
         await primeAudioDecode();
     }
@@ -104,6 +102,27 @@ self.onmessage = async (e) => {
             await seekAndDecodeFrame(data.forceRenderMs);
         }
     }
+
+    else if (type === 'trim_clip') {
+        const { track, clipId, newStartMs, newEndMs, newSourceOffsetMs } = data;
+        wasmModule.trim_clip(track, clipId, newStartMs, newEndMs, newSourceOffsetMs);
+        // Update our local duration tracking
+        self.postMessage({ type: 'trim_applied', durationMs: wasmModule.duration_ms() });
+        // Re-decode the current frame at the new mapping
+        await seekAndDecodeFrame(currentPlayheadMs);
+    }
+
+    else if (type === 'split_clip') {
+        const { track, clipId, atMs } = data;
+        const newClipId = wasmModule.split_clip(track, clipId, atMs);
+        self.postMessage({
+            type: 'split_result',
+            newClipId,
+            originalClipId: clipId,
+            splitAtMs: atMs,
+            durationMs: wasmModule.duration_ms(),
+        });
+    }
 };
 
 function setupOffscreenCanvas(width, height) {
@@ -111,17 +130,68 @@ function setupOffscreenCanvas(width, height) {
     offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
 }
 
+function setupDecoder(codecConfig, width, height) {
+    if (decoder && decoder.state !== 'closed') decoder.close();
+
+    decoder = new VideoDecoder({
+        output: async (videoFrame) => {
+            if (globalStartOffsetUs === -1) {
+                globalStartOffsetUs = videoFrame.timestamp;
+            }
+
+            const normalizedTsUs = videoFrame.timestamp - globalStartOffsetUs;
+            const tsMs = Math.round(normalizedTsUs / 1000);
+
+            if (isWorkerPlaying && tsMs < currentPlayheadMs - 200) {
+                videoFrame.close();
+                return;
+            }
+
+            if (videoFrame.format === null) {
+                offscreenCtx.drawImage(videoFrame, 0, 0);
+                videoFrame.close();
+                const imgData = offscreenCtx.getImageData(0, 0, width, height);
+                frameView = new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), wasmModule.frame_len());
+                frameView.set(imgData.data);
+            } else {
+                frameView = new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), wasmModule.frame_len());
+                await videoFrame.copyTo(frameView);
+                videoFrame.close();
+            }
+
+            let gradeMs = 0;
+            if (!isWorkerPlaying) {
+                const gradeStart = performance.now();
+                wasmModule.process_frame();
+                gradeMs = performance.now() - gradeStart;
+            }
+
+            const len = wasmModule.frame_len();
+            const ownedPixels = new Uint8ClampedArray(len);
+            ownedPixels.set(new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), len));
+
+            self.postMessage({
+                type: 'frame', ms: tsMs, gradeMs, buffer: ownedPixels.buffer
+            }, [ownedPixels.buffer]);
+        },
+        error: (e) => console.error('[Worker Decoder]', e),
+    });
+
+    decoder.configure({
+        codec: codecConfig.codec, codedWidth: width, codedHeight: height,
+        description: codecConfig.description, hardwareAcceleration: 'prefer-hardware', optimizeForLatency: true,
+    });
+}
+
 function setupAudioDecoder(config) {
     if (audioDecoder && audioDecoder.state !== 'closed') audioDecoder.close();
 
     audioDecoder = new AudioDecoder({
         output: (audioData) => {
-            // Establish the global baseline if this is the first decoded chunk
             if (globalStartOffsetUs === -1) {
                 globalStartOffsetUs = audioData.timestamp;
             }
 
-            // Normalize to the shared baseline
             const normalizedTsUs = audioData.timestamp - globalStartOffsetUs;
             const tsMs = Math.round(normalizedTsUs / 1000);
 
@@ -173,59 +243,6 @@ function setupAudioDecoder(config) {
     audioDecoder.configure(config);
 }
 
-function setupDecoder(codecConfig, width, height) {
-    if (decoder && decoder.state !== 'closed') decoder.close();
-
-    decoder = new VideoDecoder({
-        output: async (videoFrame) => {
-            // Establish the global baseline if this is the first decoded chunk
-            if (globalStartOffsetUs === -1) {
-                globalStartOffsetUs = videoFrame.timestamp;
-            }
-
-            // Normalize to the shared baseline
-            const normalizedTsUs = videoFrame.timestamp - globalStartOffsetUs;
-            const tsMs = Math.round(normalizedTsUs / 1000);
-
-            if (isWorkerPlaying && tsMs < currentPlayheadMs - 66) {
-                videoFrame.close();
-                return;
-            }
-
-            if (videoFrame.format === null) {
-                offscreenCtx.drawImage(videoFrame, 0, 0);
-                videoFrame.close();
-                const imgData = offscreenCtx.getImageData(0, 0, width, height);
-                frameView.set(imgData.data);
-            } else {
-                await videoFrame.copyTo(frameView, { format: 'RGBA' });
-                videoFrame.close();
-            }
-
-            let gradeMs = 0;
-            if (!isWorkerPlaying) {
-                const gradeStart = performance.now();
-                wasmModule.process_frame();
-                gradeMs = performance.now() - gradeStart;
-            }
-
-            const len = wasmModule.frame_len();
-            const ownedPixels = new Uint8ClampedArray(len);
-            ownedPixels.set(new Uint8ClampedArray(wasmMemory.buffer, wasmModule.frame_ptr(), len));
-
-            self.postMessage({
-                type: 'frame', ms: tsMs, gradeMs, buffer: ownedPixels.buffer
-            }, [ownedPixels.buffer]);
-        },
-        error: (e) => console.error('[Worker Decoder]', e),
-    });
-
-    decoder.configure({
-        codec: codecConfig.codec, codedWidth: width, codedHeight: height,
-        description: codecConfig.description, hardwareAcceleration: 'prefer-hardware', optimizeForLatency: true,
-    });
-}
-
 async function seekAndDecodeFrame(targetMs) {
     if (isSeeking) {
         pendingSeekMs = targetMs;
@@ -236,14 +253,17 @@ async function seekAndDecodeFrame(targetMs) {
     decodeSessionId++;
     decoderSeeded = false;
 
+    // Ask the Rust timeline where this playhead maps in the source file
+    const sourceMs = wasmModule.source_ms_for_playhead(Math.round(targetMs));
+    if (sourceMs === 0xFFFFFFFF) { isSeeking = false; return; } // no active clip
+
     const { samples, file } = clips[0];
 
     let vKeyIdx = 0;
     for (let i = 0; i < samples.length; i++) {
-        // We seek on the RAW file timestamps here
         const sMs = Math.round((samples[i].cts * 1000) / samples[i].timescale);
-        if (sMs <= targetMs && samples[i].is_sync) vKeyIdx = i;
-        if (sMs > targetMs) break;
+        if (sMs <= sourceMs && samples[i].is_sync) vKeyIdx = i;
+        if (sMs > sourceMs) break;
     }
 
     decoder.reset();
@@ -261,25 +281,10 @@ async function seekAndDecodeFrame(targetMs) {
             type: s.is_sync ? 'key' : 'delta', timestamp: s.cts * 1_000_000 / s.timescale, duration: s.duration * 1_000_000 / s.timescale, data,
         }));
 
-        if (sMs >= targetMs) {
+        if (sMs >= sourceMs) {
             lastDecodedSampleIdx = i;
             break;
         }
-    }
-
-    if (audioDecoder && audioSamples.length > 0) {
-        audioDecoder.reset();
-        audioDecoder.configure(audioConfig);
-
-        let targetIdx = 0;
-        for (let i = 0; i < audioSamples.length; i++) {
-            const sMs = Math.round((audioSamples[i].cts * 1000) / audioSamples[i].timescale);
-            if (sMs >= targetMs) {
-                targetIdx = i;
-                break;
-            }
-        }
-        lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
     }
 
     decoderSeeded = true;
@@ -300,7 +305,7 @@ async function primeAudioDecode() {
     if (startIdx >= audioSamples.length) return;
 
     const startMs = Math.round((audioSamples[startIdx].cts * 1000) / audioSamples[startIdx].timescale);
-    const targetMs = startMs + 600; // pre-buffer 600ms
+    const targetMs = startMs + 600;
 
     for (let i = startIdx; i < audioSamples.length; i++) {
         const s = audioSamples[i];
@@ -309,7 +314,7 @@ async function primeAudioDecode() {
 
         const data = await readSampleData(file, s);
         audioDecoder.decode(new EncodedAudioChunk({
-            type: s.is_sync ? 'key' : 'delta', // FIXED: was hardcoded to 'key'
+            type: s.is_sync ? 'key' : 'delta',
             timestamp: s.cts * 1_000_000 / s.timescale,
             duration: s.duration * 1_000_000 / s.timescale,
             data,
@@ -326,7 +331,6 @@ async function decodeNextSamples() {
     const session = decodeSessionId;
     const { samples, file } = clips[0];
 
-    // ── Audio first (cheaper, more urgent for A/V sync) ──────────────
     if (audioDecoder && audioDecoder.state === 'configured' && audioSamples.length > 0) {
         while (audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE) {
             const startIdx = lastDecodedAudioIdx + 1;
@@ -336,7 +340,7 @@ async function decodeNextSamples() {
             if (session !== decodeSessionId) { isDecodingNext = false; return; }
 
             audioDecoder.decode(new EncodedAudioChunk({
-                type: s.is_sync ? 'key' : 'delta', // FIXED: was hardcoded to 'key'
+                type: s.is_sync ? 'key' : 'delta',
                 timestamp: s.cts * 1_000_000 / s.timescale,
                 duration: s.duration * 1_000_000 / s.timescale,
                 data,
@@ -345,7 +349,6 @@ async function decodeNextSamples() {
         }
     }
 
-    // ── Video second ──────────────────────────────────────────────────
     while (decoder.decodeQueueSize < MAX_DECODE_QUEUE) {
         const startIdx = lastDecodedSampleIdx + 1;
         if (startIdx >= samples.length) break;
