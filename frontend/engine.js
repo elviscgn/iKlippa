@@ -227,30 +227,8 @@ function handleWorkerMessage(e) {
       audioBuffer.copyToChannel(new Float32Array(data.buffers[c]), c);
     }
     pendingAudio.set(data.ms, audioBuffer);
-    
-    // Only schedule audio if there's an active video or audio clip at this time
     if (isPlaying) {
-      const chunkMsUs = Math.round(data.ms * 1_000);
-      let hasActiveClip = false;
-      
-      if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
-        const project = IKState.getProject();
-        if (project) {
-          for (const track of project.tracks) {
-            for (const clip of track.clips) {
-              if (chunkMsUs >= clip.timeline_start_us && chunkMsUs < clip.timeline_end_us) {
-                hasActiveClip = true;
-                break;
-              }
-            }
-            if (hasActiveClip) break;
-          }
-        }
-      }
-      
-      if (hasActiveClip) {
-        scheduleAudioNode(data.ms, audioBuffer);
-      }
+      scheduleAudioNode(data.ms, audioBuffer);
     }
   }
 
@@ -546,30 +524,8 @@ export async function startPlayback() {
   audioPlayStartMs = playheadMs;
   nextAudioStartTime = 0;
   const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
-  
-  // Only schedule audio chunks that fall within active video or audio clips
   for (const [ms, buffer] of sorted) {
-    const chunkMsUs = Math.round(ms * 1_000);
-    let hasActiveClip = false;
-    
-    if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
-      const project = IKState.getProject();
-      if (project) {
-        for (const track of project.tracks) {
-          for (const clip of track.clips) {
-            if (chunkMsUs >= clip.timeline_start_us && chunkMsUs < clip.timeline_end_us) {
-              hasActiveClip = true;
-              break;
-            }
-          }
-          if (hasActiveClip) break;
-        }
-      }
-    }
-    
-    if (hasActiveClip) {
-      scheduleAudioNode(ms, buffer);
-    }
+    scheduleAudioNode(ms, buffer);
   }
   
   syncWorkerState();
