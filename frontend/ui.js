@@ -313,6 +313,17 @@ window.renderMedia = function (type, subType = null) {
                         }),
                     );
             }
+            const delBtn = document.createElement("button");
+            delBtn.className = "media-del-btn";
+            delBtn.innerHTML = '<i data-lucide="x"></i>';
+            delBtn.onclick = (e) => {
+                e.stopPropagation();
+                const pool = type === "footage" || type === "audio" ? window.mediaPool[type] : window.mediaPool.stock[subType || "video"];
+                const idx = pool.indexOf(item);
+                if (idx !== -1) pool.splice(idx, 1);
+                window.renderMedia(type, subType);
+            };
+            el.appendChild(delBtn);
             el.onclick = () => {
                 $$(".media-item").forEach((m) => m.classList.remove("selected"));
                 el.classList.add("selected");
