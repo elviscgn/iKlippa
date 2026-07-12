@@ -11,6 +11,9 @@ import {
     getThumbnails,
     getCurrentFileName,
     captureThumbnail,
+    getRustClipId,
+    trimClip,
+    splitClip,
 } from "./engine.js";
 
 const canvasEl = document.getElementById("canvas-img");
@@ -28,7 +31,7 @@ window.onEngineStatus = (msg) => {
     window.showToast(msg, "zap");
 };
 
-// ── Playhead updates: Engine → UI Timeline ──────────────────────────
+// ── Playhead updates: Engine → UI ───────────────────────────────────
 window.onPlayheadUpdate = (ms) => {
     window.S.time = ms / 1000;
     window.updatePlayhead();
@@ -48,7 +51,7 @@ window.onThumbnailsUpdated = (thumbnails) => {
 };
 
 // ── Import complete: Replace empty clips with real video ────────────
-window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
+window.onClipImported = ({ width, height, durationMs, fileName, rustClipId }) => {
     hasRealVideo = true;
     const durationSec = durationMs / 1000;
     window.S.dur = durationSec;
@@ -57,9 +60,11 @@ window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
 
     window.videoClips = [{
         id: "real_v1",
+        rustClipId: rustClipId || 0,
         name: displayName,
         start: 0,
         end: durationSec,
+        sourceOffset: 0,
         isReal: true,
         thumbnails: getThumbnails ? getThumbnails() : [],
     }];
@@ -75,8 +80,6 @@ window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
     window.aiNodes = [];
     if (window.resetAiActions) window.resetAiActions();
 
-    // ── FIX: Capture canvas thumbnail for media pool ──
-    // The first frame may not be painted yet, so retry with backoff
     window.mediaPool.footage = [
         { id: "imported_real", name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null },
     ];
@@ -87,7 +90,6 @@ window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
 
-    // Retry thumbnail capture until canvas has been painted
     let thumbAttempts = 0;
     const tryCaptureThumb = () => {
         if (thumbAttempts++ > 15) return;
@@ -100,6 +102,22 @@ window.onClipImported = ({ clipId, width, height, durationMs, fileName }) => {
         }
     };
     setTimeout(tryCaptureThumb, 150);
+};
+
+// ── Trim applied: update duration ──────────────────────────────────
+window.onTrimApplied = ({ durationMs }) => {
+    window.S.dur = durationMs / 1000;
+    window.renderRuler();
+    window.renderClips();
+    window.updatePlayhead();
+};
+
+// ── Split result: update UI clips ──────────────────────────────────
+window.onSplitResult = ({ newClipId, originalClipId, splitAtMs, durationMs }) => {
+    window.S.dur = durationMs / 1000;
+    window.renderRuler();
+    window.updatePlayhead();
+    // The UI clips are already updated by performSplit in ui.js
 };
 
 // ── Connect Playback Control to Engine ───────────────────────────────
@@ -123,13 +141,11 @@ window.onPlaybackPaused = () => {
     lucide.createIcons();
 };
 
-// ── Timeline Scrub: Throttled (not debounced) ────────────────────────
-// FIX: Changed from debounce to throttle so the canvas updates DURING drag,
-// not only after the drag stops.
+// ── Timeline Scrub: Throttled ────────────────────────────────────────
 let lastSeekMs = -1;
 window.onPlayheadScrub = (timeSec) => {
     const ms = Math.round(timeSec * 1000);
-    if (Math.abs(ms - lastSeekMs) < 50) return; // at least 50ms between seeks
+    if (Math.abs(ms - lastSeekMs) < 50) return;
     lastSeekMs = ms;
     seekTo(ms).catch(console.error);
 };
@@ -147,8 +163,35 @@ window.handleExport = async function () {
 document.addEventListener("input", (e) => {
     const slider = e.target.closest("[data-grade]");
     if (!slider) return;
+
+    // Update the displayed value
+    const valSpan = slider.parentElement.querySelector('.grade-val');
+    if (valSpan) {
+        const v = parseFloat(slider.value);
+        valSpan.textContent = v === 0 ? '0' : v.toFixed(2);
+    }
+
     setColorGrade({ [slider.dataset.grade]: parseFloat(slider.value) });
 });
+
+// ── Reset grade ──────────────────────────────────────────────────────
+window.resetGrade = function () {
+    document.querySelectorAll('[data-grade]').forEach(el => {
+        if (el.tagName === 'SELECT') {
+            el.value = '0';
+        } else {
+            el.value = 0;
+        }
+        const valSpan = el.parentElement.querySelector('.grade-val');
+        if (valSpan) valSpan.textContent = '0';
+        if (el.dataset.grade === 'lut') {
+            setColorGrade({ lut: 0 });
+        } else {
+            setColorGrade({ [el.dataset.grade]: 0 });
+        }
+    });
+    window.showToast('Grade reset', 'sliders-horizontal');
+};
 
 // ── Score Badge Performance Loop ─────────────────────────────────────
 setInterval(() => {
