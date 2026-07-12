@@ -280,12 +280,27 @@ window.renderMedia = function (type, subType = null) {
             const el = document.createElement("div");
             el.className = "media-item";
             if (item.isReal) {
-                el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:32px;height:32px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
+                if (item.thumbDataUrl) {
+                    el.innerHTML = `<img src="${item.thumbDataUrl}" style="width:100%;height:100%;object-fit:cover;" draggable="false"><div class="media-label">${item.name}</div>`;
+                } else {
+                    el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:32px;height:32px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
+                }
             } else {
                 el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
             }
-            el.draggable = !item.isReal;
-            if (!item.isReal) {
+            el.draggable = true;
+            if (item.isReal) {
+                el.ondragstart = (e) =>
+                    e.dataTransfer.setData(
+                        "text/plain",
+                        JSON.stringify({
+                            sourceId: item.id,
+                            name: item.name,
+                            isReal: true,
+                            dur: item.dur,
+                        }),
+                    );
+            } else {
                 el.ondragstart = (e) =>
                     e.dataTransfer.setData(
                         "text/plain",
@@ -837,14 +852,26 @@ $("#lane-v1").ondrop = (e) => {
     const t =
         ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur;
     const startUs = Math.round(t * 1_000_000);
-    const endUs = Math.min(Math.round((t + 4.0) * 1_000_000), Math.round(window.S.dur * 1_000_000));
     saveSnapshot();
-    IKState.addVideoClip("stock_" + data.id, startUs, endUs, {
-        name: data.name,
-        isReal: false,
-        picId: data.picId || 0,
-    });
-    showToast("Stock Inserted", "film");
+    if (data.isReal && data.sourceId) {
+        // Real imported video — use its actual duration
+        const durSec = parseFloat(data.dur) || 4.0;
+        const endUs = Math.round(Math.min(startUs + durSec * 1_000_000, window.S.dur * 1_000_000));
+        IKState.addVideoClip(data.sourceId, startUs, endUs, {
+            name: data.name,
+            isReal: true,
+        }, `group_${Date.now()}`);
+        showToast("Clip added to timeline", "film");
+    } else {
+        // Stock clip — 4 seconds
+        const endUs = Math.min(Math.round((t + 4.0) * 1_000_000), Math.round(window.S.dur * 1_000_000));
+        IKState.addVideoClip("stock_" + data.id, startUs, endUs, {
+            name: data.name,
+            isReal: false,
+            picId: data.picId || 0,
+        });
+        showToast("Stock Inserted", "film");
+    }
     reRender();
 };
 
