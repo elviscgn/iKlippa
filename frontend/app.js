@@ -56,10 +56,12 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     hasRealVideo = true;
     const durationSec = durationMs / 1000;
     const displayName = fileName || "Imported Video";
+    console.log(`[iKlippa:app] onClipImported: "${displayName}" ${width}×${height} ${durationSec.toFixed(2)}s`);
 
     // Init project if not already ready
     if (!IKState.isReady()) {
         IKState.init(width, height);
+        console.log('[iKlippa:app] IKState initialised');
     }
 
     const sourceId = "imported_" + Date.now();
@@ -76,12 +78,18 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     // Poll pendingFrames directly so we never race against seekTo clearing it.
     let thumbAttempts = 0;
     const tryCaptureThumb = () => {
-        if (thumbAttempts++ > 40) return; // ~4s max
-        // Pass 0 to pick the earliest available frame (whatever was decoded at load)
+        if (thumbAttempts++ > 40) {
+            console.warn('[iKlippa:app] ⚠ thumbnail capture gave up after 40 attempts — pendingFrames may have been cleared before capture could run');
+            return;
+        }
         const thumb = captureThumbnailFromBuffer(0);
         if (thumb && thumb.length > 500) {
             const entry = window.mediaPool.footage.find(f => f.id === sourceId);
-            if (entry) { entry.thumbDataUrl = thumb; window.renderMedia("footage"); }
+            if (entry) {
+                entry.thumbDataUrl = thumb;
+                window.renderMedia("footage");
+                console.log(`[iKlippa:app] thumbnail captured on attempt ${thumbAttempts} ✓`);
+            }
         } else {
             setTimeout(tryCaptureThumb, 100);
         }

@@ -268,6 +268,7 @@ function setupDecoder(codecConfig, width, height) {
 
 async function seekAndDecodeFrame(targetMs) {
     if (isSeeking) {
+        wlog('seek', `seek to ${targetMs}ms queued (already seeking)`);
         pendingSeekMs = targetMs;
         return;
     }
@@ -289,8 +290,10 @@ async function seekAndDecodeFrame(targetMs) {
             if (samples[i].is_sync) { vKeyIdx = i; break; }
         }
     }
-    if (vKeyIdx === -1) { isSeeking = false; return; }
+    if (vKeyIdx === -1) { wwarn('seek', `no keyframe found for target ${targetMs}ms`); isSeeking = false; return; }
 
+    const keyframeMs = Math.round((samples[vKeyIdx].cts * 1000) / samples[vKeyIdx].timescale);
+    wlog('seek', `seekAndDecodeFrame ${targetMs}ms — keyframe at sample[${vKeyIdx}] = ${keyframeMs}ms`);
     decoder.reset();
     decoder.configure(clips[0].codecConfig);
 
