@@ -1,5 +1,22 @@
-// worker.js (Final, Audited, Synchronized)
+// worker.js
 import init, { IklippaEngine } from './pkg/iklippa_engine.js';
+
+// ── Worker-side diagnostic logger ─────────────────────────────────────────────
+function wlog(tag, msg, data) {
+    const line = `[iKlippa:${tag}] ${msg}`;
+    if (data !== undefined) console.log(line, data);
+    else console.log(line);
+}
+function wwarn(tag, msg, data) {
+    const line = `[iKlippa:${tag}] ⚠ ${msg}`;
+    if (data !== undefined) console.warn(line, data);
+    else console.warn(line);
+}
+function werr(tag, msg, data) {
+    const line = `[iKlippa:${tag}] ✖ ${msg}`;
+    if (data !== undefined) console.error(line, data);
+    else console.error(line);
+}
 
 let wasmModule = null;
 let wasmMemory = null;
@@ -42,14 +59,14 @@ self.onmessage = async (e) => {
     if (type === 'init') {
         const wasmExports = await init();
         wasmMemory = wasmExports.memory;
+        wlog('worker', 'WASM initialised ✓');
         self.postMessage({ type: 'status', msg: 'WASM engine running in background worker ✓' });
     }
 
     else if (type === 'load') {
-        // Reset baseline on new file load
         globalStartOffsetUs = -1;
-
         const { file, codecConfig, width, height, samples, durationMs } = data;
+        wlog('worker', `load: ${width}×${height} · ${(durationMs/1000).toFixed(2)}s · ${samples.length} video samples · ${(data.audioSamples||[]).length} audio samples · codec: ${codecConfig.codec}`);
         if (!wasmModule) { wasmModule = new IklippaEngine(width, height); }
         else { wasmModule.resize(width, height); }
 
@@ -60,17 +77,21 @@ self.onmessage = async (e) => {
         audioSamples = data.audioSamples || [];
         audioConfigVersion = data.audioConfigVersion || 0;
 
+        if (!audioConfig) wwarn('worker', 'no audio track found in this file');
+
         setupOffscreenCanvas(width, height);
         setupDecoder(codecConfig, width, height);
         if (audioConfig) setupAudioDecoder(audioConfig);
 
         await seekAndDecodeFrame(0);
         await primeAudioDecode();
+        wlog('worker', `ready posted — pendingFrames now sending to main thread`);
         self.postMessage({ type: 'ready', durationMs, width, height });
     }
 
     else if (type === 'seek') {
-        if (clips.length === 0) return; // Guard: no video loaded yet
+        if (clips.length === 0) { wwarn('worker', 'seek received but no clips loaded yet'); return; }
+        wlog('worker', `seek → ${data.ms}ms`);
         await seekAndDecodeFrame(data.ms);
         await primeAudioDecode();
     }
@@ -107,12 +128,14 @@ self.onmessage = async (e) => {
     }
 
     else if (type === 'set_timeline') {
-        if (!wasmModule) return;
+        if (!wasmModule) { wwarn('worker', 'set_timeline received but WASM not ready'); return; }
         try {
             wasmModule.set_timeline(data.json);
+            wlog('worker', 'set_timeline OK');
             self.postMessage({ type: 'timeline_set', ok: true });
-        } catch (err) {
-            self.postMessage({ type: 'timeline_set', ok: false, error: String(err) });
+        } catch (e) {
+            werr('worker', 'set_timeline failed', String(e));
+            self.postMessage({ type: 'timeline_set', ok: false, error: String(e) });
         }
     }
 
