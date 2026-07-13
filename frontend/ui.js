@@ -271,7 +271,7 @@ window.renderMedia = function (type, subType = null) {
         grid.style.display = "grid";
         list.style.display = "none";
         if (data.length === 0 && type === "footage") {
-            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px 16px;color:var(--text-muted);font-size:11px;"><i data-lucide="upload" style="width:24px;height:24px;display:block;margin:0 auto 8px;opacity:0.4;"></i>Drop a video file onto the canvas to begin</div>';
+            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px 16px;color:var(--text-muted);font-size:12px;"><i data-lucide="upload" style="width:28px;height:28px;display:block;margin:0 auto 12px;opacity:0.4;"></i>Drop a video file onto the canvas to begin</div>';
             lucide.createIcons({ nodes: [grid] });
             return;
         }
@@ -279,7 +279,7 @@ window.renderMedia = function (type, subType = null) {
             const el = document.createElement("div");
             el.className = "media-item";
             if (item.isReal) {
-                el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:28px;height:28px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
+                el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:32px;height:32px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
             } else {
                 el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
             }
@@ -391,8 +391,9 @@ function applyDragLogic(el, clip, clipArray, tw) {
                 const dtSec = (dx / tw) * window.S.dur;
                 let newStartSec = Math.max(0, initialStartUs / 1_000_000 + dtSec);
                 let newStartUs = Math.round(newStartSec * 1_000_000);
-                clip.timeline_start_us = newStartUs;
-                clip.timeline_end_us = newStartUs + durationUs;
+                
+                // Use IKState.moveClip to handle linked clips
+                IKState.moveClip(clip.id, newStartUs);
                 
                 // Extend timeline duration if clip moves past current end
                 const newEndSec = us2s(clip.timeline_end_us);
@@ -429,14 +430,39 @@ window.renderClips = function () {
     laneV1.innerHTML = laneA1.innerHTML = "";
     const tw = getLaneW();
     const dur = window.S.dur;
-    if (dur <= 0) return;    // FIX #5
+    if (dur <= 0) return;
 
     // Show empty-state hint when no clips exist
     if (window.videoClips.length === 0) {
-        laneV1.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;opacity:0.5;pointer-events:none;">Drop video here</div>';
+        laneV1.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop video here</div>';
     }
 
+    // Group clips by group_id to render combined video+audio clips
+    const clipGroups = new Map();
+    
+    // Collect video clips
     window.videoClips.forEach((clip) => {
+        const groupId = clip.group_id || `group_${clip.id}`;
+        if (!clipGroups.has(groupId)) {
+            clipGroups.set(groupId, { video: null, audio: null });
+        }
+        clipGroups.get(groupId).video = clip;
+    });
+    
+    // Collect audio clips
+    window.audioClips.forEach((clip) => {
+        const groupId = clip.group_id || `group_${clip.id}`;
+        if (!clipGroups.has(groupId)) {
+            clipGroups.set(groupId, { video: null, audio: null });
+        }
+        clipGroups.get(groupId).audio = clip;
+    });
+
+    // Render each clip group
+    clipGroups.forEach((group, groupId) => {
+        const clip = group.video || group.audio;
+        if (!clip) return;
+        
         const el = document.createElement("div");
         el.className = "tl-clip";
         const clipStartSec = us2s(clip.timeline_start_us);
@@ -446,51 +472,55 @@ window.renderClips = function () {
         el.style.left = left + "px";
         el.style.width = w + "px";
 
-        // Real clip with captured thumbnails
-        if (clip.isReal && clip.thumbnails && clip.thumbnails.length > 0) {
-            const count = Math.max(1, Math.floor(w / 60));
-            let thumbs = '<div class="tl-clip-thumbs">';
-            for (let j = 0; j < count; j++) {
-                const idx = Math.min(
-                    Math.floor((j / count) * clip.thumbnails.length),
-                    clip.thumbnails.length - 1
-                );
-                thumbs += `<img src="${clip.thumbnails[idx].dataUrl}" draggable="false">`;
+        let content = '';
+        
+        // Video section only (no audio waveform for video imports)
+        if (group.video) {
+            const videoClip = group.video;
+            if (videoClip.isReal && videoClip.thumbnails && videoClip.thumbnails.length > 0) {
+                const count = Math.max(1, Math.floor(w / 60));
+                let thumbs = '<div class="tl-clip-thumbs">';
+                for (let j = 0; j < count; j++) {
+                    const idx = Math.min(
+                        Math.floor((j / count) * videoClip.thumbnails.length),
+                        videoClip.thumbnails.length - 1
+                    );
+                    thumbs += `<img src="${videoClip.thumbnails[idx].dataUrl}" draggable="false">`;
+                }
+                thumbs += "</div>";
+                content += `${thumbs}<span class="tl-clip-label">${videoClip.name}</span>`;
+            } else if (videoClip.isReal) {
+                content += `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${videoClip.name}</span>`;
+            } else if (videoClip.picId) {
+                const count = Math.max(1, Math.floor(w / 60));
+                let thumbs = '<div class="tl-clip-thumbs">';
+                for (let j = 0; j < count; j++)
+                    thumbs += `<img src="${picUrl(videoClip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
+                thumbs += "</div>";
+                content += `${thumbs}<span class="tl-clip-label">${videoClip.name}</span>`;
+            } else {
+                content += `<span class="tl-clip-label">${videoClip.name}</span>`;
             }
-            thumbs += "</div>";
-            el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
-            el.style.background = "linear-gradient(180deg, rgba(13,148,136,0.08) 0%, rgba(0,0,0,0.4) 100%)";
         }
-        // Real clip without thumbnails yet — gradient placeholder
-        else if (clip.isReal) {
-            el.style.background = "linear-gradient(135deg, rgba(13,148,136,0.12), rgba(6,6,8,0.8))";
-            el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${clip.name}</span>`;
-        }
-        // Stock / placeholder clip with picsum
-        else if (clip.picId) {
-            const count = Math.max(1, Math.floor(w / 60));
-            let thumbs = '<div class="tl-clip-thumbs">';
-            for (let j = 0; j < count; j++)
-                thumbs += `<img src="${picUrl(clip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
-            thumbs += "</div>";
-            el.innerHTML = thumbs + `<span class="tl-clip-label">${clip.name}</span>`;
-        }
-        // Fallback
-        else {
-            el.style.background = "rgba(255,255,255,0.04)";
-            el.innerHTML = `<span class="tl-clip-label">${clip.name}</span>`;
-        }
-
-        applyDragLogic(el, clip, window.videoClips, tw);
+        
+        el.innerHTML = content;
+        applyDragLogic(el, clip, [clip], tw);
         laneV1.appendChild(el);
     });
 
-    // Empty audio lane hint
-    if (window.audioClips.length === 0) {
-        laneA1.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;opacity:0.5;pointer-events:none;">Audio track</div>';
+    // Audio lane - only for standalone MP3 files (no group_id or unique group)
+    const standaloneAudio = window.audioClips.filter(clip => {
+        const groupId = clip.group_id;
+        // Only show if there's no matching video clip in the same group
+        const group = clipGroups.get(groupId);
+        return group && !group.video;
+    });
+    
+    if (standaloneAudio.length === 0) {
+        laneA1.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Audio track (MP3 only)</div>';
     }
-
-    window.audioClips.forEach((clip) => {
+    
+    standaloneAudio.forEach((clip) => {
         const el = document.createElement("div");
         el.className = "tl-clip tl-clip-audio";
         const clipStartSec = us2s(clip.timeline_start_us);
@@ -499,13 +529,12 @@ window.renderClips = function () {
         const w = (clipDurSec / dur) * tw;
         el.style.left = left + "px";
         el.style.width = w + "px";
-        // FIX #4: deterministic bars — no Math.random()
         const bars = Array.from({ length: Math.max(1, Math.floor(w / 4)) }, (_, i) => {
             const h = seededBarHeight(i);
             return `<rect x="${i * 4}" y="${20 - h / 2}" width="2.5" height="${Math.min(h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`;
         }).join("");
         el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, w)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
-        applyDragLogic(el, clip, window.audioClips, tw);
+        applyDragLogic(el, clip, standaloneAudio, tw);
         laneA1.appendChild(el);
     });
 
@@ -518,7 +547,7 @@ window.renderClips = function () {
         el.onclick = () => showToast("AI Insight: " + node.label, node.icon);
         $("#lane-ai").appendChild(el);
     });
-    lucide.createIcons({ nodes: [$("#lane-ai"), laneV1] });
+    lucide.createIcons({ nodes: [$("#lane-ai"), laneV1, laneA1] });
 };
 
 $("#lane-v1").ondragover = (e) => e.preventDefault();
@@ -584,8 +613,7 @@ window.updatePlayhead = function () {
     const dur = window.S.dur;
     if (dur <= 0) return;    // FIX #5
     const px = (window.S.time / dur) * tw;
-    $("#ph-ruler").style.left = px + "px";
-    $("#ph-tracks").style.left = 140 + px + "px";
+    $("#ph-tracks").style.left = (80 + px) + "px";
     $("#timecode").textContent = fmtTime(window.S.time);
 };
 
@@ -743,9 +771,8 @@ window.applyAiAction = function (type) {
             for (let i = 1; i < clips.length; i++) {
                 const clip = clips[i];
                 if (clip.timeline_start_us > cursorUs) {
-                    const durUs = clip.timeline_end_us - clip.timeline_start_us;
-                    clip.timeline_start_us = cursorUs;
-                    clip.timeline_end_us = cursorUs + durUs;
+                    // Use IKState.moveClip to handle linked clips
+                    IKState.moveClip(clip.id, cursorUs);
                 }
                 cursorUs = clip.timeline_end_us;
             }
@@ -786,6 +813,38 @@ window.applyAiAction = function (type) {
     window.renderClips();
     window.updatePlayhead();
 };
+
+// ─ Track Control Icons ──────────────────────────────────────────────
+document.addEventListener("click", (e) => {
+    const icon = e.target.closest(".track-icons svg");
+    if (!icon) return;
+    
+    const track = icon.closest(".track");
+    if (!track) return;
+    
+    const trackId = track.dataset.trackId;
+    const iconType = icon.getAttribute("data-lucide");
+    
+    if (iconType === "lock") {
+        icon.classList.toggle("active");
+        const isLocked = icon.classList.contains("active");
+        icon.setAttribute("data-lucide", isLocked ? "lock" : "unlock");
+        lucide.createIcons({ nodes: [icon] });
+        showToast(isLocked ? "Track locked" : "Track unlocked", isLocked ? "lock" : "unlock");
+    } else if (iconType === "eye" || iconType === "eye-off") {
+        icon.classList.toggle("active");
+        const isVisible = !icon.classList.contains("active");
+        icon.setAttribute("data-lucide", isVisible ? "eye" : "eye-off");
+        lucide.createIcons({ nodes: [icon] });
+        showToast(isVisible ? "Track visible" : "Track hidden", isVisible ? "eye" : "eye-off");
+    } else if (iconType === "volume-2" || iconType === "volume-x") {
+        icon.classList.toggle("active");
+        const isMuted = icon.classList.contains("active");
+        icon.setAttribute("data-lucide", isMuted ? "volume-x" : "volume-2");
+        lucide.createIcons({ nodes: [icon] });
+        showToast(isMuted ? "Track muted" : "Track unmuted", isMuted ? "volume-x" : "volume-2");
+    }
+});
 
 // ── Initialization Trigger ─────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
