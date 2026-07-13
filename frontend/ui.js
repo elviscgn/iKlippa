@@ -723,9 +723,11 @@ function fmtTime(sec) {
 window.updatePlayhead = function () {
     const tw = getLaneW();
     const dur = window.S.dur;
-    if (dur <= 0) return;    // FIX #5
+    if (dur <= 0) return;
     const px = (window.S.time / dur) * tw;
-    $("#ph-tracks").style.left = (80 + px) + "px";
+    // Playhead offset = gutter width (80px)
+    const gutterWidth = 80;
+    $("#ph-tracks").style.left = (gutterWidth + px) + "px";
     $("#timecode").textContent = fmtTime(window.S.time);
 };
 

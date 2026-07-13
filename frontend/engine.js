@@ -383,9 +383,15 @@ function getAudioDescription(mp4, track) {
 function renderLoop(ts) {
   perf.recordRaf(ts);
   if (!isPlaying) return;
+  
+  // ISSUE 2: Use dynamic timeline duration from IKState if available
+  const durationMs = (typeof window.IKState !== 'undefined' && IKState.isReady())
+    ? IKState.getDurationSec() * 1000
+    : videoDurationMs;
+  
   if (lastRafTs !== null) {
     playheadMs += ts - lastRafTs;
-    if (playheadMs >= videoDurationMs) { playheadMs = videoDurationMs; pausePlayback(); }
+    if (playheadMs >= durationMs) { playheadMs = durationMs; pausePlayback(); }
   }
   lastRafTs = ts;
   paintFrameAtTime(playheadMs);
