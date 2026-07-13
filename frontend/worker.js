@@ -255,13 +255,18 @@ async function seekAndDecodeFrame(targetMs) {
 
     const { samples, file } = clips[0];
 
-    let vKeyIdx = 0;
+    let vKeyIdx = -1;
     for (let i = 0; i < samples.length; i++) {
-        // We seek on the RAW file timestamps here
         const sMs = Math.round((samples[i].cts * 1000) / samples[i].timescale);
         if (sMs <= targetMs && samples[i].is_sync) vKeyIdx = i;
         if (sMs > targetMs) break;
     }
+    if (vKeyIdx === -1) {
+        for (let i = 0; i < samples.length; i++) {
+            if (samples[i].is_sync) { vKeyIdx = i; break; }
+        }
+    }
+    if (vKeyIdx === -1) { isSeeking = false; return; }
 
     decoder.reset();
     decoder.configure(clips[0].codecConfig);
