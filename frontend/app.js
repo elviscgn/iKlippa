@@ -70,10 +70,11 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
 
-    // Seek to 0 to show first frame + capture thumbnail for THIS item
-    window.S.time = 0;
+    // Seek to middle of video for a representative thumbnail
+    const seekMs = (durationSec / 2) * 1000;
+    window.S.time = seekMs / 1000;
     window.updatePlayhead();
-    await seekTo(0);
+    await seekTo(seekMs);
 
     let thumbAttempts = 0;
     const tryCaptureThumb = () => {
