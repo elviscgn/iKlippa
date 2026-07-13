@@ -1,0 +1,66 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "lsp": true,
+  "permission": {
+    "read": {
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/backend/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/ml/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/docs/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend": "allow",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend/**": "allow"
+    },
+    "edit": {
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/backend/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/ml/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/docs/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend": "allow",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend/**": "allow"
+    },
+    "glob": {
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/backend/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/ml/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/docs/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend": "allow",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend/**": "allow"
+    },
+    "grep": {
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/backend/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/ml/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/docs/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend": "allow",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend/**": "allow"
+    },
+    "list": {
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/backend/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/ml/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/docs/**": "deny",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend": "allow",
+      "/Users/enzi/Desktop/Projects/Hackathons/iKlippa/frontend/**": "allow"
+    },
+    "bash": {
+      "*": "ask",
+      "git *": "allow",
+      "npm *": "allow",
+      "npx *": "allow",
+      "cargo *": "allow",
+      "wasm-pack *": "allow",
+      "node *": "allow",
+      "rg *": "allow",
+      "ls": "allow",
+      "pwd": "allow",
+      "which *": "allow",
+      "rustc *": "allow",
+      "python3 -c *": "allow",
+      "*..*": "deny",
+      "*iKlippa/backend*": "deny",
+      "*iKlippa/ml*": "deny",
+      "*iKlippa/docs*": "deny",
+      "wasm-pack build --target web --out-dir ../pkg --dev": "allow",
+      "wasm-pack build --target web --out-dir ../pkg": "allow",
+      "wasm-pack build --target web --out-dir ../pkg *": "allow"
+    },
+    "external_directory": "deny",
+    "task": "allow"
+  }
+}

@@ -60,6 +60,9 @@ web_modules/
 # Optional stylelint cache
 .stylelintcache
 
+AGENTS.md
+opencode.json
+
 # Optional REPL history
 .node_repl_history
 
