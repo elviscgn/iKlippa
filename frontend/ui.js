@@ -445,7 +445,7 @@ function deactivateSplitTool() {
 }
 
 // ── Snap Logic ─────────────────────────────────────────────────────────
-const SNAP_THRESHOLD_PX = 8;
+const SNAP_THRESHOLD_PX = 16;
 const selectedClipIds = new Set();
 
 function syncActiveClasses() {
@@ -859,10 +859,10 @@ $("#lane-v1").ondragover = (e) => {
     // Show snap guide while hovering during a media-pool drag
     const tw = getLaneW();
     const rect = $("#lane-v1").getBoundingClientRect();
-    const rawUs = Math.round(
-        ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur * 1_000_000
-    );
-    const snapped = applySnap(rawUs, null, tw);
+    const cursorPx = e.clientX - rect.left + $("#tl-tracks").scrollLeft;
+    const rawUs = Math.round((cursorPx / tw) * window.S.dur * 1_000_000);
+    // Always snap to t=0 when cursor is within 24px of the left edge
+    const snapped = cursorPx <= 24 ? 0 : applySnap(rawUs, null, tw);
     if (snapped !== null) showSnapGuide(snapped, tw);
     else hideSnapGuide();
 };
@@ -873,10 +873,10 @@ $("#lane-v1").ondrop = (e) => {
     const data = JSON.parse(e.dataTransfer.getData("text/plain"));
     const tw = getLaneW();
     const rect = $("#lane-v1").getBoundingClientRect();
-    const rawUs = Math.round(
-        ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur * 1_000_000
-    );
-    const snapped = applySnap(rawUs, null, tw);
+    const cursorPx = e.clientX - rect.left + $("#tl-tracks").scrollLeft;
+    const rawUs = Math.round((cursorPx / tw) * window.S.dur * 1_000_000);
+    // Always snap to t=0 when cursor is within 24px of the left edge
+    const snapped = cursorPx <= 24 ? 0 : applySnap(rawUs, null, tw);
     const startUs = Math.max(0, snapped !== null ? snapped : rawUs);
     saveSnapshot();
     if (data.isReal && data.sourceId) {

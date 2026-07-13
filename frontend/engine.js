@@ -1,7 +1,32 @@
 /**
- * iKlippa — engine.js (Bugfix Build)
+ * iKlippa — engine.js
  */
 const DECODE_LOOKAHEAD = 12;
+
+// ── Diagnostic logger ─────────────────────────────────────────────────────────
+// One log per meaningful state transition. Never logs per-frame or per-rAF tick.
+const _loggedOnce = new Set();
+function log(tag, msg, data) {
+  const line = `[iKlippa:${tag}] ${msg}`;
+  if (data !== undefined) console.log(line, data);
+  else console.log(line);
+}
+function warn(tag, msg, data) {
+  const line = `[iKlippa:${tag}] ⚠ ${msg}`;
+  if (data !== undefined) console.warn(line, data);
+  else console.warn(line);
+}
+function err(tag, msg, data) {
+  const line = `[iKlippa:${tag}] ✖ ${msg}`;
+  if (data !== undefined) console.error(line, data);
+  else console.error(line);
+}
+// Fires only the FIRST time a given key is seen — prevents repeated-condition spam
+function logOnce(key, tag, msg, data) {
+  if (_loggedOnce.has(key)) return;
+  _loggedOnce.add(key);
+  log(tag, msg, data);
+}
 
 let worker = null;
 let canvas = null;
@@ -125,7 +150,7 @@ function maybeCaptureThumbnail(ms) {
     timelineThumbnails.push({ ms, dataUrl });
     lastThumbnailCaptureMs = ms;
     if (window.onThumbnailsUpdated) window.onThumbnailsUpdated(timelineThumbnails);
-  } catch (e) { /* canvas tainted */ }
+  } catch (e) { warn('thumb', 'canvas.toDataURL failed (tainted?)', e.message); }
 }
 
 /** Capture the current canvas state as a JPEG data URL. Used for media pool thumbnail. */
@@ -138,7 +163,8 @@ export function captureThumbnail() {
 
 /** Grab a decoded frame directly from the decode buffer for thumbnailing (no timeline needed). */
 export function captureThumbnailFromBuffer(ms) {
-  if (!canvas || !ctx || pendingFrames.size === 0) return null;
+  if (!canvas || !ctx) { warn('thumb', 'captureThumbnailFromBuffer: canvas/ctx not ready'); return null; }
+  if (pendingFrames.size === 0) { return null; } // silent — normal during early load polling
   let bestMs = -1;
   for (const [frameMs] of pendingFrames) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
@@ -151,8 +177,10 @@ export function captureThumbnailFromBuffer(ms) {
   if (!imageData) return null;
   ctx.putImageData(imageData, 0, 0);
   try {
-    return canvas.toDataURL('image/jpeg', 0.5);
-  } catch (e) { return null; }
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+    log('thumb', `captured from pendingFrames[${bestMs}ms] → ${dataUrl.length} bytes`);
+    return dataUrl;
+  } catch (e) { err('thumb', 'toDataURL failed', e.message); return null; }
 }
 
 export function getThumbnails() { return timelineThumbnails; }
@@ -164,14 +192,22 @@ export async function initEngine(canvasEl) {
   ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
   worker = new Worker('./worker.js', { type: 'module' });
   worker.onmessage = handleWorkerMessage;
+  worker.onerror = (e) => err('engine', 'Worker threw an uncaught error', e.message);
   worker.postMessage({ type: 'init' });
+  log('engine', 'Worker created, waiting for WASM init…');
   logStatus('Booting background worker…');
   return true;
 }
 
 async function initAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state !== 'running') await audioCtx.resume();
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    log('audio', `AudioContext created (sampleRate: ${audioCtx.sampleRate}Hz)`);
+  }
+  if (audioCtx.state !== 'running') {
+    await audioCtx.resume();
+    log('audio', `AudioContext resumed → state: ${audioCtx.state}`);
+  }
 }
 
 function handleWorkerMessage(e) {
@@ -184,6 +220,7 @@ function handleWorkerMessage(e) {
     sourceVideoHeight = data.height;
     canvas.width = sourceVideoWidth;
     canvas.height = sourceVideoHeight;
+    log('engine', `ready — ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s · pendingFrames: ${pendingFrames.size}`);
     logStatus(`Ready: ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s`);
     if (window.onClipImported) {
       window.onClipImported({
@@ -202,26 +239,22 @@ function handleWorkerMessage(e) {
     if (isExporting) exportFrames.push({ ms: data.ms, imageData: pendingFrames.get(data.ms) });
 
     if (!isPlaying) {
-      // ── BUG FIX: Only paint the frame that reaches the seek target ──
-      // During a seek, the worker decodes every frame from keyframe to target.
-      // We skip painting intermediate frames to prevent the "fast-forward" effect.
       if (seekTargetMs >= 0) {
-        // We're in a seek — only paint if this frame reaches/passes the target
         if (data.ms >= seekTargetMs - 33) {
+          log('seek', `frame ${data.ms}ms reached target ${seekTargetMs}ms → painting`);
           clearTimeout(seekPaintTimeout);
           seekTargetMs = -1;
           paintFrameAtTime(playheadMs);
         }
-        // Otherwise: intermediate frame — store it but don't paint
       } else {
-        // Not seeking (e.g. color grade re-render) — paint immediately
         paintFrameAtTime(playheadMs);
       }
     }
   }
 
   if (type === 'audio_chunk') {
-    if (!audioCtx || data.configVersion !== audioConfigVersion) return;
+    if (!audioCtx) { logOnce('audio-ctx-missing', 'audio', 'audio_chunk received but AudioContext not initialised yet'); return; }
+    if (data.configVersion !== audioConfigVersion) return; // stale chunk after seek — silent
     const audioBuffer = audioCtx.createBuffer(data.channels, data.length, data.sampleRate);
     for (let c = 0; c < data.channels; c++) {
       audioBuffer.copyToChannel(new Float32Array(data.buffers[c]), c);
@@ -233,11 +266,8 @@ function handleWorkerMessage(e) {
   }
 
   if (type === 'timeline_set') {
-    if (data.ok) {
-      console.log('[iKlippa] Timeline synced to Rust ✓');
-    } else {
-      console.error('[iKlippa] Timeline sync failed:', data.error);
-    }
+    if (data.ok) log('rust', 'Timeline synced to Rust ✓');
+    else err('rust', 'Timeline sync failed', data.error);
     if (window.onTimelineSynced) window.onTimelineSynced(data.ok, data.error);
   }
 
@@ -252,7 +282,10 @@ function scheduleAudioNode(chunkMs, audioBuffer) {
   if (nextAudioStartTime === 0 || nextAudioStartTime < audioCtx.currentTime) {
     nextAudioStartTime = Math.max(audioCtx.currentTime, idealCtxTime);
   }
-  if (idealCtxTime < audioCtx.currentTime - 0.15) return;
+  if (idealCtxTime < audioCtx.currentTime - 0.15) {
+    logOnce(`audio-stale-${Math.round(chunkMs / 1000)}`, 'audio', `dropping stale chunk at ${chunkMs}ms (ideal ctx: ${idealCtxTime.toFixed(3)}s, now: ${audioCtx.currentTime.toFixed(3)}s)`);
+    return;
+  }
   if (idealCtxTime > nextAudioStartTime + 0.05) nextAudioStartTime = idealCtxTime;
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
@@ -269,6 +302,7 @@ function stopAllAudioNodes() {
 
 // ── Demux ─────────────────────────────────────────────────────────────────────
 export async function importFile(file) {
+  log('import', `importFile: "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
   logStatus(`Importing: ${file.name}`);
   currentFileName = file.name;
   timelineThumbnails = [];
@@ -385,12 +419,18 @@ function getAudioDescription(mp4, track) {
 function renderLoop(ts) {
   perf.recordRaf(ts);
   if (!isPlaying) return;
-  
-  // ISSUE 2: Use dynamic timeline duration from IKState if available
-  const durationMs = (typeof window.IKState !== 'undefined' && IKState.isReady())
-    ? IKState.getDurationSec() * 1000
-    : videoDurationMs;
-  
+
+  // Don't advance the playhead if there are no clips on the timeline yet
+  const hasClips = typeof window.IKState !== 'undefined' && IKState.isReady()
+    && (IKState.getVideoClips().length > 0 || IKState.getAudioClips().length > 0);
+  if (!hasClips) {
+    warn('play', 'startPlayback called but no clips on timeline — stopping');
+    pausePlayback();
+    return;
+  }
+
+  const durationMs = IKState.getDurationSec() * 1000;
+
   if (lastRafTs !== null) {
     playheadMs += ts - lastRafTs;
     if (playheadMs >= durationMs) { playheadMs = durationMs; pausePlayback(); }
@@ -436,11 +476,11 @@ function _getFrameCanvas(w, h) {
 
 function paintFrameAtTime(ms) {
   if (!ctx) return;
-  
+
   // Find ALL active video clips at this playhead time
   const msUs = Math.round(ms * 1_000);
   let activeClips = [];
-  
+
   if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
     const clips = IKState.getAllVideoClips ? IKState.getAllVideoClips() : IKState.getVideoClips();
     for (const clip of clips) {
@@ -449,8 +489,9 @@ function paintFrameAtTime(ms) {
       }
     }
   }
-  
+
   if (activeClips.length === 0) {
+    logOnce(`no-clip-at-${Math.round(ms / 500) * 500}`, 'paint', `no active clip at ${ms.toFixed(0)}ms — black frame (pendingFrames: ${pendingFrames.size})`);
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     maybeCaptureThumbnail(ms);
@@ -459,7 +500,7 @@ function paintFrameAtTime(ms) {
     for (const [audioMs] of pendingAudio) { if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs); }
     return;
   }
-  
+
   // Resolve each clip to its best source frame
   const resolved = [];
   for (const clip of activeClips) {
@@ -471,11 +512,14 @@ function paintFrameAtTime(ms) {
     }
     if (bestMs >= 0) {
       resolved.push({ clip, imageData: pendingFrames.get(bestMs) });
+    } else {
+      logOnce(`no-frame-for-clip-${clip.id}-${Math.round(ms/1000)}`, 'paint',
+        `clip ${clip.id} active at ${ms.toFixed(0)}ms (sourceMs:${sourceMs.toFixed(0)}) but no frame ≤ that in pendingFrames[${[...pendingFrames.keys()].slice(0,5).map(k=>k+'ms').join(',')}…]`);
     }
   }
-  
+
   if (resolved.length === 0) {
-    // Active clips exist but no frames decoded yet
+    logOnce(`no-resolved-${Math.round(ms/1000)}s`, 'paint', `clips exist at ${ms.toFixed(0)}ms but pendingFrames is empty — waiting for decode`);
     maybeCaptureThumbnail(ms);
     const pruneBeforeMs = ms - 1500;
     for (const [frameMs] of pendingFrames) { if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs); }
@@ -518,22 +562,24 @@ function paintFrameAtTime(ms) {
 // ── Playback control ──────────────────────────────────────────────────
 export async function startPlayback() {
   if (isPlaying) return;
+  log('play', `startPlayback @ ${playheadMs.toFixed(0)}ms — pendingFrames: ${pendingFrames.size}, pendingAudio: ${pendingAudio.size}`);
   isPlaying = true; lastRafTs = null;
   await initAudio();
   audioPlayStartCtxTime = audioCtx.currentTime;
   audioPlayStartMs = playheadMs;
   nextAudioStartTime = 0;
   const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
+  log('play', `scheduling ${sorted.length} pre-buffered audio chunks`);
   for (const [ms, buffer] of sorted) {
     scheduleAudioNode(ms, buffer);
   }
-  
   syncWorkerState();
   rafHandle = requestAnimationFrame(renderLoop);
 }
 
 export function pausePlayback() {
   if (!isPlaying && rafHandle === null) return;
+  log('play', `pausePlayback @ ${playheadMs.toFixed(0)}ms`);
   isPlaying = false; lastRafTs = null;
   if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
   stopAllAudioNodes();
@@ -549,18 +595,19 @@ export function togglePlayback() {
 
 export async function seekTo(ms) {
   const wasPlaying = isPlaying;
+  log('seek', `seekTo ${ms.toFixed(0)}ms (wasPlaying: ${wasPlaying})`);
   if (isPlaying) {
     isPlaying = false; lastRafTs = null;
     if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
     stopAllAudioNodes();
   }
 
-  // ── BUG FIX: Set seek target so intermediate frames aren't painted ──
   seekTargetMs = ms;
   clearTimeout(seekPaintTimeout);
   // Fallback: if no frame reaches the target within 300ms, paint whatever we have
   seekPaintTimeout = setTimeout(() => {
     if (seekTargetMs >= 0) {
+      warn('seek', `fallback timeout fired — no frame reached ${ms.toFixed(0)}ms within 300ms, painting with what we have (pendingFrames: ${pendingFrames.size})`);
       seekTargetMs = -1;
       paintFrameAtTime(playheadMs);
     }
