@@ -208,7 +208,26 @@ function handleWorkerMessage(e) {
       audioBuffer.copyToChannel(new Float32Array(data.buffers[c]), c);
     }
     pendingAudio.set(data.ms, audioBuffer);
-    if (isPlaying) scheduleAudioNode(data.ms, audioBuffer);
+    
+    // Only schedule audio if there's an active audio clip at this time
+    if (isPlaying) {
+      const chunkMsUs = Math.round(data.ms * 1_000);
+      let hasAudioClip = false;
+      
+      if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
+        const audioClips = IKState.getAudioClips();
+        for (const clip of audioClips) {
+          if (chunkMsUs >= clip.timeline_start_us && chunkMsUs < clip.timeline_end_us) {
+            hasAudioClip = true;
+            break;
+          }
+        }
+      }
+      
+      if (hasAudioClip) {
+        scheduleAudioNode(data.ms, audioBuffer);
+      }
+    }
   }
 
   if (type === 'timeline_set') {
@@ -381,8 +400,9 @@ function paintFrameAtTime(ms) {
   if (!ctx) return;
   
   // Check if there's a clip at the playhead time (gap-aware playback)
-  const msUs = Math.round(ms * 1_000_000);
+  const msUs = Math.round(ms * 1_000);
   let activeClip = null;
+  
   if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
     const clips = IKState.getVideoClips();
     for (const clip of clips) {
@@ -409,7 +429,11 @@ function paintFrameAtTime(ms) {
   for (const [frameMs] of pendingFrames) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
   }
-  if (bestMs >= 0) ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
+  
+  if (bestMs >= 0) {
+    ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
+  }
+  
   maybeCaptureThumbnail(ms);
   const pruneBeforeMs = ms - 1500;
   for (const [frameMs] of pendingFrames) { if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs); }
@@ -425,7 +449,27 @@ export async function startPlayback() {
   audioPlayStartMs = playheadMs;
   nextAudioStartTime = 0;
   const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
-  for (const [ms, buffer] of sorted) scheduleAudioNode(ms, buffer);
+  
+  // Only schedule audio chunks that fall within active audio clips
+  for (const [ms, buffer] of sorted) {
+    const chunkMsUs = Math.round(ms * 1_000);
+    let hasAudioClip = false;
+    
+    if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
+      const audioClips = IKState.getAudioClips();
+      for (const clip of audioClips) {
+        if (chunkMsUs >= clip.timeline_start_us && chunkMsUs < clip.timeline_end_us) {
+          hasAudioClip = true;
+          break;
+        }
+      }
+    }
+    
+    if (hasAudioClip) {
+      scheduleAudioNode(ms, buffer);
+    }
+  }
+  
   syncWorkerState();
   rafHandle = requestAnimationFrame(renderLoop);
 }
