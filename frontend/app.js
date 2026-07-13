@@ -71,25 +71,17 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
 
-    // Capture thumbnail — grab decoded frame directly from the decode buffer
-    // (no clips on timeline yet, so canvas-based capture would show black)
-    const midMs = Math.round((durationSec / 2) * 1000);
-    await seekTo(midMs);
-
+    // Capture thumbnail from the frame that was already decoded during import
+    // (the worker decodes frame 0 as part of the load — no extra seek needed).
+    // Poll pendingFrames directly so we never race against seekTo clearing it.
     let thumbAttempts = 0;
     const tryCaptureThumb = () => {
-        if (thumbAttempts++ > 20) {
-            window.S.time = 0;
-            window.updatePlayhead();
-            return;
-        }
-        const thumb = captureThumbnailFromBuffer(midMs);
+        if (thumbAttempts++ > 40) return; // ~4s max
+        // Pass 0 to pick the earliest available frame (whatever was decoded at load)
+        const thumb = captureThumbnailFromBuffer(0);
         if (thumb && thumb.length > 500) {
             const entry = window.mediaPool.footage.find(f => f.id === sourceId);
             if (entry) { entry.thumbDataUrl = thumb; window.renderMedia("footage"); }
-            // Reset playhead to start — don't seekTo(0) as it clears decoded frames
-            window.S.time = 0;
-            window.updatePlayhead();
         } else {
             setTimeout(tryCaptureThumb, 100);
         }
