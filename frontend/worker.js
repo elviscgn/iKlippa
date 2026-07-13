@@ -70,6 +70,7 @@ self.onmessage = async (e) => {
     }
 
     else if (type === 'seek') {
+        if (clips.length === 0) return; // Guard: no video loaded yet
         await seekAndDecodeFrame(data.ms);
         await primeAudioDecode();
     }

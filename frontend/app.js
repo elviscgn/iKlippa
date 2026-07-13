@@ -61,15 +61,18 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     // Build the canonical project model (µs timestamps, Rust shape)
     IKState.init(width, height);
     const durationUs = Math.round(durationSec * 1_000_000);
-    IKState.addVideoClip("imported_real", 0, durationUs, {
+    
+    // Create a group ID for this import - video and audio clips share it
+    const groupId = `group_${Date.now()}`;
+    const sourceId = "imported_" + Date.now();
+    
+    IKState.addVideoClip(sourceId, 0, durationUs, {
         name: displayName,
         isReal: true,
         thumbnails: getThumbnails ? getThumbnails() : [],
-    });
-    IKState.addAudioClip("imported_real", 0, durationUs, {
-        name: displayName.replace(/\.[^.]+$/, ""),
-        isReal: true,
-    });
+    }, groupId);
+    // NO audio clip for video imports — audio track is for standalone MP3s only.
+    // The engine plays audio from video clips directly.
 
     // Sync to Rust + verify round-trip (Task 1 acceptance criterion)
     const rustJson = IKState.toRustJson();
@@ -91,14 +94,19 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     if (window.resetAiActions) window.resetAiActions();
 
     window.mediaPool.footage = [
-        { id: "imported_real", name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null },
+        { id: sourceId, name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null },
     ];
 
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
-    window.updatePlayhead();
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
+
+    // Paint the first frame in the canvas preview
+    window.S.time = 0;
+    window.updatePlayhead();
+    await seekTo(0);
 
     let thumbAttempts = 0;
     const tryCaptureThumb = () => {
@@ -116,7 +124,7 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
 
 // ── Trim applied: update duration ──────────────────────────────────
 window.onTrimApplied = ({ durationMs }) => {
-    window.S.dur = durationMs / 1000;
+    window.calculateTimelineDuration();
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
@@ -124,10 +132,10 @@ window.onTrimApplied = ({ durationMs }) => {
 
 // ── Split result: update UI clips ──────────────────────────────────
 window.onSplitResult = ({ newClipId, originalClipId, splitAtMs, durationMs }) => {
-    window.S.dur = durationMs / 1000;
+    window.calculateTimelineDuration();
     window.renderRuler();
+    window.renderClips();
     window.updatePlayhead();
-    // The UI clips are already updated by performSplit in ui.js
 };
 
 // ── Connect Playback Control to Engine ───────────────────────────────

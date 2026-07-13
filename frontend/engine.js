@@ -208,7 +208,31 @@ function handleWorkerMessage(e) {
       audioBuffer.copyToChannel(new Float32Array(data.buffers[c]), c);
     }
     pendingAudio.set(data.ms, audioBuffer);
-    if (isPlaying) scheduleAudioNode(data.ms, audioBuffer);
+    
+    // Only schedule audio if there's an active video or audio clip at this time
+    if (isPlaying) {
+      const chunkMsUs = Math.round(data.ms * 1_000);
+      let hasActiveClip = false;
+      
+      if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
+        const project = IKState.getProject();
+        if (project) {
+          for (const track of project.tracks) {
+            for (const clip of track.clips) {
+              if (chunkMsUs >= clip.timeline_start_us && chunkMsUs < clip.timeline_end_us) {
+                hasActiveClip = true;
+                break;
+              }
+            }
+            if (hasActiveClip) break;
+          }
+        }
+      }
+      
+      if (hasActiveClip) {
+        scheduleAudioNode(data.ms, audioBuffer);
+      }
+    }
   }
 
   if (type === 'timeline_set') {
@@ -364,9 +388,15 @@ function getAudioDescription(mp4, track) {
 function renderLoop(ts) {
   perf.recordRaf(ts);
   if (!isPlaying) return;
+  
+  // ISSUE 2: Use dynamic timeline duration from IKState if available
+  const durationMs = (typeof window.IKState !== 'undefined' && IKState.isReady())
+    ? IKState.getDurationSec() * 1000
+    : videoDurationMs;
+  
   if (lastRafTs !== null) {
     playheadMs += ts - lastRafTs;
-    if (playheadMs >= videoDurationMs) { playheadMs = videoDurationMs; pausePlayback(); }
+    if (playheadMs >= durationMs) { playheadMs = durationMs; pausePlayback(); }
   }
   lastRafTs = ts;
   paintFrameAtTime(playheadMs);
@@ -381,8 +411,9 @@ function paintFrameAtTime(ms) {
   if (!ctx) return;
   
   // Check if there's a clip at the playhead time (gap-aware playback)
-  const msUs = Math.round(ms * 1_000_000);
+  const msUs = Math.round(ms * 1_000);
   let activeClip = null;
+  
   if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
     const clips = IKState.getVideoClips();
     for (const clip of clips) {
@@ -409,7 +440,11 @@ function paintFrameAtTime(ms) {
   for (const [frameMs] of pendingFrames) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
   }
-  if (bestMs >= 0) ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
+  
+  if (bestMs >= 0) {
+    ctx.putImageData(pendingFrames.get(bestMs), 0, 0);
+  }
+  
   maybeCaptureThumbnail(ms);
   const pruneBeforeMs = ms - 1500;
   for (const [frameMs] of pendingFrames) { if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs); }
@@ -425,7 +460,32 @@ export async function startPlayback() {
   audioPlayStartMs = playheadMs;
   nextAudioStartTime = 0;
   const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
-  for (const [ms, buffer] of sorted) scheduleAudioNode(ms, buffer);
+  
+  // Only schedule audio chunks that fall within active video or audio clips
+  for (const [ms, buffer] of sorted) {
+    const chunkMsUs = Math.round(ms * 1_000);
+    let hasActiveClip = false;
+    
+    if (typeof window.IKState !== 'undefined' && IKState.isReady()) {
+      const project = IKState.getProject();
+      if (project) {
+        for (const track of project.tracks) {
+          for (const clip of track.clips) {
+            if (chunkMsUs >= clip.timeline_start_us && chunkMsUs < clip.timeline_end_us) {
+              hasActiveClip = true;
+              break;
+            }
+          }
+          if (hasActiveClip) break;
+        }
+      }
+    }
+    
+    if (hasActiveClip) {
+      scheduleAudioNode(ms, buffer);
+    }
+  }
+  
   syncWorkerState();
   rafHandle = requestAnimationFrame(renderLoop);
 }
