@@ -54,57 +54,62 @@ window.onThumbnailsUpdated = (thumbnails) => {
 window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     hasRealVideo = true;
     const durationSec = durationMs / 1000;
-    window.S.dur = durationSec;
-
     const displayName = fileName || "Imported Video";
 
-    // Build the canonical project model (µs timestamps, Rust shape)
-    IKState.init(width, height);
-    const durationUs = Math.round(durationSec * 1_000_000);
-    
-    // Create a group ID for this import - video and audio clips share it
-    const groupId = `group_${Date.now()}`;
-    const sourceId = "imported_" + Date.now();
-    
-    window.saveSnapshot();
-    IKState.addVideoClip(sourceId, 0, durationUs, {
-        name: displayName,
-        isReal: true,
-        thumbnails: getThumbnails ? getThumbnails() : [],
-    }, groupId);
-    // NO audio clip for video imports — audio track is for standalone MP3s only.
-    // The engine plays audio from video clips directly.
+    // Check if timeline is empty BEFORE we touch anything
+    const timelineEmpty = !IKState.isReady() || IKState.getAllVideoClips().length === 0;
 
-    // Sync to Rust + verify round-trip (Task 1 acceptance criterion)
-    const rustJson = IKState.toRustJson();
-    const syncResult = await setTimeline(rustJson);
-    if (syncResult.ok) {
-        const receivedJson = await getProjectJson();
-        const roundTripOk = IKState.verifyRoundTrip(rustJson, receivedJson);
-        console.log("%c[iKlippa] Project round-trip: " + (roundTripOk ? "PASS ✓" : "FAIL ✗"),
-            "color:" + (roundTripOk ? "#10b981" : "#ef4444") + ";font-weight:700;");
-        if (!roundTripOk) {
-            console.warn("Sent:     ", rustJson);
-            console.warn("Received: ", receivedJson);
-        }
-    } else {
-        console.error("[iKlippa] Rust timeline sync failed:", syncResult.error);
+    // Only init project if not already ready — re-init would wipe existing clips
+    if (!IKState.isReady()) {
+        IKState.init(width, height);
     }
 
-    window.aiNodes = [];
-    if (window.resetAiActions) window.resetAiActions();
+    const durationUs = Math.round(durationSec * 1_000_000);
+    const groupId = `group_${Date.now()}`;
+    const sourceId = "imported_" + Date.now();
 
+    if (timelineEmpty) {
+        // First import: auto-add to timeline so playback starts immediately
+        window.S.dur = durationSec;
+        window.saveSnapshot();
+        IKState.addVideoClip(sourceId, 0, durationUs, {
+            name: displayName,
+            isReal: true,
+            thumbnails: getThumbnails ? getThumbnails() : [],
+        }, groupId);
+
+        // Sync to Rust + verify round-trip
+        const rustJson = IKState.toRustJson();
+        const syncResult = await setTimeline(rustJson);
+        if (syncResult.ok) {
+            const receivedJson = await getProjectJson();
+            const roundTripOk = IKState.verifyRoundTrip(rustJson, receivedJson);
+            console.log("%c[iKlippa] Project round-trip: " + (roundTripOk ? "PASS ✓" : "FAIL ✗"),
+                "color:" + (roundTripOk ? "#10b981" : "#ef4444") + ";font-weight:700;");
+            if (!roundTripOk) {
+                console.warn("Sent:     ", rustJson);
+                console.warn("Received: ", receivedJson);
+            }
+        } else {
+            console.error("[iKlippa] Rust timeline sync failed:", syncResult.error);
+        }
+
+        window.aiNodes = [];
+        if (window.resetAiActions) window.resetAiActions();
+
+        window.calculateTimelineDuration();
+        window.renderRuler();
+        window.renderClips();
+    }
+
+    // Always add to media pool (all imports)
     window.mediaPool.footage.push({
         id: sourceId, name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null
     });
-
-    window.calculateTimelineDuration();
-    window.renderRuler();
-    window.renderClips();
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
 
-    // Paint the first frame in the canvas preview
+    // Seek to 0 to show first frame + capture thumbnail for THIS item
     window.S.time = 0;
     window.updatePlayhead();
     await seekTo(0);
@@ -113,9 +118,12 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     const tryCaptureThumb = () => {
         if (thumbAttempts++ > 15) return;
         const thumb = captureThumbnail();
-        if (thumb && window.mediaPool.footage[0]) {
-            window.mediaPool.footage[0].thumbDataUrl = thumb;
-            window.renderMedia("footage");
+        if (thumb) {
+            const entry = window.mediaPool.footage.find(f => f.id === sourceId);
+            if (entry) {
+                entry.thumbDataUrl = thumb;
+                window.renderMedia("footage");
+            }
         } else {
             setTimeout(tryCaptureThumb, 150);
         }
