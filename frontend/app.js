@@ -94,9 +94,9 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     window.aiNodes = [];
     if (window.resetAiActions) window.resetAiActions();
 
-    window.mediaPool.footage = [
-        { id: sourceId, name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null },
-    ];
+    window.mediaPool.footage.push({
+        id: sourceId, name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null
+    });
 
     window.calculateTimelineDuration();
     window.renderRuler();

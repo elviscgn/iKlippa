@@ -347,7 +347,28 @@ window.calculateTimelineDuration = function () {
     return buffered;
 };
 
+// Auto-zoom to keep ~20px per second minimum for readable ruler ticks
+let _laneRefW = 0;
+window.autoFitZoom = function () {
+    if (window.S.dur <= 0) return;
+    if (_laneRefW <= 1) {
+        const lane = $("#lane-v1");
+        if (!lane) return;
+        // Ensure no inline width when measuring the natural flex width
+        const prevW = lane.style.width;
+        lane.style.width = "";
+        _laneRefW = lane.getBoundingClientRect().width;
+        lane.style.width = prevW;
+    }
+    if (_laneRefW <= 0) return;
+    const minPxPerSec = 20;
+    window.S.zoom = Math.max(0.5, (minPxPerSec * window.S.dur) / _laneRefW);
+    const zt = $("#zoom-text");
+    if (zt) zt.textContent = Math.round(window.S.zoom * 100) + "%";
+};
+
 function getLaneW() {
+    if (_laneRefW > 1) return _laneRefW * window.S.zoom;
     const lane = $("#lane-v1");
     if (!lane) return 100;
     return lane.getBoundingClientRect().width * window.S.zoom;
@@ -357,6 +378,7 @@ window.renderRuler = function () {
     const r = $("#tl-ruler");
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
+    r.style.width = tw + "px";
     const dur = window.S.dur;
     if (dur <= 0) return;
 
@@ -398,6 +420,11 @@ function deactivateSplitTool() {
 
 // ── Snap Logic ─────────────────────────────────────────────────────────
 const SNAP_THRESHOLD_PX = 8;
+const selectedClipIds = new Set();
+
+function syncActiveClasses() {
+    $$(".tl-clip").forEach((c) => c.classList.toggle("active", selectedClipIds.has(parseInt(c.dataset.clipId))));
+}
 
 function reRender(activeClipId) {
     IKState.computeDuration();
@@ -406,8 +433,18 @@ function reRender(activeClipId) {
     window.renderClips();
     window.updatePlayhead();
     if (activeClipId !== undefined) {
+        selectedClipIds.clear();
+        selectedClipIds.add(activeClipId);
         const el = document.querySelector(`[data-clip-id="${activeClipId}"]`);
         if (el) el.classList.add("active");
+    } else if (selectedClipIds.size > 0) {
+        const sel = [...selectedClipIds];
+        selectedClipIds.clear();
+        for (const id of sel) {
+            selectedClipIds.add(id);
+            const el = document.querySelector(`[data-clip-id="${id}"]`);
+            if (el) el.classList.add("active");
+        }
     }
 }
 
@@ -502,8 +539,14 @@ function applyDragLogic(el, clip, clipArray, tw) {
             }
             deactivateSplitTool();
         } else if (window.S.tool === "select") {
-            $$(".tl-clip").forEach((c) => c.classList.remove("active"));
-            el.classList.add("active");
+            if (e.ctrlKey || e.metaKey) {
+                if (selectedClipIds.has(clip.id)) selectedClipIds.delete(clip.id);
+                else selectedClipIds.add(clip.id);
+            } else {
+                selectedClipIds.clear();
+                selectedClipIds.add(clip.id);
+            }
+            syncActiveClasses();
             const dur = window.S.dur;
             if (dur <= 0) return;
 
@@ -515,7 +558,7 @@ function applyDragLogic(el, clip, clipArray, tw) {
             const isRightTrim = clickXInClip > clipRect.width - trimZone;
 
             if (isLeftTrim || isRightTrim) {
-                // ── TRIM MODE ────────────────────────────────────────────
+                // ── TRIM MODE (always single clip) ──────────────────────────
                 const origStartUs = clip.timeline_start_us;
                 const origEndUs = clip.timeline_end_us;
                 const origSourceStartUs = clip.source_start_us;
@@ -581,31 +624,53 @@ function applyDragLogic(el, clip, clipArray, tw) {
                 document.addEventListener("mouseup", up);
                 e.preventDefault();
             } else {
-                // ── MOVE MODE ──────────────────────────────────────────────
+                // ── MOVE MODE (multi-select aware) ──────────────────────────
+                const moveIds = selectedClipIds.has(clip.id) ? [...selectedClipIds] : [clip.id];
+                const initialPositions = {};
+                const moveEls = {};
+                for (const id of moveIds) {
+                    const c = IKState.findClip(id);
+                    if (c) {
+                        initialPositions[id] = c.timeline_start_us;
+                        const el2 = document.querySelector(`[data-clip-id="${id}"]`);
+                        if (el2) moveEls[id] = el2;
+                    }
+                }
                 const startX = e.clientX;
-                const initialStartUs = clip.timeline_start_us;
 
                 const move = (e2) => {
                     const dx = e2.clientX - startX;
                     const dtSec = (dx / tw) * dur;
-                    const rawUs = Math.round((initialStartUs / 1_000_000 + dtSec) * 1_000_000);
-                    const snapped = applySnap(rawUs, clip.id, tw);
-                    const newStartUs = Math.max(0, snapped !== null ? snapped : rawUs);
-                    const newStartPx = (us2s(newStartUs) / dur) * tw;
-                    el.style.left = newStartPx + "px";
-                    if (snapped !== null) showSnapGuide(newStartUs, tw);
-                    else hideSnapGuide();
+                    for (const id of moveIds) {
+                        const startUs = initialPositions[id];
+                        const rawUs = Math.round((startUs / 1_000_000 + dtSec) * 1_000_000);
+                        const snapped = applySnap(rawUs, clip.id, tw);
+                        const newStartUs = Math.max(0, snapped !== null ? snapped : rawUs);
+                        const newPx = (us2s(newStartUs) / dur) * tw;
+                        const el2 = moveEls[id];
+                        if (el2) el2.style.left = newPx + "px";
+                    }
+                    if (moveIds.length === 1) {
+                        const rawUs = Math.round((initialPositions[moveIds[0]] / 1_000_000 + dtSec) * 1_000_000);
+                        const snapped = applySnap(rawUs, clip.id, tw);
+                        if (snapped !== null) showSnapGuide(snapped, tw);
+                        else hideSnapGuide();
+                    } else {
+                        hideSnapGuide();
+                    }
                 };
                 const up = () => {
                     document.removeEventListener("mousemove", move);
                     document.removeEventListener("mouseup", up);
                     hideSnapGuide();
                     if (!document.body.contains(el)) return;
-                    const finalLeft = parseFloat(el.style.left);
-                    const finalStartSec = (finalLeft / tw) * dur;
-                    const finalStartUs = Math.round(finalStartSec * 1_000_000);
+                    const dx = parseFloat(el.style.left) - (us2s(initialPositions[clip.id]) / dur) * tw;
+                    const dtSec = (dx / tw) * dur;
                     saveSnapshot();
-                    IKState.moveClip(clip.id, finalStartUs);
+                    for (const id of moveIds) {
+                        const newStartUs = Math.max(0, Math.round((initialPositions[id] / 1_000_000 + dtSec) * 1_000_000));
+                        IKState.moveClip(id, newStartUs);
+                    }
                     reRender(clip.id);
                 };
                 document.addEventListener("mousemove", move);
@@ -749,6 +814,18 @@ window.renderClips = function () {
         $("#lane-ai").appendChild(el);
     });
     lucide.createIcons({ nodes: [$("#lane-ai"), laneV1, laneA1] });
+
+    // Force tracks container to be scrollable via a spacer in normal flow
+    // (absolutely positioned clips don't affect scroll dimensions)
+    const spacer = (w) => {
+        const s = document.createElement("div");
+        s.style.cssText = `width:${w}px;height:0;pointer-events:none;`;
+        return s;
+    };
+    laneV1.appendChild(spacer(tw));
+    if (laneA1 !== laneV1) laneA1.appendChild(spacer(tw));
+    const aiLane = $("#lane-ai");
+    if (aiLane) aiLane.appendChild(spacer(tw));
 };
 
 $("#lane-v1").ondragover = (e) => e.preventDefault();
@@ -778,7 +855,7 @@ $("#tl-body").addEventListener(
             e.preventDefault();
             window.S.zoom = Math.max(
                 0.5,
-                Math.min(4, window.S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)),
+                Math.min(50, window.S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)),
             );
             $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
             window.renderRuler();
@@ -791,7 +868,7 @@ $("#tl-body").addEventListener(
 
 // ISSUE 3: Zoom control buttons
 $("#zoom-in")?.addEventListener("click", () => {
-    window.S.zoom = Math.min(4, window.S.zoom + 0.25);
+    window.S.zoom = Math.min(50, window.S.zoom + 0.25);
     $("#zoom-text").textContent = Math.round(window.S.zoom * 100) + "%";
     window.renderRuler();
     window.renderClips();
@@ -803,6 +880,12 @@ $("#zoom-out")?.addEventListener("click", () => {
     window.renderRuler();
     window.renderClips();
     window.updatePlayhead();
+});
+
+// Sync ruler scroll with track scroll
+$("#tl-tracks").addEventListener("scroll", () => {
+    const rw = document.querySelector(".tl-ruler-wrapper");
+    if (rw) rw.scrollLeft = $("#tl-tracks").scrollLeft;
 });
 
 // ISSUE 3: Vertical resize handle for timeline
@@ -851,14 +934,10 @@ document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyC" && !e.shiftKey) {
         e.preventDefault();
-        const activeEl = document.querySelector(".tl-clip.active");
-        if (!activeEl) return;
-        const clipId = parseInt(activeEl.dataset.clipId);
-        if (isNaN(clipId)) return;
-        const clip = IKState.findClip(clipId);
-        if (!clip) return;
-        const ids = [clipId, ...IKState.getLinkedClipIds(clipId)];
-        copiedClipsData = ids.map(id => {
+        if (selectedClipIds.size === 0) return;
+        const ids = [];
+        for (const id of selectedClipIds) ids.push(id, ...IKState.getLinkedClipIds(id));
+        copiedClipsData = [...new Set(ids)].map(id => {
             const c = IKState.findClip(id);
             if (!c) return null;
             return { clip: JSON.parse(JSON.stringify(c)), meta: IKState.getClipMeta(id) };
@@ -896,9 +975,12 @@ document.addEventListener("keydown", (e) => {
         const newStartUs = Math.max(0, clip.timeline_start_us + dir * deltaUs);
         saveSnapshot();
         IKState.moveClip(clipId, newStartUs);
-        reRender(clipId);
-        const label = e.shiftKey ? "1s" : "1 frame";
-        showToast("Nudged " + label + " " + (dir > 0 ? "right" : "left"), "move");
+        IKState.computeDuration();
+        const tw = getLaneW();
+        const dur = window.S.dur;
+        const newPx = (us2s(newStartUs) / dur) * tw;
+        activeEl.style.left = newPx + "px";
+        window.updatePlayhead();
     } else if (e.code === "KeyV" && !(e.ctrlKey || e.metaKey)) {
         deactivateSplitTool();
     } else if (e.code === "KeyS") {
@@ -914,17 +996,17 @@ document.addEventListener("keydown", (e) => {
         window.redo();
     } else if (e.code === "Delete" || e.code === "Backspace") {
         hideSnapGuide();
-        const activeEl = document.querySelector(".tl-clip.active");
-        if (!activeEl) return;
-        const clipId = parseInt(activeEl.dataset.clipId);
-        if (isNaN(clipId)) return;
+        if (selectedClipIds.size === 0) return;
         saveSnapshot();
-        const idsToRemove = [clipId, ...IKState.getLinkedClipIds(clipId)];
-        for (const id of idsToRemove) {
-            IKState.removeClip(id);
+        const idsToRemove = new Set();
+        for (const id of selectedClipIds) {
+            idsToRemove.add(id);
+            for (const linkedId of IKState.getLinkedClipIds(id)) idsToRemove.add(linkedId);
         }
+        for (const id of idsToRemove) IKState.removeClip(id);
+        selectedClipIds.clear();
         reRender();
-        showToast("Clip deleted", "trash-2");
+        showToast(idsToRemove.size + " clip(s) deleted", "trash-2");
     }
 });
 

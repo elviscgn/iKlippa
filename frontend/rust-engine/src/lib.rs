@@ -19,8 +19,10 @@
 // which at 30fps is 120 MB/s — well within DDR4 bandwidth even on budget hardware.
 
 use wasm_bindgen::prelude::*;
+use std::collections::HashMap;
 
 mod timeline_state;
+mod compositing;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -209,6 +211,9 @@ impl FramePool {
     pub fn ptr(&self)     -> *const u8 { self.buf.as_ptr() }
     pub fn ptr_mut(&mut self) -> *mut u8 { self.buf.as_mut_ptr() }
     pub fn len(&self)     -> usize     { self.buf.len() }
+    pub fn buf(&self)     -> &[u8]     { &self.buf }
+    pub fn buf_mut(&mut self) -> &mut [u8] { &mut self.buf }
+    pub fn clear(&mut self) { self.buf.fill(0); }
 
     /// Fast XorShift32 pseudo-random number for grain — no stdlib, no syscall.
     #[inline(always)]
@@ -383,10 +388,12 @@ fn clamp_u8(v: f32) -> u8 {
 /// deleted along with the legacy `Clip`/`Timeline`/`ColorGrade` above.
 #[wasm_bindgen]
 pub struct IklippaEngine {
-    timeline: Timeline,
-    pool:     FramePool,
-    grade:    ColorGrade,
-    project:  timeline_state::Project,
+    timeline:       Timeline,
+    pool:           FramePool,
+    grade:          ColorGrade,
+    project:        timeline_state::Project,
+    composite_pool: FramePool,
+    frame_cache:    HashMap<u32, (u32, u32, Vec<u8>)>,
 }
 
 #[wasm_bindgen]
@@ -409,6 +416,8 @@ impl IklippaEngine {
                 height,
                 timeline_state::Rational::fps(30),
             ),
+            composite_pool: FramePool::new(width, height),
+            frame_cache:    HashMap::new(),
         }
     }
 
@@ -444,6 +453,7 @@ impl IklippaEngine {
     #[wasm_bindgen]
     pub fn resize(&mut self, width: u32, height: u32) {
         self.pool = FramePool::new(width, height);
+        self.composite_pool = FramePool::new(width, height);
     }
 
     // ── Frame Processing ─────────────────────────────────────────────────────
@@ -505,6 +515,54 @@ impl IklippaEngine {
     #[wasm_bindgen]
     pub fn active_track_count(&self) -> u32 {
         self.timeline.clip_count.iter().filter(|&&c| c > 0).count() as u32
+    }
+
+    // ── Compositing (Phase 1 Task 2 — multi-track alpha blend) ──────────────
+
+    /// Copy the current pool buffer into the frame cache for `clip_id`.
+    /// Call after JS writes a decoded frame into the pool via `frame_ptr()`.
+    /// The cache stores (width, height, rgba_bytes) so `compose_at` can
+    /// retrieve frames for any clip at compose time.
+    #[wasm_bindgen]
+    pub fn stage_frame(&mut self, clip_id: u32, width: u32, height: u32) {
+        let size = (width * height * 4) as usize;
+        let mut data = vec![0u8; size];
+        let copy_len = size.min(self.pool.len());
+        data[..copy_len].copy_from_slice(&self.pool.buf()[..copy_len]);
+        self.frame_cache.insert(clip_id, (width, height, data));
+    }
+
+    /// Composite all active clips at `ts_us` into the composite pool.
+    /// Reads from the frame cache, applies per-clip colour grades, and
+    /// alpha-blends layers bottom → top by track order.
+    #[wasm_bindgen]
+    pub fn compose_at(&mut self, ts_us: i64) {
+        compositing::compose_at(
+            &self.project,
+            ts_us,
+            &self.frame_cache,
+            &mut self.pool,       // reused as temp buffer for per-pixel ops
+            &mut self.composite_pool,
+        );
+    }
+
+    /// Pointer to the composite output buffer (RGBA, interleaved).
+    /// JS reads this after `compose_at()` to create an ImageData.
+    #[wasm_bindgen]
+    pub fn composite_ptr(&self) -> u32 {
+        self.composite_pool.ptr() as u32
+    }
+
+    /// Byte length of the composite output buffer.
+    #[wasm_bindgen]
+    pub fn composite_len(&self) -> u32 {
+        self.composite_pool.len() as u32
+    }
+
+    /// Clear the frame cache. Call on seek or when source media changes.
+    #[wasm_bindgen]
+    pub fn reset_frame_cache(&mut self) {
+        self.frame_cache.clear();
     }
 
     // ── Project API (Phase 1 Task 1 — new canonical model) ───────────────────
