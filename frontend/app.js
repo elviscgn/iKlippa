@@ -258,7 +258,9 @@ canvasWrapper.addEventListener("drop", async (e) => {
             });
             IKState.computeDuration();
     window.calculateTimelineDuration();
+    console.log("[import] dur after calc=" + window.S.dur + " zoom before=" + window.S.zoom + "%");
     window.autoFitZoom();
+    console.log("[import] zoom after autoFit=" + window.S.zoom + "%");
     window.renderRuler();
             window.renderClips();
             window.updatePlayhead();
