@@ -348,19 +348,27 @@ window.calculateTimelineDuration = function () {
 };
 
 // Auto-zoom to keep ~20px per second minimum for readable ruler ticks
+let _laneRefW = 0;
 window.autoFitZoom = function () {
-    const lane = $("#lane-v1");
-    if (!lane || window.S.dur <= 0) return;
-    const laneW = lane.getBoundingClientRect().width;
-    if (laneW <= 0) return;
+    if (window.S.dur <= 0) return;
+    if (_laneRefW <= 1) {
+        const lane = $("#lane-v1");
+        if (!lane) return;
+        // Ensure no inline width when measuring the natural flex width
+        const prevW = lane.style.width;
+        lane.style.width = "";
+        _laneRefW = lane.getBoundingClientRect().width;
+        lane.style.width = prevW;
+    }
+    if (_laneRefW <= 0) return;
     const minPxPerSec = 20;
-    window.S.zoom = Math.max(0.5, (minPxPerSec * window.S.dur) / laneW);
-    console.log("[autoFitZoom] dur=" + window.S.dur + " laneW=" + laneW + " zoom=" + window.S.zoom);
+    window.S.zoom = Math.max(0.5, (minPxPerSec * window.S.dur) / _laneRefW);
     const zt = $("#zoom-text");
     if (zt) zt.textContent = Math.round(window.S.zoom * 100) + "%";
 };
 
 function getLaneW() {
+    if (_laneRefW > 1) return _laneRefW * window.S.zoom;
     const lane = $("#lane-v1");
     if (!lane) return 100;
     return lane.getBoundingClientRect().width * window.S.zoom;
@@ -371,7 +379,6 @@ window.renderRuler = function () {
     r.querySelectorAll(".ruler-tick").forEach((t) => t.remove());
     const tw = getLaneW();
     r.style.width = tw + "px";
-    r.style.flex = "none";
     const dur = window.S.dur;
     if (dur <= 0) return;
 
@@ -807,6 +814,18 @@ window.renderClips = function () {
         $("#lane-ai").appendChild(el);
     });
     lucide.createIcons({ nodes: [$("#lane-ai"), laneV1, laneA1] });
+
+    // Force tracks container to be scrollable via a spacer in normal flow
+    // (absolutely positioned clips don't affect scroll dimensions)
+    const spacer = (w) => {
+        const s = document.createElement("div");
+        s.style.cssText = `width:${w}px;height:0;pointer-events:none;`;
+        return s;
+    };
+    laneV1.appendChild(spacer(tw));
+    if (laneA1 !== laneV1) laneA1.appendChild(spacer(tw));
+    const aiLane = $("#lane-ai");
+    if (aiLane) aiLane.appendChild(spacer(tw));
 };
 
 $("#lane-v1").ondragover = (e) => e.preventDefault();
