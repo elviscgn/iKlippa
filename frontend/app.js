@@ -99,7 +99,6 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     ];
 
     window.calculateTimelineDuration();
-    window.autoFitZoom();
     window.renderRuler();
     window.renderClips();
     window.renderMedia("footage");
@@ -258,9 +257,8 @@ canvasWrapper.addEventListener("drop", async (e) => {
                 picId: data.picId || 0,
             });
             IKState.computeDuration();
-    window.calculateTimelineDuration();
-    window.autoFitZoom();
-    window.renderRuler();
+            window.calculateTimelineDuration();
+            window.renderRuler();
             window.renderClips();
             window.updatePlayhead();
             showToast("Stock added via canvas", "film");
