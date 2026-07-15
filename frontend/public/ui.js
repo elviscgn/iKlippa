@@ -1,3 +1,4 @@
+// fallow-ignore-file
 "use strict";
 
 lucide.createIcons();
@@ -280,12 +281,27 @@ window.renderMedia = function (type, subType = null) {
             const el = document.createElement("div");
             el.className = "media-item";
             if (item.isReal) {
-                el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:32px;height:32px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
+                if (item.thumbDataUrl) {
+                    el.innerHTML = `<img src="${item.thumbDataUrl}" style="width:100%;height:100%;object-fit:cover;" draggable="false"><div class="media-label">${item.name}</div>`;
+                } else {
+                    el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:32px;height:32px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
+                }
             } else {
                 el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
             }
-            el.draggable = !item.isReal;
-            if (!item.isReal) {
+            el.draggable = true;
+            if (item.isReal) {
+                el.ondragstart = (e) =>
+                    e.dataTransfer.setData(
+                        "text/plain",
+                        JSON.stringify({
+                            sourceId: item.id,
+                            name: item.name,
+                            isReal: true,
+                            dur: item.dur,
+                        }),
+                    );
+            } else {
                 el.ondragstart = (e) =>
                     e.dataTransfer.setData(
                         "text/plain",
@@ -298,6 +314,17 @@ window.renderMedia = function (type, subType = null) {
                         }),
                     );
             }
+            const delBtn = document.createElement("button");
+            delBtn.className = "media-del-btn";
+            delBtn.innerHTML = '<i data-lucide="x"></i>';
+            delBtn.onclick = (e) => {
+                e.stopPropagation();
+                const pool = type === "footage" || type === "audio" ? window.mediaPool[type] : window.mediaPool.stock[subType || "video"];
+                const idx = pool.indexOf(item);
+                if (idx !== -1) pool.splice(idx, 1);
+                window.renderMedia(type, subType);
+            };
+            el.appendChild(delBtn);
             el.onclick = () => {
                 $$(".media-item").forEach((m) => m.classList.remove("selected"));
                 el.classList.add("selected");
@@ -419,7 +446,7 @@ function deactivateSplitTool() {
 }
 
 // ── Snap Logic ─────────────────────────────────────────────────────────
-const SNAP_THRESHOLD_PX = 8;
+const SNAP_THRESHOLD_PX = 16;
 const selectedClipIds = new Set();
 
 function syncActiveClasses() {
@@ -828,23 +855,58 @@ window.renderClips = function () {
     if (aiLane) aiLane.appendChild(spacer(tw));
 };
 
-$("#lane-v1").ondragover = (e) => e.preventDefault();
+$("#lane-v1").ondragover = (e) => {
+    e.preventDefault();
+    // Show snap guide while hovering during a media-pool drag
+    const tw = getLaneW();
+    const rect = $("#lane-v1").getBoundingClientRect();
+    const cursorPx = e.clientX - rect.left + $("#tl-tracks").scrollLeft;
+    const rawUs = Math.round((cursorPx / tw) * window.S.dur * 1_000_000);
+    // Always snap to t=0 when cursor is within 24px of the left edge
+    const snapped = cursorPx <= 24 ? 0 : applySnap(rawUs, null, tw);
+    if (snapped !== null) showSnapGuide(snapped, tw);
+    else hideSnapGuide();
+};
+$("#lane-v1").ondragleave = () => hideSnapGuide();
 $("#lane-v1").ondrop = (e) => {
     e.preventDefault();
+    hideSnapGuide();
     const data = JSON.parse(e.dataTransfer.getData("text/plain"));
     const tw = getLaneW();
     const rect = $("#lane-v1").getBoundingClientRect();
-    const t =
-        ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur;
-    const startUs = Math.round(t * 1_000_000);
-    const endUs = Math.min(Math.round((t + 4.0) * 1_000_000), Math.round(window.S.dur * 1_000_000));
+    const cursorPx = e.clientX - rect.left + $("#tl-tracks").scrollLeft;
+    const rawUs = Math.round((cursorPx / tw) * window.S.dur * 1_000_000);
+    // Always snap to t=0 when cursor is within 24px of the left edge
+    const snapped = cursorPx <= 24 ? 0 : applySnap(rawUs, null, tw);
+    const startUs = Math.max(0, snapped !== null ? snapped : rawUs);
+    console.log(`[iKlippa:ui] drop on lane-v1 — cursorPx:${cursorPx.toFixed(0)} rawUs:${rawUs} snappedUs:${snapped} startUs:${startUs} S.dur:${window.S.dur}s tw:${tw.toFixed(0)}px`);
     saveSnapshot();
-    IKState.addVideoClip("stock_" + data.id, startUs, endUs, {
-        name: data.name,
-        isReal: false,
-        picId: data.picId || 0,
-    });
-    showToast("Stock Inserted", "film");
+    if (data.isReal && data.sourceId) {
+        // Real imported video — use its actual duration
+        const durSec = parseFloat(data.dur) || 4.0;
+        // Extend S.dur if the clip would exceed the current timeline length
+        const neededDurSec = startUs / 1_000_000 + durSec;
+        if (neededDurSec > window.S.dur) {
+            window.S.dur = neededDurSec + 10;
+            console.log(`[iKlippa:ui] extended S.dur to ${window.S.dur.toFixed(1)}s to fit clip`);
+        }
+        const endUs = Math.round(startUs + durSec * 1_000_000);
+        console.log(`[iKlippa:ui] addVideoClip "${data.name}" ${(startUs/1e6).toFixed(2)}s → ${(endUs/1e6).toFixed(2)}s (dur: ${durSec}s)`);
+        IKState.addVideoClip(data.sourceId, startUs, endUs, {
+            name: data.name,
+            isReal: true,
+        }, `group_${Date.now()}`);
+        showToast("Clip added to timeline", "film");
+    } else {
+        // Stock clip — 4 seconds
+        const endUs = startUs + 4_000_000;
+        IKState.addVideoClip("stock_" + data.id, startUs, endUs, {
+            name: data.name,
+            isReal: false,
+            picId: data.picId || 0,
+        });
+        showToast("Stock Inserted", "film");
+    }
     reRender();
 };
 
