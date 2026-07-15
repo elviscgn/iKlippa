@@ -386,6 +386,35 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.media-del-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.7);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 2;
+  padding: 0;
+}
+.media-del-btn svg {
+  width: 12px;
+  height: 12px;
+}
+.media-item:hover .media-del-btn {
+  opacity: 1;
+}
+.media-del-btn:hover {
+  background: #ef4444;
+}
 
 .audio-item {
   display: flex;
