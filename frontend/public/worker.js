@@ -1,3 +1,4 @@
+// fallow-ignore-file
 // worker.js
 import init, { IklippaEngine } from './pkg/iklippa_engine.js';
 

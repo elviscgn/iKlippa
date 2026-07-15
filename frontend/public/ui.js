@@ -1,3 +1,4 @@
+// fallow-ignore-file
 "use strict";
 
 lucide.createIcons();
