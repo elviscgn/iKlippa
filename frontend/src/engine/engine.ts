@@ -4,7 +4,7 @@
  */
 
 import { PerformanceMonitor } from './perf';
-import { loadScript } from '../utils/helpers';
+import { loadScript } from '../utils/dom';
 import type {
   WorkerIncomingMessage,
   GradeParams,
@@ -553,6 +553,17 @@ function _getFrameCanvas(
   return [_frameCanvas, _frameCtx!];
 }
 
+function cleanupStaleFrames(ms: number) {
+  maybeCaptureThumbnail(ms);
+  const pruneBeforeMs = ms - 1500;
+  for (const [frameMs] of pendingFrames) {
+    if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
+  }
+  for (const [audioMs] of pendingAudio) {
+    if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs);
+  }
+}
+
 function paintFrameAtTime(ms: number): void {
   if (!ctx || !canvas) return;
 
@@ -578,14 +589,7 @@ function paintFrameAtTime(ms: number): void {
     );
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    maybeCaptureThumbnail(ms);
-    const pruneBeforeMs = ms - 1500;
-    for (const [frameMs] of pendingFrames) {
-      if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
-    }
-    for (const [audioMs] of pendingAudio) {
-      if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs);
-    }
+    cleanupStaleFrames(ms);
     return;
   }
 
@@ -614,14 +618,7 @@ function paintFrameAtTime(ms: number): void {
       'paint',
       `clips exist at ${ms.toFixed(0)}ms but pendingFrames is empty`,
     );
-    maybeCaptureThumbnail(ms);
-    const pruneBeforeMs = ms - 1500;
-    for (const [frameMs] of pendingFrames) {
-      if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
-    }
-    for (const [audioMs] of pendingAudio) {
-      if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs);
-    }
+    cleanupStaleFrames(ms);
     return;
   }
 
@@ -646,14 +643,7 @@ function paintFrameAtTime(ms: number): void {
     ctx.drawImage(cc, 0, 0);
   }
 
-  maybeCaptureThumbnail(ms);
-  const pruneBeforeMs = ms - 1500;
-  for (const [frameMs] of pendingFrames) {
-    if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
-  }
-  for (const [audioMs] of pendingAudio) {
-    if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs);
-  }
+  cleanupStaleFrames(ms);
 }
 
 // ── Playback control ────────────────────────────────────────────────────
