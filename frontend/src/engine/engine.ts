@@ -187,97 +187,109 @@ async function initAudio(): Promise<void> {
   }
 }
 
+function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }>): void {
+  videoDurationMs = msg.durationMs;
+  sourceVideoWidth = msg.width;
+  sourceVideoHeight = msg.height;
+  if (canvas) {
+    canvas.width = sourceVideoWidth;
+    canvas.height = sourceVideoHeight;
+  }
+  log(
+    'engine',
+    `ready — ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s · pendingFrames: ${pendingFrames.size}`,
+  );
+  logStatus(
+    `Ready: ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s`,
+  );
+  if (window.onClipImported) {
+    window.onClipImported({
+      width: sourceVideoWidth,
+      height: sourceVideoHeight,
+      durationMs: videoDurationMs,
+      fileName: currentFileName,
+    });
+  }
+}
+
+function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }>): void {
+  perf.recordFrameArrival(msg.ms, msg.gradeMs);
+  const arr = new Uint8ClampedArray(msg.buffer);
+  pendingFrames.set(
+    msg.ms,
+    new ImageData(arr, sourceVideoWidth, sourceVideoHeight),
+  );
+  if (isExporting)
+    exportFrames.push({ ms: msg.ms, imageData: pendingFrames.get(msg.ms)! });
+
+  // Fire pending thumbnail capture
+  if (_pendingThumbCapture) {
+    const cb = _pendingThumbCapture;
+    _pendingThumbCapture = null;
+    try {
+      cb(msg.ms);
+    } catch (e) {
+      err('thumb', 'pendingThumbCapture callback threw', (e as Error).message);
+    }
+  }
+
+  if (!isPlaying) {
+    if (seekTargetMs >= 0) {
+      if (msg.ms >= seekTargetMs - 33) {
+        log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
+        if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
+        seekTargetMs = -1;
+        paintFrameAtTime(playheadMs);
+      }
+    } else {
+      paintFrameAtTime(playheadMs);
+    }
+  }
+}
+
+function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'audio_chunk' }>): void {
+  if (!audioCtx) {
+    logOnce('audio-ctx-missing', 'audio', 'audio_chunk received but AudioContext not initialised yet');
+    return;
+  }
+  if (msg.configVersion !== audioConfigVersion) return;
+  const audioBuffer = audioCtx.createBuffer(msg.channels, msg.length, msg.sampleRate);
+  for (let c = 0; c < msg.channels; c++) {
+    audioBuffer.copyToChannel(new Float32Array(msg.buffers[c]!), c);
+  }
+  pendingAudio.set(msg.ms, audioBuffer);
+  if (isPlaying) {
+    scheduleAudioNode(msg.ms, audioBuffer);
+  }
+}
+
 function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): void {
   const msg = e.data;
 
-  if (msg.type === 'status') logStatus(msg.msg);
-
-  if (msg.type === 'ready') {
-    videoDurationMs = msg.durationMs;
-    sourceVideoWidth = msg.width;
-    sourceVideoHeight = msg.height;
-    if (canvas) {
-      canvas.width = sourceVideoWidth;
-      canvas.height = sourceVideoHeight;
-    }
-    log(
-      'engine',
-      `ready — ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s · pendingFrames: ${pendingFrames.size}`,
-    );
-    logStatus(
-      `Ready: ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s`,
-    );
-    if (window.onClipImported) {
-      window.onClipImported({
-        width: sourceVideoWidth,
-        height: sourceVideoHeight,
-        durationMs: videoDurationMs,
-        fileName: currentFileName,
-      });
-    }
-  }
-
-  if (msg.type === 'decode_submit') perf.recordDecodeSubmit(msg.ms);
-
-  if (msg.type === 'frame') {
-    perf.recordFrameArrival(msg.ms, msg.gradeMs);
-    const arr = new Uint8ClampedArray(msg.buffer);
-    pendingFrames.set(
-      msg.ms,
-      new ImageData(arr, sourceVideoWidth, sourceVideoHeight),
-    );
-    if (isExporting)
-      exportFrames.push({ ms: msg.ms, imageData: pendingFrames.get(msg.ms)! });
-
-    // Fire pending thumbnail capture
-    if (_pendingThumbCapture) {
-      const cb = _pendingThumbCapture;
-      _pendingThumbCapture = null;
-      try {
-        cb(msg.ms);
-      } catch (e) {
-        err('thumb', 'pendingThumbCapture callback threw', (e as Error).message);
-      }
-    }
-
-    if (!isPlaying) {
-      if (seekTargetMs >= 0) {
-        if (msg.ms >= seekTargetMs - 33) {
-          log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
-          if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
-          seekTargetMs = -1;
-          paintFrameAtTime(playheadMs);
-        }
-      } else {
-        paintFrameAtTime(playheadMs);
-      }
-    }
-  }
-
-  if (msg.type === 'audio_chunk') {
-    if (!audioCtx) {
-      logOnce('audio-ctx-missing', 'audio', 'audio_chunk received but AudioContext not initialised yet');
-      return;
-    }
-    if (msg.configVersion !== audioConfigVersion) return;
-    const audioBuffer = audioCtx.createBuffer(msg.channels, msg.length, msg.sampleRate);
-    for (let c = 0; c < msg.channels; c++) {
-      audioBuffer.copyToChannel(new Float32Array(msg.buffers[c]!), c);
-    }
-    pendingAudio.set(msg.ms, audioBuffer);
-    if (isPlaying) {
-      scheduleAudioNode(msg.ms, audioBuffer);
-    }
-  }
-
-  if (msg.type === 'timeline_set') {
-    if (msg.ok) log('rust', 'Timeline synced to Rust ✓');
-    else err('rust', 'Timeline sync failed', msg.error);
-    if (window.onTimelineSynced) window.onTimelineSynced(msg.ok, msg.error);
-  }
-
-  if (msg.type === 'project_json') {
-    if (window.onProjectJsonReceived) window.onProjectJsonReceived(msg.json);
+  switch (msg.type) {
+    case 'status':
+      logStatus(msg.msg);
+      break;
+    case 'ready':
+      handleWorkerReady(msg);
+      break;
+    case 'decode_submit':
+      perf.recordDecodeSubmit(msg.ms);
+      break;
+    case 'frame':
+      handleWorkerFrame(msg);
+      break;
+    case 'audio_chunk':
+      handleWorkerAudioChunk(msg);
+      break;
+    case 'timeline_set':
+      if (msg.ok) log('rust', 'Timeline synced to Rust ✓');
+      else err('rust', 'Timeline sync failed', msg.error);
+      if (window.onTimelineSynced) window.onTimelineSynced(msg.ok, msg.error);
+      break;
+    case 'project_json':
+      if (window.onProjectJsonReceived) window.onProjectJsonReceived(msg.json);
+      break;
   }
 }
 
@@ -564,12 +576,8 @@ function cleanupStaleFrames(ms: number) {
   }
 }
 
-function paintFrameAtTime(ms: number): void {
-  if (!ctx || !canvas) return;
-
-  const msUs = Math.round(ms * 1_000);
+function getActiveClipsAtTime(msUs: number): ClipWithMeta[] {
   const activeClips: ClipWithMeta[] = [];
-
   if (typeof window.IKState !== 'undefined' && window.IKState.isReady()) {
     const clips = window.IKState.getAllVideoClips
       ? window.IKState.getAllVideoClips()
@@ -580,19 +588,10 @@ function paintFrameAtTime(ms: number): void {
       }
     }
   }
+  return activeClips;
+}
 
-  if (activeClips.length === 0) {
-    logOnce(
-      `no-clip-at-${Math.round(ms / 500) * 500}`,
-      'paint',
-      `no active clip at ${ms.toFixed(0)}ms — black frame (pendingFrames: ${pendingFrames.size})`,
-    );
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    cleanupStaleFrames(ms);
-    return;
-  }
-
+function resolveFramesForClips(activeClips: ClipWithMeta[], ms: number) {
   const resolved: Array<{ clip: ClipWithMeta; imageData: ImageData }> = [];
   for (const clip of activeClips) {
     const timelineOffsetMs = ms - clip.timeline_start_us / 1000;
@@ -611,6 +610,51 @@ function paintFrameAtTime(ms: number): void {
       );
     }
   }
+  return resolved;
+}
+
+function drawResolvedFrames(resolved: Array<{ clip: ClipWithMeta; imageData: ImageData }>, width: number, height: number) {
+  if (resolved.length === 1) {
+    ctx!.putImageData(resolved[0]!.imageData, 0, 0);
+  } else {
+    const [cc, cctx] = _getCompositeCanvas(width, height);
+    const [fc, fctx] = _getFrameCanvas(width, height);
+
+    cctx.globalCompositeOperation = 'source-over';
+    cctx.globalAlpha = 1;
+    cctx.clearRect(0, 0, width, height);
+
+    for (let i = 0; i < resolved.length; i++) {
+      const { clip, imageData } = resolved[i]!;
+      const opacity = clip.transform ? clip.transform.opacity : 1;
+      fctx.putImageData(imageData, 0, 0);
+      cctx.globalAlpha = Math.max(0, Math.min(1, opacity));
+      cctx.drawImage(fc, 0, 0);
+    }
+    cctx.globalAlpha = 1;
+    ctx!.drawImage(cc, 0, 0);
+  }
+}
+
+function paintFrameAtTime(ms: number): void {
+  if (!ctx || !canvas) return;
+
+  const msUs = Math.round(ms * 1_000);
+  const activeClips = getActiveClipsAtTime(msUs);
+
+  if (activeClips.length === 0) {
+    logOnce(
+      `no-clip-at-${Math.round(ms / 500) * 500}`,
+      'paint',
+      `no active clip at ${ms.toFixed(0)}ms — black frame (pendingFrames: ${pendingFrames.size})`,
+    );
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    cleanupStaleFrames(ms);
+    return;
+  }
+
+  const resolved = resolveFramesForClips(activeClips, ms);
 
   if (resolved.length === 0) {
     logOnce(
@@ -622,27 +666,7 @@ function paintFrameAtTime(ms: number): void {
     return;
   }
 
-  if (resolved.length === 1) {
-    ctx.putImageData(resolved[0]!.imageData, 0, 0);
-  } else {
-    const [cc, cctx] = _getCompositeCanvas(canvas.width, canvas.height);
-    const [fc, fctx] = _getFrameCanvas(canvas.width, canvas.height);
-
-    cctx.globalCompositeOperation = 'source-over';
-    cctx.globalAlpha = 1;
-    cctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    for (let i = 0; i < resolved.length; i++) {
-      const { clip, imageData } = resolved[i]!;
-      const opacity = clip.transform ? clip.transform.opacity : 1;
-      fctx.putImageData(imageData, 0, 0);
-      cctx.globalAlpha = Math.max(0, Math.min(1, opacity));
-      cctx.drawImage(fc, 0, 0);
-    }
-    cctx.globalAlpha = 1;
-    ctx.drawImage(cc, 0, 0);
-  }
-
+  drawResolvedFrames(resolved, canvas.width, canvas.height);
   cleanupStaleFrames(ms);
 }
 
