@@ -11,13 +11,12 @@
       rel="stylesheet"
     />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <!-- CSS is imported by main.ts via Vite, but keep this for dev fallback -->
     <link rel="stylesheet" href="styles.css" />
-    <!-- Deferred classic script for canonical project state (loaded before ui.js) -->
-    <script src="state.js" defer></script>
-    <!-- Deferred classic script for UI state and rendering -->
-    <script src="ui.js" defer></script>
-    <!-- ES module to hook up UI events to engine.js -->
-    <script type="module" src="app.js"></script>
+    <!-- Deferred classic script for UI state and rendering (served from public/) -->
+    <script src="/ui.js" defer></script>
+    <!-- ES module entry point — imports state.ts + engine.ts via Vite -->
+    <script type="module" src="/src/main.ts"></script>
   </head>
   <body>
     <div id="app">
@@ -26,15 +25,15 @@
         <div class="topnav-left">
           <svg
             class="topnav-logo"
-            width="140"
-            height="32"
-            viewBox="0 0 140 32"
+            width="170"
+            height="38"
+            viewBox="0 0 170 38"
             xmlns="http://www.w3.org/2000/svg"
             aria-label="iKlippa"
           >
-            <rect x="0" y="0" width="32" height="32" rx="6" fill="#0d9488" />
-            <polygon points="11,7 24,16 11,25" fill="#fff" />
-            <text x="38" y="22" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="700" fill="#fff">iKlippa</text>
+            <rect x="0" y="0" width="38" height="38" rx="7" fill="#0d9488" />
+            <polygon points="13,9 28,19 13,29" fill="#fff" />
+            <text x="46" y="26" font-family="Inter, system-ui, sans-serif" font-size="21" font-weight="700" fill="#fff">iKlippa</text>
           </svg>
           <div class="topnav-actions">
             <button
