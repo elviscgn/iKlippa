@@ -452,12 +452,12 @@ function getDecoderDescription(
   for (const entry of trak.mdia.minf.stbl.stsd.entries) {
     const box = entry.avcC ?? entry.hvcC ?? entry.vpcC ?? entry.av1C;
     if (box) {
-      const ds = new (window as unknown as { DataStream: new (buffer?: ArrayBuffer, offset?: number, endian?: number) => { buffer: ArrayBuffer; write: (box: unknown) => void } }).DataStream(
+      const ds = new (window as unknown as { DataStream: new (buffer?: ArrayBuffer, offset?: number, endian?: number) => { buffer: ArrayBuffer } }).DataStream(
         undefined,
         0,
         0, // BIG_ENDIAN
       );
-      ds.write(box);
+      (box as { write: (ds: unknown) => void }).write(ds);
       return ds.buffer.slice(8);
     }
   }
