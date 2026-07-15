@@ -14,7 +14,8 @@ import type {
   SavedState,
   BlendMode,
 } from './types';
-import { usToSec, deepEqual } from '../utils/helpers';
+import { usToSec } from '../utils/time';
+import { deepEqual } from '../utils/object';
 
 // ── Module state ────────────────────────────────────────────────────────
 let project: Project | null = null;
