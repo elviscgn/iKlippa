@@ -7,7 +7,7 @@ __pycache__/
 ml/data/*.csv
 ml/data/*.json
 ml/models/*.pkl
-
+ 
 # Go
 backend/bin/
 
