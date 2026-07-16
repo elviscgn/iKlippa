@@ -120,9 +120,11 @@ textarea {
   gap: 16px;
 }
 .topnav-logo {
+  width: 170px;
   height: 38px;
   display: block;
   object-fit: contain;
+  flex-shrink: 0;
 }
 .topnav-actions {
   display: flex;

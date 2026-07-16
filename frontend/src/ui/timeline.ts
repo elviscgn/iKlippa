@@ -261,7 +261,7 @@ export function updatePlayhead() {
   const dur = S.dur;
   if (dur <= 0) return;
   const px = (S.time / dur) * tw;
-  const gutterWidth = 80;
+  const gutterWidth = 100;
   const phTracks = $('#ph-tracks');
   if (phTracks) phTracks.style.left = gutterWidth + px + 'px';
   const timecode = $('#timecode');
