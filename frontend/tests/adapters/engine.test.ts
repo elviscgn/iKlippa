@@ -685,7 +685,7 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
       postMessage: vi.fn(),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
-    };
+    } as any;
     __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
     __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
     __TEST_HOOKS__.pendingFrames = new Map();
@@ -702,6 +702,7 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
   });
 
   it('paints black frame when no active clips', () => {
+    __TEST_HOOKS__.seekTargetMs = 200;
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
       data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
@@ -727,6 +728,7 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
 
     // handleWorkerFrame will create the real ImageData and overwrite this,
     // but paintFrameAtTime will use whatever is in pendingFrames at resolution time
+    __TEST_HOOKS__.seekTargetMs = 0;
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
       data: { type: 'frame', ms: 0, gradeMs: 2.0, buffer: buf },
@@ -779,6 +781,7 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
     __TEST_HOOKS__.canvas!.width = 1920;
     __TEST_HOOKS__.canvas!.height = 1080;
 
+    __TEST_HOOKS__.seekTargetMs = 0;
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
       data: { type: 'frame', ms: 0, gradeMs: 2.0, buffer: buf },
@@ -796,6 +799,7 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
       ],
     });
 
+    __TEST_HOOKS__.seekTargetMs = 0;
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
       data: { type: 'frame', ms: 0, gradeMs: 2.0, buffer: buf },
@@ -939,7 +943,7 @@ describe('handleWorkerReady with callbacks (Tier 2)', () => {
   beforeEach(() => {
     vi.stubGlobal('window', {});
     __TEST_HOOKS__.canvas = { width: 0, height: 0 } as any;
-    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() } as any;
   });
 
   afterEach(() => {
@@ -985,7 +989,7 @@ describe('handleWorkerFrame with pending thumb capture (Tier 2)', () => {
     vi.stubGlobal('ImageData', class {
       constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
     });
-    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() } as any;
     __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
     __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
     __TEST_HOOKS__.pendingFrames = new Map();
@@ -1076,7 +1080,7 @@ describe('handleWorkerAudioChunk edge cases (Tier 2)', () => {
 describe('window callbacks (Tier 2)', () => {
   beforeEach(() => {
     vi.stubGlobal('window', {});
-    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() } as any;
   });
 
   afterEach(() => {
@@ -1259,7 +1263,7 @@ describe('audio chunk with isPlaying scheduling (Tier 2)', () => {
 
   beforeEach(() => {
     vi.stubGlobal('window', {});
-    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() } as any;
   });
 
   afterEach(() => {

@@ -6,7 +6,7 @@ declare global {
   interface Window {
     togglePlay: () => void;
     skipTime: (delta: number) => void;
-    onPlayheadScrub?: (timeSec: number) => void;
+    onPlayheadScrub?: (timeSec: number, force?: boolean) => void;
   }
 }
 
@@ -54,13 +54,17 @@ function handleTimelineScrub(e: MouseEvent, el: HTMLElement) {
   const rect = el.getBoundingClientRect();
   const isRuler = el.id === 'tl-ruler';
   const headOffset = isRuler ? 0 : 100;
-  const x = Math.max(0, e.clientX - rect.left - headOffset);
+  let x = e.clientX - rect.left;
+  if (el.id === 'tl-tracks') {
+    x += el.scrollLeft;
+  }
+  x = Math.max(0, x - headOffset);
   const tw = getLaneW();
   const dur = S.dur;
   if (dur <= 0 || tw <= 0) return;
   S.time = Math.max(0, Math.min((x / tw) * dur, dur));
   updatePlayhead();
-  if (window.onPlayheadScrub) window.onPlayheadScrub(S.time);
+  if (window.onPlayheadScrub) window.onPlayheadScrub(S.time, true);
 }
 
 export function initPlayback() {
@@ -98,7 +102,7 @@ export function initPlayback() {
       if (dur <= 0 || tw <= 0 || !tracks) return;
       const onMove = (e2: MouseEvent) => {
         const rect = tracks.getBoundingClientRect();
-        const x = Math.max(0, e2.clientX - rect.left - 100);
+        const x = Math.max(0, e2.clientX - rect.left + tracks.scrollLeft - 100);
         const t = Math.max(0, Math.min((x / tw) * dur, dur));
         S.time = t;
         $('#ph-tracks')!.style.left = 100 + (t / dur) * tw + 'px';
@@ -107,6 +111,7 @@ export function initPlayback() {
       const onUp = () => {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
+        if (window.onPlayheadScrub) window.onPlayheadScrub(S.time, true);
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);

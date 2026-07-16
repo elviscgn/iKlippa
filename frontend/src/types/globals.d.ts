@@ -117,7 +117,7 @@ declare global {
       durationMs: number;
     }) => void;
     onPlaybackPaused?: () => void;
-    onPlayheadScrub?: (timeSec: number) => void;
+    onPlayheadScrub?: (timeSec: number, force?: boolean) => void;
     onTimelineSynced?: (ok: boolean, error?: string) => void;
     onProjectJsonReceived?: (json: string) => void;
 
