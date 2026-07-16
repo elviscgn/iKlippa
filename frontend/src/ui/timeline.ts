@@ -182,7 +182,7 @@ export function renderClips() {
       const meta = IKState.getClipMeta ? IKState.getClipMeta(clip.id) : null;
       const displayName = meta?.name || clip.source_id || `Clip ${clip.id}`;
       const el = document.createElement('div');
-      el.className = `tl-clip${track.track_type === 'audio' ? ' tl-clip-audio' : ''}`;
+      el.className = `tl-clip${track.track_type === 'audio' ? ' tl-clip-audio' : ' tl-clip-video'}`;
       el.dataset.clipId = String(clip.id);
       setClipDimensions(el, clip, dur, tw);
 

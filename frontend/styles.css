@@ -1563,6 +1563,8 @@ textarea {
 }
 .tl-clip-thumbs img {
   flex: 1;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   filter: brightness(0.7) contrast(1.1);
   min-width: 0;
