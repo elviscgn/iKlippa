@@ -168,16 +168,23 @@ function handleGetProjectJson() {
   postMessage({ type: 'project_json', json });
 }
 
-self.onmessage = async (e: MessageEvent<any>) => {
-  const msg = e.data;
-  if (msg.type === 'init') await handleInit();
-  else if (msg.type === 'load') await handleLoad(msg);
-  else if (msg.type === 'seek') await handleSeek(msg);
-  else if (msg.type === 'sync') await handleSync(msg);
-  else if (msg.type === 'set_audio_version') handleSetAudioVersion(msg);
-  else if (msg.type === 'set_grade') await handleSetGrade(msg);
-  else if (msg.type === 'set_timeline') handleSetTimeline(msg);
-  else if (msg.type === 'get_project_json') handleGetProjectJson();
+let messageQueue: Promise<void> = Promise.resolve();
+
+self.onmessage = (e: MessageEvent<any>) => {
+  messageQueue = messageQueue.then(async () => {
+    const msg = e.data;
+    if (msg.type === 'init') await handleInit();
+    else if (msg.type === 'load') await handleLoad(msg);
+    else if (msg.type === 'seek') await handleSeek(msg);
+    else if (msg.type === 'sync') await handleSync(msg);
+    else if (msg.type === 'set_audio_version') handleSetAudioVersion(msg);
+    else if (msg.type === 'set_grade') await handleSetGrade(msg);
+    else if (msg.type === 'set_timeline') handleSetTimeline(msg);
+    else if (msg.type === 'get_project_json') handleGetProjectJson();
+  }).catch((err) => {
+    wwarn('worker', 'error processing message', err);
+  });
+  return messageQueue;
 };
 
 function postMessage(msg: WorkerIncomingMessage, transfer?: Transferable[]) {
