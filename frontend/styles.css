@@ -1292,7 +1292,8 @@ textarea {
   padding: 2px 4px;
 }
 .tl-zoom-btn {
-  width: 24px;
+  width: auto;
+  min-width: 24px;
   height: 24px;
   border-radius: 4px;
   background: transparent;
@@ -1303,7 +1304,7 @@ textarea {
   cursor: pointer;
   color: var(--text-muted);
   transition: all 0.15s;
-  padding: 0;
+  padding: 0 6px;
 }
 .tl-zoom-btn:hover {
   background: rgba(255, 255, 255, 0.08);
@@ -1396,6 +1397,8 @@ textarea {
   width: 80px;
   flex-shrink: 0;
   display: flex;
+  flex-direction: column;
+  gap: 4px;
   align-items: center;
   justify-content: center;
   z-index: 10;
@@ -1553,6 +1556,8 @@ textarea {
   inset: 0;
   display: flex;
   pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
 }
 .tl-clip-thumbs img {
   flex: 1;
