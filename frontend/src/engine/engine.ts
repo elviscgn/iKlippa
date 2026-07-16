@@ -285,14 +285,10 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
   }
 
   if (!isPlaying) {
-    if (seekTargetMs >= 0) {
-      if (msg.ms >= seekTargetMs - 33) {
-        log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
-        if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
-        seekTargetMs = -1;
-        paintFrameAtTime(playheadMs);
-      }
-    } else {
+    if (seekTargetMs >= 0 && msg.ms >= seekTargetMs - 33) {
+      log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
+      if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
+      seekTargetMs = -1;
       paintFrameAtTime(playheadMs);
     }
   }
@@ -831,8 +827,10 @@ async function startPlayback(): Promise<void> {
     for (const [ms, buffer] of sorted) {
       scheduleAudioNode(ms, buffer);
     }
+    pendingAudio.clear();
   } else {
     log('play', 'playhead over gap — skipping pre-buffered audio scheduling');
+    pendingAudio.clear();
   }
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
@@ -848,6 +846,7 @@ function pausePlayback(): void {
     rafHandle = null;
   }
   stopAllAudioNodes();
+  pendingAudio.clear();
   nextAudioStartTime = 0;
   lastScheduledChunkMs = -1;
   syncWorkerState();
