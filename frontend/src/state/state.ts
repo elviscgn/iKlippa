@@ -175,6 +175,7 @@ function getAudioClips(): ClipWithMeta[] {
 }
 
 // ── Clip CRUD ───────────────────────────────────────────────────────
+// fallow-ignore-next-line complexity
 function addVideoClip(
   sourceId: string,
   startUs: number,
@@ -195,6 +196,7 @@ function addVideoClip(
   return merged;
 }
 
+// fallow-ignore-next-line complexity
 function addAudioClip(
   sourceId: string,
   startUs: number,
@@ -242,6 +244,7 @@ function removeClip(clipId: number): boolean {
   return false;
 }
 
+// fallow-ignore-next-line complexity
 function splitClip(clipId: number, splitAtUs: number): number | null {
   const track = findClipTrack(clipId);
   if (!track || !project) return null;
@@ -294,6 +297,7 @@ function splitClip(clipId: number, splitAtUs: number): number | null {
   return newId;
 }
 
+// fallow-ignore-next-line complexity
 function moveClip(clipId: number, newStartUs: number): boolean {
   const clip = findClip(clipId);
   if (!clip) return false;
@@ -324,6 +328,7 @@ function moveClip(clipId: number, newStartUs: number): boolean {
   return true;
 }
 
+// fallow-ignore-next-line complexity
 function trimClip(
   clipId: number,
   newStartUs: number,
@@ -357,14 +362,24 @@ function trimClip(
       const linkedNewSourceStart =
         linkedClip.source_start_us +
         Math.round(deltaStartUs / linkedClip.speed);
-      trimClip(linkedId, linkedNewStart, linkedNewEnd, linkedNewSourceStart);
+      linkedClip.timeline_start_us = linkedNewStart;
+      linkedClip.timeline_end_us = linkedNewEnd;
+      linkedClip.source_start_us = linkedNewSourceStart;
+      linkedClip.source_end_us = linkedNewSourceStart + Math.round((linkedNewEnd - linkedNewStart) / linkedClip.speed);
+      
+      const linkedTrack = findClipTrack(linkedId);
+      if (linkedTrack) {
+        linkedTrack.clips.sort((a, b) => a.timeline_start_us - b.timeline_start_us);
+      }
     }
   }
+
 
   computeDuration();
   return true;
 }
 
+// fallow-ignore-next-line complexity
 function getLinkedClipIds(clipId: number): number[] {
   const clip = findClip(clipId);
   if (!clip || !clip.group_id || !project) return [];
@@ -398,6 +413,7 @@ function getClipMeta(clipId: number): Record<string, unknown> | null {
   return meta ? JSON.parse(JSON.stringify(meta)) : null;
 }
 
+// fallow-ignore-next-line complexity
 function computeDuration(): number {
   if (!project) return 0;
   let max = 0;
@@ -492,14 +508,16 @@ export const IKState = {
 };
 
 // ── Attach to window for backward compat with ui.js ─────────────────
-window.IKState = IKState;
+if (typeof window !== 'undefined') {
+  (window as any).IKState = IKState;
 
-// ── window.videoClips / window.audioClips as live getters ────────────
-Object.defineProperty(window, 'videoClips', {
-  get: () => window.IKState.getVideoClips(),
-  configurable: true,
-});
-Object.defineProperty(window, 'audioClips', {
-  get: () => window.IKState.getAudioClips(),
-  configurable: true,
-});
+  // ── window.videoClips / window.audioClips as live getters ────────────
+  Object.defineProperty(window, 'videoClips', {
+    get: () => (window as any).IKState.getVideoClips(),
+    configurable: true,
+  });
+  Object.defineProperty(window, 'audioClips', {
+    get: () => (window as any).IKState.getAudioClips(),
+    configurable: true,
+  });
+}

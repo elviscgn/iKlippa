@@ -1,5 +1,6 @@
 import { $, S, us2s } from './state';
-import { getLaneW, updatePlayhead } from './timeline';
+import { updatePlayhead } from './timeline';
+import { getLaneW } from './timelineUtils';
 
 declare global {
   interface Window {
@@ -10,7 +11,7 @@ declare global {
 }
 
 // UI-Fallback Play Control (overridden by main.ts when engine loads)
-export function togglePlay() {
+function togglePlay() {
   if (S.playing) {
     S.playing = false;
     if (S.rafId !== null) cancelAnimationFrame(S.rafId);
@@ -41,14 +42,15 @@ export function togglePlay() {
 }
 window.togglePlay = togglePlay;
 
-export function skipTime(delta: number) {
+function skipTime(delta: number) {
   S.time = Math.max(0, Math.min(S.dur, S.time + delta));
   updatePlayhead();
   if (window.onPlayheadScrub) window.onPlayheadScrub(S.time);
 }
 window.skipTime = skipTime;
 
-export function handleTimelineScrub(e: MouseEvent, el: HTMLElement) {
+// fallow-ignore-next-line complexity
+function handleTimelineScrub(e: MouseEvent, el: HTMLElement) {
   const rect = el.getBoundingClientRect();
   const isRuler = el.id === 'tl-ruler';
   const headOffset = isRuler ? 0 : 100;

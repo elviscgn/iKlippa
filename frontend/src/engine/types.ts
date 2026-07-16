@@ -73,7 +73,7 @@ export type WorkerIncomingMessage =
 
 // ── Messages sent TO the worker ─────────────────────────────────────────
 
-export interface WorkerInitCmd {
+interface WorkerInitCmd {
   type: 'init';
 }
 
@@ -113,7 +113,7 @@ export interface WorkerSetTimelineCmd {
   json: string;
 }
 
-export interface WorkerGetProjectJsonCmd {
+interface WorkerGetProjectJsonCmd {
   type: 'get_project_json';
 }
 
@@ -122,7 +122,7 @@ export interface WorkerSetAudioVersionCmd {
   version: number;
 }
 
-export type WorkerOutgoingMessage =
+type WorkerOutgoingMessage =
   | WorkerInitCmd
   | WorkerLoadCmd
   | WorkerSeekCmd
@@ -159,7 +159,7 @@ export interface MP4Sample {
 
 // ── Clip imported callback data ─────────────────────────────────────────
 
-export interface ClipImportedData {
+interface ClipImportedData {
   width: number;
   height: number;
   durationMs: number;
