@@ -573,11 +573,12 @@ export function renderLoop(ts: number): void {
 
   paintFrameAtTime(playheadMs);
 
+  const sourcePlayheadMs = mapTimelineToSourceMs(playheadMs);
   let framesAhead = 0;
   for (const frameMs of pendingFrames.keys()) {
-    if (frameMs >= playheadMs) framesAhead++;
+    if (frameMs >= sourcePlayheadMs) framesAhead++;
   }
-  worker!.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead });
+  worker!.postMessage({ type: 'sync', playheadMs: sourcePlayheadMs, isPlaying, framesAhead });
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
@@ -859,7 +860,8 @@ export async function seekTo(ms: number): Promise<void> {
 }
 
 function syncWorkerState(): void {
-  if (worker) worker.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead: 0 });
+  const sourcePlayheadMs = mapTimelineToSourceMs(playheadMs);
+  if (worker) worker.postMessage({ type: 'sync', playheadMs: sourcePlayheadMs, isPlaying, framesAhead: 0 });
 }
 
 export function setColorGrade(params: Partial<GradeParams>): void {
