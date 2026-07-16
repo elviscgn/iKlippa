@@ -86,7 +86,30 @@ export async function renderMedia(
               end: 4.0,
             })
           );
+          );
       }
+
+      el.ondblclick = () => {
+        const IKState = (window as any).IKState;
+        if (!IKState) return;
+        const S = (window as any).S;
+        const playheadUs = Math.round((S.time || 0) * 1_000_000);
+        (window as any).saveSnapshot?.();
+        if (item.isReal) {
+          const durSec = parseFloat(item.dur) || 4.0;
+          const neededDurSec = (playheadUs / 1_000_000) + durSec;
+          if (neededDurSec > S.dur) S.dur = neededDurSec + 10;
+          const endUs = Math.round(playheadUs + durSec * 1_000_000);
+          IKState.addVideoClip(item.id, playheadUs, endUs, { name: item.name, isReal: true }, `group_${Date.now()}`);
+          (window as any).showToast?.('Clip added at playhead', 'film');
+        } else {
+          const endUs = playheadUs + 4_000_000;
+          IKState.addVideoClip('stock_' + Date.now(), playheadUs, endUs, { name: item.name, isReal: false, picId: item.picId || 0 });
+          (window as any).showToast?.('Stock added at playhead', 'film');
+        }
+        (window as any).reRender?.();
+      };
+
       const delBtn = document.createElement('button');
       delBtn.className = 'media-del-btn';
       delBtn.innerHTML = '<i data-lucide="x"></i>';
