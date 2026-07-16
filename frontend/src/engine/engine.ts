@@ -831,8 +831,10 @@ async function startPlayback(): Promise<void> {
     for (const [ms, buffer] of sorted) {
       scheduleAudioNode(ms, buffer);
     }
+    pendingAudio.clear();
   } else {
     log('play', 'playhead over gap — skipping pre-buffered audio scheduling');
+    pendingAudio.clear();
   }
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
@@ -848,6 +850,7 @@ function pausePlayback(): void {
     rafHandle = null;
   }
   stopAllAudioNodes();
+  pendingAudio.clear();
   nextAudioStartTime = 0;
   lastScheduledChunkMs = -1;
   syncWorkerState();
