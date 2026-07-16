@@ -6,7 +6,7 @@ declare global {
   interface Window {
     togglePlay: () => void;
     skipTime: (delta: number) => void;
-    onPlayheadScrub?: (timeSec: number) => void;
+    onPlayheadScrub?: (timeSec: number, force?: boolean) => void;
   }
 }
 
@@ -64,7 +64,7 @@ function handleTimelineScrub(e: MouseEvent, el: HTMLElement) {
   if (dur <= 0 || tw <= 0) return;
   S.time = Math.max(0, Math.min((x / tw) * dur, dur));
   updatePlayhead();
-  if (window.onPlayheadScrub) window.onPlayheadScrub(S.time);
+  if (window.onPlayheadScrub) window.onPlayheadScrub(S.time, true);
 }
 
 export function initPlayback() {
@@ -111,6 +111,7 @@ export function initPlayback() {
       const onUp = () => {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
+        if (window.onPlayheadScrub) window.onPlayheadScrub(S.time, true);
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);

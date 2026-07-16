@@ -155,9 +155,9 @@ window.onPlaybackPaused = (): void => {
 
 // ── Timeline Scrub: Throttled ───────────────────────────────────────────
 let lastSeekMs = -1;
-window.onPlayheadScrub = (timeSec: number): void => {
+window.onPlayheadScrub = (timeSec: number, force?: boolean): void => {
   const ms = Math.round(timeSec * 1000);
-  if (Math.abs(ms - lastSeekMs) < 50) return;
+  if (!force && Math.abs(ms - lastSeekMs) < 50) return;
   lastSeekMs = ms;
   seekTo(ms).catch(console.error);
 };

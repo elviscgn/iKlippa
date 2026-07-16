@@ -65,6 +65,20 @@ function mapSourceToTimelineMs(sourceMs: number): number | null {
   const clips = window.IKState.getAllVideoClips
     ? window.IKState.getAllVideoClips()
     : window.IKState.getVideoClips();
+
+  // 1. Prioritize mapping through the currently active clip if it matches
+  if (currentActiveClipId !== null) {
+    const activeClip = clips.find((c) => c.id === currentActiveClipId);
+    if (activeClip) {
+      const sStart = activeClip.source_start_us / 1000;
+      const sEnd = activeClip.source_end_us / 1000;
+      if (sourceMs >= sStart && sourceMs <= sEnd) {
+        return (activeClip.timeline_start_us / 1000) + (sourceMs - sStart) / activeClip.speed;
+      }
+    }
+  }
+
+  // 2. Fallback to searching all clips
   for (const clip of clips) {
     const sStart = clip.source_start_us / 1000;
     const sEnd = clip.source_end_us / 1000;
@@ -567,7 +581,7 @@ export function renderLoop(ts: number): void {
 
   // Track clip transitions and silence audio during gaps
   const activeNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000));
-  const newClipId = activeNow.length > 0 ? activeNow[0].id : null;
+  const newClipId = activeNow[0]?.id ?? null;
 
   if (newClipId !== currentActiveClipId) {
     log('play', `clip transition: ${currentActiveClipId} -> ${newClipId}`);
@@ -876,7 +890,7 @@ export async function seekTo(ms: number): Promise<void> {
   audioPlayStartMs = ms;
   
   const activeNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000));
-  currentActiveClipId = activeNow.length > 0 ? activeNow[0].id : null;
+  currentActiveClipId = activeNow[0]?.id ?? null;
 
   pendingFrames.clear();
   pendingAudio.clear();
