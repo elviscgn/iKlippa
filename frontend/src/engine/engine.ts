@@ -44,6 +44,37 @@ function logOnce(key: string, tag: string, msg: string, data?: unknown): void {
   log(tag, msg, data);
 }
 
+// ── Time Mapping Helpers ────────────────────────────────────────────────
+function mapTimelineToSourceMs(timelineMs: number): number {
+  if (typeof window.IKState === 'undefined' || !window.IKState.isReady()) return timelineMs;
+  const clips = window.IKState.getAllVideoClips
+    ? window.IKState.getAllVideoClips()
+    : window.IKState.getVideoClips();
+  for (const clip of clips) {
+    const tStart = clip.timeline_start_us / 1000;
+    const tEnd = clip.timeline_end_us / 1000;
+    if (timelineMs >= tStart && timelineMs < tEnd) {
+      return (clip.source_start_us / 1000) + (timelineMs - tStart) * clip.speed;
+    }
+  }
+  return timelineMs;
+}
+
+function mapSourceToTimelineMs(sourceMs: number): number | null {
+  if (typeof window.IKState === 'undefined' || !window.IKState.isReady()) return sourceMs;
+  const clips = window.IKState.getAllVideoClips
+    ? window.IKState.getAllVideoClips()
+    : window.IKState.getVideoClips();
+  for (const clip of clips) {
+    const sStart = clip.source_start_us / 1000;
+    const sEnd = clip.source_end_us / 1000;
+    if (sourceMs >= sStart && sourceMs <= sEnd) {
+      return (clip.timeline_start_us / 1000) + (sourceMs - sStart) / clip.speed;
+    }
+  }
+  return null;
+}
+
 // ── Module state ────────────────────────────────────────────────────────
 let worker: Worker | null = null;
 let canvas: HTMLCanvasElement | null = null;
@@ -300,7 +331,10 @@ export function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): voi
 
 function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
   if (!audioCtx) return;
-  const idealCtxTime = audioPlayStartCtxTime + (chunkMs - audioPlayStartMs) / 1000;
+  const timelineMs = mapSourceToTimelineMs(chunkMs);
+  if (timelineMs === null) return; // Drop audio outside active clip bounds
+
+  const idealCtxTime = audioPlayStartCtxTime + (timelineMs - audioPlayStartMs) / 1000;
   if (nextAudioStartTime === 0 || nextAudioStartTime < audioCtx.currentTime) {
     nextAudioStartTime = Math.max(audioCtx.currentTime, idealCtxTime);
   }
@@ -308,7 +342,7 @@ function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
     logOnce(
       `audio-stale-${Math.round(chunkMs / 1000)}`,
       'audio',
-      `dropping stale chunk at ${chunkMs}ms`,
+      `dropping stale chunk at source ${chunkMs}ms (timeline ${timelineMs.toFixed(0)}ms)`,
     );
     return;
   }
@@ -529,13 +563,22 @@ export function renderLoop(ts: number): void {
     }
   }
   lastRafTs = ts;
+
+  // Silence audio when the playhead is in a gap (no active clip)
+  const activeNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000));
+  if (activeNow.length === 0 && scheduledAudioNodes.length > 0) {
+    stopAllAudioNodes();
+    nextAudioStartTime = 0;
+  }
+
   paintFrameAtTime(playheadMs);
 
+  const sourcePlayheadMs = mapTimelineToSourceMs(playheadMs);
   let framesAhead = 0;
   for (const frameMs of pendingFrames.keys()) {
-    if (frameMs >= playheadMs) framesAhead++;
+    if (frameMs >= sourcePlayheadMs) framesAhead++;
   }
-  worker!.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead });
+  worker!.postMessage({ type: 'sync', playheadMs: sourcePlayheadMs, isPlaying, framesAhead });
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
@@ -572,7 +615,8 @@ function _getFrameCanvas(
 
 function cleanupStaleFrames(ms: number) {
   maybeCaptureThumbnail(ms);
-  const pruneBeforeMs = ms - 1500;
+  const sourceMs = mapTimelineToSourceMs(ms);
+  const pruneBeforeMs = sourceMs - 1500;
   for (const [frameMs] of pendingFrames) {
     if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
   }
@@ -736,10 +780,18 @@ async function startPlayback(): Promise<void> {
   audioPlayStartCtxTime = audioCtx!.currentTime;
   audioPlayStartMs = playheadMs;
   nextAudioStartTime = 0;
-  const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
-  log('play', `scheduling ${sorted.length} pre-buffered audio chunks`);
-  for (const [ms, buffer] of sorted) {
-    scheduleAudioNode(ms, buffer);
+  // Only pre-schedule audio when the playhead is over an active clip
+  // (pendingAudio is cleared on each seek, so this mainly covers edge cases
+  // where audio chunks arrived before startPlayback was called)
+  const hasActiveClipNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000)).length > 0;
+  if (hasActiveClipNow) {
+    const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
+    log('play', `scheduling ${sorted.length} pre-buffered audio chunks`);
+    for (const [ms, buffer] of sorted) {
+      scheduleAudioNode(ms, buffer);
+    }
+  } else {
+    log('play', 'playhead over gap — skipping pre-buffered audio scheduling');
   }
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
@@ -799,7 +851,8 @@ export async function seekTo(ms: number): Promise<void> {
   pendingAudio.clear();
   audioConfigVersion++;
   worker!.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
-  worker!.postMessage({ type: 'seek', ms });
+  const sourceTargetMs = mapTimelineToSourceMs(ms);
+  worker!.postMessage({ type: 'seek', ms: sourceTargetMs });
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
@@ -807,7 +860,8 @@ export async function seekTo(ms: number): Promise<void> {
 }
 
 function syncWorkerState(): void {
-  if (worker) worker.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead: 0 });
+  const sourcePlayheadMs = mapTimelineToSourceMs(playheadMs);
+  if (worker) worker.postMessage({ type: 'sync', playheadMs: sourcePlayheadMs, isPlaying, framesAhead: 0 });
 }
 
 export function setColorGrade(params: Partial<GradeParams>): void {
@@ -836,8 +890,9 @@ export async function exportVideo(
   logStatus('Export: collecting frames…');
   for (let i = 0; i < totalFrames; i++) {
     const ms = Math.round(i * frameMs);
-    worker!.postMessage({ type: 'seek', ms });
-    while (!pendingFrames.has(ms)) {
+    const sourceMs = mapTimelineToSourceMs(ms);
+    worker!.postMessage({ type: 'seek', ms: sourceMs });
+    while (!pendingFrames.has(sourceMs)) {
       await new Promise((r) => setTimeout(r, 10));
     }
     if (onProgress) onProgress((i / totalFrames) * 0.5);
