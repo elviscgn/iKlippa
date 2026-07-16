@@ -60,6 +60,8 @@ let isWorkerPlaying = false;
 let offscreenCanvas: OffscreenCanvas | null = null;
 let offscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
 
+let currentSeekId = 0;
+
 const MAX_DECODE_QUEUE = 8;
 
 async function handleInit() {
@@ -106,6 +108,9 @@ async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfi
 }
 
 async function handleSeek(msg: WorkerSeekCmd) {
+  if (msg.seekId !== undefined) {
+    currentSeekId = msg.seekId;
+  }
   if (clips.length === 0) {
     wwarn('worker', 'seek received but no clips loaded yet');
     return;
@@ -256,6 +261,7 @@ export function setupAudioDecoder(config: AudioDecoderConfig) {
           length,
           buffers,
           configVersion: audioConfigVersion,
+          seekId: currentSeekId,
         },
         buffers
       );
@@ -310,6 +316,7 @@ export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, hei
           ms: tsMs,
           gradeMs,
           buffer: ownedPixels.buffer,
+          seekId: currentSeekId,
         },
         [ownedPixels.buffer]
       );

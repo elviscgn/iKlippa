@@ -39,6 +39,7 @@ export interface WorkerFrameMsg {
   ms: number;
   gradeMs: number;
   buffer: ArrayBuffer;
+  seekId?: number;
 }
 
 export interface WorkerAudioChunkMsg {
@@ -49,6 +50,7 @@ export interface WorkerAudioChunkMsg {
   length: number;
   buffers: ArrayBuffer[];
   configVersion: number;
+  seekId?: number;
 }
 
 export interface WorkerTimelineSetMsg {
@@ -93,6 +95,7 @@ export interface WorkerLoadCmd {
 export interface WorkerSeekCmd {
   type: 'seek';
   ms: number;
+  seekId?: number;
 }
 
 export interface WorkerSyncCmd {
