@@ -20,7 +20,7 @@ window.S = S;
 window.mediaPool = mediaPool;
 window.aiNodes = aiNodes;
 
-export function initUI() {
+function initUI() {
   initMediaPoolTabs();
   initToolbar();
   initTimelineUI();

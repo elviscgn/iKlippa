@@ -1,5 +1,5 @@
 import { $, $$, S, us2s } from './state';
-import { reRender, hideSnapGuide, showSnapGuide, applySnap, getLaneW } from './timeline';
+import { applySnap, showSnapGuide, hideSnapGuide, getLaneW } from './timelineUtils';
 
 // ── Undo / Redo ──────────────────────────────────────────────────────────
 const MAX_UNDO = 50;
@@ -24,10 +24,10 @@ export function saveSnapshot() {
 window.saveSnapshot = saveSnapshot;
 
 function afterUndoRedo() {
-  reRender();
+  window.dispatchEvent(new CustomEvent('ikl:reRender'));
 }
 
-export function undo() {
+function undo() {
   const IKState = (window as any).IKState;
   if (undoStack.length === 0 || !IKState) return;
   redoStack.push(IKState.saveState());
@@ -37,7 +37,7 @@ export function undo() {
 }
 window.undo = undo;
 
-export function redo() {
+function redo() {
   const IKState = (window as any).IKState;
   if (redoStack.length === 0 || !IKState) return;
   undoStack.push(IKState.saveState());
@@ -49,7 +49,7 @@ window.redo = redo;
 
 export const selectedClipIds = new Set<number | string>();
 
-export function syncActiveClasses() {
+function syncActiveClasses() {
   $$('.tl-clip').forEach((c) => {
     const el = c as HTMLElement;
     const id = el.dataset.clipId;
@@ -68,8 +68,128 @@ function deactivateSplitTool() {
   if (selectBtn) selectBtn.classList.add('active');
 }
 
+function handleTrim(e: MouseEvent, el: HTMLElement, clip: any, tw: number, dur: number, isLeftTrim: boolean, isRightTrim: boolean, IKState: any) {
+  const origStartUs = clip.timeline_start_us;
+  const origEndUs = clip.timeline_end_us;
+  const origSourceStartUs = clip.source_start_us;
+  const speed = clip.speed || 1;
+  const minDurUs = 500_000;
+  const lane = el.parentElement!;
+
+  const move = (e2: MouseEvent) => {
+    const laneRect = lane.getBoundingClientRect();
+    const scrollLeft = lane.parentElement ? lane.parentElement.scrollLeft : 0;
+    const mx = e2.clientX - laneRect.left + scrollLeft;
+    const mouseSec = (mx / tw) * dur;
+    const rawUs = Math.round(mouseSec * 1_000_000);
+    const snapped = applySnap(rawUs, clip.id, tw);
+
+    if (isLeftTrim) {
+      const newStartUs = Math.round(
+        Math.max(0, Math.min(snapped !== null ? snapped : rawUs, origEndUs - minDurUs))
+      );
+      const newEndUs = origEndUs;
+      const newSourceStartUs = origSourceStartUs + Math.round((newStartUs - origStartUs) / speed);
+      const leftPx = (us2s(newStartUs) / dur) * tw;
+      const widthPx = (us2s(newEndUs - newStartUs) / dur) * tw;
+      el.style.left = leftPx + 'px';
+      el.style.width = widthPx + 'px';
+      (el as any)._trimNewStart = newStartUs;
+      (el as any)._trimNewSourceStart = Math.max(0, newSourceStartUs);
+      if (snapped !== null) showSnapGuide(newStartUs, tw);
+      else hideSnapGuide();
+    } else {
+      const newEndUs = Math.round(
+        Math.max(origStartUs + minDurUs, snapped !== null ? snapped : rawUs)
+      );
+      const widthPx = (us2s(newEndUs - origStartUs) / dur) * tw;
+      el.style.width = widthPx + 'px';
+      (el as any)._trimNewEnd = newEndUs;
+      if (snapped !== null) showSnapGuide(newEndUs, tw);
+      else hideSnapGuide();
+    }
+  };
+
+  const up = () => {
+    document.removeEventListener('mousemove', move);
+    document.removeEventListener('mouseup', up);
+    hideSnapGuide();
+    if (!document.body.contains(el)) return;
+    if (isLeftTrim && (el as any)._trimNewStart !== undefined) {
+      saveSnapshot();
+      IKState.trimClip(clip.id, (el as any)._trimNewStart, origEndUs, (el as any)._trimNewSourceStart);
+    } else if (isRightTrim && (el as any)._trimNewEnd !== undefined) {
+      saveSnapshot();
+      IKState.trimClip(clip.id, origStartUs, (el as any)._trimNewEnd, origSourceStartUs);
+    }
+    delete (el as any)._trimNewStart;
+    delete (el as any)._trimNewEnd;
+    delete (el as any)._trimNewSourceStart;
+    window.dispatchEvent(new CustomEvent('ikl:reRender', { detail: { activeClipId: clip.id } }));
+  };
+
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', up);
+  e.preventDefault();
+}
+
+function handleMove(e: MouseEvent, el: HTMLElement, clip: any, tw: number, dur: number, IKState: any) {
+  const moveIds = selectedClipIds.has(clip.id) ? Array.from(selectedClipIds) : [clip.id];
+  const initialPositions: Record<string, number> = {};
+  const moveEls: Record<string, HTMLElement> = {};
+  for (const id of moveIds) {
+    const c = IKState.findClip(id);
+    if (c) {
+      initialPositions[id as string] = c.timeline_start_us;
+      const el2 = document.querySelector(`[data-clip-id="${id}"]`) as HTMLElement;
+      if (el2) moveEls[id as string] = el2;
+    }
+  }
+  const startX = e.clientX;
+
+  const move = (e2: MouseEvent) => {
+    const dx = e2.clientX - startX;
+    const dtSec = (dx / tw) * dur;
+    for (const id of moveIds) {
+      const startUs = initialPositions[id as string]!;
+      const rawUs = Math.round((startUs / 1_000_000 + dtSec) * 1_000_000);
+      const snapped = applySnap(rawUs, clip.id, tw);
+      const newStartUs = Math.max(0, snapped !== null ? snapped : rawUs);
+      const newPx = (us2s(newStartUs) / dur) * tw;
+      const el2 = moveEls[id as string];
+      if (el2) el2.style.left = newPx + 'px';
+    }
+    if (moveIds.length === 1) {
+      const rawUs = Math.round((initialPositions[moveIds[0] as string]! / 1_000_000 + dtSec) * 1_000_000);
+      const snapped = applySnap(rawUs, clip.id, tw);
+      if (snapped !== null) showSnapGuide(snapped, tw);
+      else hideSnapGuide();
+    } else {
+      hideSnapGuide();
+    }
+  };
+  const up = () => {
+    document.removeEventListener('mousemove', move);
+    document.removeEventListener('mouseup', up);
+    hideSnapGuide();
+    if (!document.body.contains(el)) return;
+    const dx = parseFloat(el.style.left) - (us2s(initialPositions[clip.id]!) / dur) * tw;
+    const dtSec = (dx / tw) * dur;
+    saveSnapshot();
+    for (const id of moveIds) {
+      const newStartUs = Math.max(0, Math.round((initialPositions[id as string]! / 1_000_000 + dtSec) * 1_000_000));
+      IKState.moveClip(id, newStartUs);
+    }
+    window.dispatchEvent(new CustomEvent('ikl:reRender', { detail: { activeClipId: clip.id } }));
+  };
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', up);
+  e.preventDefault();
+}
+
 export function applyDragLogic(el: HTMLElement, clip: any, clipArray: any[], tw: number) {
   const IKState = (window as any).IKState;
+  // fallow-ignore-next-line complexity
   el.onmousedown = (e) => {
     if (S.tool === 'split') {
       const rect = el.parentElement!.getBoundingClientRect();
@@ -83,7 +203,7 @@ export function applyDragLogic(el: HTMLElement, clip: any, clipArray: any[], tw:
         const newId = IKState.splitClip(clip.id, splitAtUs);
         if (newId !== null) {
           window.showToast('Clip Split', 'scissors');
-          reRender(newId);
+          window.dispatchEvent(new CustomEvent('ikl:reRender', { detail: { activeClipId: newId } }));
         }
       }
       deactivateSplitTool();
@@ -106,122 +226,9 @@ export function applyDragLogic(el: HTMLElement, clip: any, clipArray: any[], tw:
       const isRightTrim = clickXInClip > clipRect.width - trimZone;
 
       if (isLeftTrim || isRightTrim) {
-        const origStartUs = clip.timeline_start_us;
-        const origEndUs = clip.timeline_end_us;
-        const origSourceStartUs = clip.source_start_us;
-        const speed = clip.speed || 1;
-        const minDurUs = 500_000;
-        const lane = el.parentElement!;
-
-        const move = (e2: MouseEvent) => {
-          const laneRect = lane.getBoundingClientRect();
-          const scrollLeft = lane.parentElement ? lane.parentElement.scrollLeft : 0;
-          const mx = e2.clientX - laneRect.left + scrollLeft;
-          const mouseSec = (mx / tw) * dur;
-
-          if (isLeftTrim) {
-            const rawUs = Math.round(mouseSec * 1_000_000);
-            const snapped = applySnap(rawUs, clip.id, tw);
-            const newStartUs = Math.round(
-              Math.max(0, Math.min(snapped !== null ? snapped : rawUs, origEndUs - minDurUs))
-            );
-            const newEndUs = origEndUs;
-            const newSourceStartUs = origSourceStartUs + Math.round((newStartUs - origStartUs) / speed);
-            const leftPx = (us2s(newStartUs) / dur) * tw;
-            const widthPx = (us2s(newEndUs - newStartUs) / dur) * tw;
-            el.style.left = leftPx + 'px';
-            el.style.width = widthPx + 'px';
-            (el as any)._trimNewStart = newStartUs;
-            (el as any)._trimNewSourceStart = Math.max(0, newSourceStartUs);
-            if (snapped !== null) showSnapGuide(newStartUs, tw);
-            else hideSnapGuide();
-          } else {
-            const rawUs = Math.round(mouseSec * 1_000_000);
-            const snapped = applySnap(rawUs, clip.id, tw);
-            const newEndUs = Math.round(
-              Math.max(origStartUs + minDurUs, snapped !== null ? snapped : rawUs)
-            );
-            const widthPx = (us2s(newEndUs - origStartUs) / dur) * tw;
-            el.style.width = widthPx + 'px';
-            (el as any)._trimNewEnd = newEndUs;
-            if (snapped !== null) showSnapGuide(newEndUs, tw);
-            else hideSnapGuide();
-          }
-        };
-
-        const up = () => {
-          document.removeEventListener('mousemove', move);
-          document.removeEventListener('mouseup', up);
-          hideSnapGuide();
-          if (!document.body.contains(el)) return;
-          if (isLeftTrim && (el as any)._trimNewStart !== undefined) {
-            saveSnapshot();
-            IKState.trimClip(clip.id, (el as any)._trimNewStart, origEndUs, (el as any)._trimNewSourceStart);
-          } else if (isRightTrim && (el as any)._trimNewEnd !== undefined) {
-            saveSnapshot();
-            IKState.trimClip(clip.id, origStartUs, (el as any)._trimNewEnd, origSourceStartUs);
-          }
-          delete (el as any)._trimNewStart;
-          delete (el as any)._trimNewEnd;
-          delete (el as any)._trimNewSourceStart;
-          reRender(clip.id);
-        };
-
-        document.addEventListener('mousemove', move);
-        document.addEventListener('mouseup', up);
-        e.preventDefault();
+        handleTrim(e, el, clip, tw, dur, isLeftTrim, isRightTrim, IKState);
       } else {
-        const moveIds = selectedClipIds.has(clip.id) ? Array.from(selectedClipIds) : [clip.id];
-        const initialPositions: Record<string, number> = {};
-        const moveEls: Record<string, HTMLElement> = {};
-        for (const id of moveIds) {
-          const c = IKState.findClip(id);
-          if (c) {
-            initialPositions[id as string] = c.timeline_start_us;
-            const el2 = document.querySelector(`[data-clip-id="${id}"]`) as HTMLElement;
-            if (el2) moveEls[id as string] = el2;
-          }
-        }
-        const startX = e.clientX;
-
-        const move = (e2: MouseEvent) => {
-          const dx = e2.clientX - startX;
-          const dtSec = (dx / tw) * dur;
-          for (const id of moveIds) {
-            const startUs = initialPositions[id as string]!;
-            const rawUs = Math.round((startUs / 1_000_000 + dtSec) * 1_000_000);
-            const snapped = applySnap(rawUs, clip.id, tw);
-            const newStartUs = Math.max(0, snapped !== null ? snapped : rawUs);
-            const newPx = (us2s(newStartUs) / dur) * tw;
-            const el2 = moveEls[id as string];
-            if (el2) el2.style.left = newPx + 'px';
-          }
-          if (moveIds.length === 1) {
-            const rawUs = Math.round((initialPositions[moveIds[0] as string]! / 1_000_000 + dtSec) * 1_000_000);
-            const snapped = applySnap(rawUs, clip.id, tw);
-            if (snapped !== null) showSnapGuide(snapped, tw);
-            else hideSnapGuide();
-          } else {
-            hideSnapGuide();
-          }
-        };
-        const up = () => {
-          document.removeEventListener('mousemove', move);
-          document.removeEventListener('mouseup', up);
-          hideSnapGuide();
-          if (!document.body.contains(el)) return;
-          const dx = parseFloat(el.style.left) - (us2s(initialPositions[clip.id]!) / dur) * tw;
-          const dtSec = (dx / tw) * dur;
-          saveSnapshot();
-          for (const id of moveIds) {
-            const newStartUs = Math.max(0, Math.round((initialPositions[id as string]! / 1_000_000 + dtSec) * 1_000_000));
-            IKState.moveClip(id, newStartUs);
-          }
-          reRender(clip.id);
-        };
-        document.addEventListener('mousemove', move);
-        document.addEventListener('mouseup', up);
-        e.preventDefault();
+        handleMove(e, el, clip, tw, dur, IKState);
       }
     }
   };

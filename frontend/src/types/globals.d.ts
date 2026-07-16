@@ -2,8 +2,8 @@
 // This file declares types for everything hung on `window` so TypeScript
 // doesn't complain when main.ts or state.ts sets/reads these properties.
 
-import type { ClipWithMeta, ClipImportedData, ThumbnailEntry } from '../types/index';
-
+import type { ClipWithMeta, ThumbnailEntry } from '../state/types';
+import type { ClipImportedData } from '../engine/types';
 /** The IKState module shape exposed on window */
 interface IKStateAPI {
   init(width: number, height: number): void;

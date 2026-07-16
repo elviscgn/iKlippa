@@ -29,7 +29,7 @@ export function showToast(msg: string, iconStr: string) {
 window.showToast = showToast; // Export to global for now until fully refactored
 
 // ── Sparkle Animation ──────────────────────────────────────────────────
-export function triggerSparkle(el: HTMLElement) {
+function triggerSparkle(el: HTMLElement) {
   const rect = el.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;

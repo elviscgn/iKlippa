@@ -10,7 +10,7 @@ export const S = {
   timelineHeight: 360,
 };
 
-export interface MediaItem {
+interface MediaItem {
   id: string;
   name: string;
   picId?: number;
