@@ -79,6 +79,7 @@ function mapSourceToTimelineMs(sourceMs: number): number | null {
 let worker: Worker | null = null;
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
+let currentActiveClipId: number | null = null;
 
 let isPlaying = false;
 let playheadMs = 0;
@@ -564,8 +565,24 @@ export function renderLoop(ts: number): void {
   }
   lastRafTs = ts;
 
-  // Silence audio when the playhead is in a gap (no active clip)
+  // Track clip transitions and silence audio during gaps
   const activeNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000));
+  const newClipId = activeNow.length > 0 ? activeNow[0].id : null;
+
+  if (newClipId !== currentActiveClipId) {
+    log('play', `clip transition: ${currentActiveClipId} -> ${newClipId}`);
+    currentActiveClipId = newClipId;
+    if (newClipId !== null) {
+      const sourceMs = mapTimelineToSourceMs(playheadMs);
+      worker!.postMessage({ type: 'seek', ms: sourceMs });
+      pendingFrames.clear();
+      pendingAudio.clear();
+      audioPlayStartMs = playheadMs;
+      if (audioCtx) audioPlayStartCtxTime = audioCtx.currentTime;
+      nextAudioStartTime = 0;
+    }
+  }
+
   if (activeNow.length === 0 && scheduledAudioNodes.length > 0) {
     stopAllAudioNodes();
     nextAudioStartTime = 0;
@@ -578,7 +595,17 @@ export function renderLoop(ts: number): void {
   for (const frameMs of pendingFrames.keys()) {
     if (frameMs >= sourcePlayheadMs) framesAhead++;
   }
-  worker!.postMessage({ type: 'sync', playheadMs: sourcePlayheadMs, isPlaying, framesAhead });
+  
+  // If in a gap, tell worker to sleep by reporting fake frames ahead
+  const inGap = activeNow.length === 0;
+  if (inGap) framesAhead = 100;
+  
+  worker!.postMessage({ 
+    type: 'sync', 
+    playheadMs: sourcePlayheadMs, 
+    isPlaying: isPlaying && !inGap, 
+    framesAhead 
+  });
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
@@ -847,6 +874,10 @@ export async function seekTo(ms: number): Promise<void> {
 
   playheadMs = ms;
   audioPlayStartMs = ms;
+  
+  const activeNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000));
+  currentActiveClipId = activeNow.length > 0 ? activeNow[0].id : null;
+
   pendingFrames.clear();
   pendingAudio.clear();
   audioConfigVersion++;
@@ -860,8 +891,17 @@ export async function seekTo(ms: number): Promise<void> {
 }
 
 function syncWorkerState(): void {
+  const activeNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000));
+  const inGap = activeNow.length === 0;
   const sourcePlayheadMs = mapTimelineToSourceMs(playheadMs);
-  if (worker) worker.postMessage({ type: 'sync', playheadMs: sourcePlayheadMs, isPlaying, framesAhead: 0 });
+  if (worker) {
+    worker.postMessage({ 
+      type: 'sync', 
+      playheadMs: sourcePlayheadMs, 
+      isPlaying: isPlaying && !inGap, 
+      framesAhead: inGap ? 100 : 0 
+    });
+  }
 }
 
 export function setColorGrade(params: Partial<GradeParams>): void {
