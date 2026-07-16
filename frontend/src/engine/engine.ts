@@ -263,7 +263,8 @@ function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'aud
     audioBuffer.copyToChannel(new Float32Array(msg.buffers[c]!), c);
   }
   pendingAudio.set(msg.ms, audioBuffer);
-  if (isPlaying) {
+  // Only schedule for immediate playback if a clip is active at the current timeline position
+  if (isPlaying && getActiveClipsAtTime(Math.round(playheadMs * 1_000)).length > 0) {
     scheduleAudioNode(msg.ms, audioBuffer);
   }
 }
@@ -529,6 +530,14 @@ export function renderLoop(ts: number): void {
     }
   }
   lastRafTs = ts;
+
+  // Mute audio when the playhead is over a gap (no active clip at this position)
+  const activeNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000));
+  if (activeNow.length === 0 && scheduledAudioNodes.length > 0) {
+    stopAllAudioNodes();
+    nextAudioStartTime = 0;
+  }
+
   paintFrameAtTime(playheadMs);
 
   let framesAhead = 0;
@@ -736,10 +745,16 @@ async function startPlayback(): Promise<void> {
   audioPlayStartCtxTime = audioCtx!.currentTime;
   audioPlayStartMs = playheadMs;
   nextAudioStartTime = 0;
-  const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
-  log('play', `scheduling ${sorted.length} pre-buffered audio chunks`);
-  for (const [ms, buffer] of sorted) {
-    scheduleAudioNode(ms, buffer);
+  // Only schedule pre-buffered audio if the playhead is currently over an active clip
+  const hasActiveClipNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000)).length > 0;
+  if (hasActiveClipNow) {
+    const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
+    log('play', `scheduling ${sorted.length} pre-buffered audio chunks`);
+    for (const [ms, buffer] of sorted) {
+      scheduleAudioNode(ms, buffer);
+    }
+  } else {
+    log('play', 'playhead over gap — skipping pre-buffered audio scheduling');
   }
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
