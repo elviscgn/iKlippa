@@ -17,6 +17,27 @@ import type { ClipWithMeta } from '../state/types';
 
 const DECODE_LOOKAHEAD = 12;
 
+// ── Diagnostic logger ───────────────────────────────────────────────────
+const _loggedOnce = new Set<string>();
+
+function log(tag: string, msg: string, data?: unknown): void {
+  const line = `[iKlippa:${tag}] ${msg}`;
+  if (data !== undefined) console.log(line, data);
+  else console.log(line);
+}
+
+function warn(tag: string, msg: string, data?: unknown): void {
+  const line = `[iKlippa:${tag}] ⚠ ${msg}`;
+  if (data !== undefined) console.warn(line, data);
+  else console.warn(line);
+}
+
+function err(tag: string, msg: string, data?: unknown): void {
+  const line = `[iKlippa:${tag}] ✖ ${msg}`;
+  if (data !== undefined) console.error(line, data);
+  else console.error(line);
+}
+
 function logOnce(key: string, tag: string, msg: string, data?: unknown): void {
   if (_loggedOnce.has(key)) return;
   _loggedOnce.add(key);
