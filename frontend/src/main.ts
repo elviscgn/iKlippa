@@ -6,6 +6,7 @@
 
 // Import state first (attaches to window.IKState, sets up videoClips/audioClips)
 import './state/state';
+import './ui/index';
 
 import {
   initEngine,
