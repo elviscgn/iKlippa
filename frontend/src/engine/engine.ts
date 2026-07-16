@@ -167,7 +167,7 @@ export function setPendingThumbCapture(cb: (frameMs: number) => void): void {
 export async function initEngine(canvasEl: HTMLCanvasElement): Promise<boolean> {
   canvas = canvasEl;
   ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  worker = new Worker('/worker.js', { type: 'module' });
+  worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = handleWorkerMessage;
   worker.onerror = (e) => err('engine', 'Worker threw an uncaught error', e.message);
   worker.postMessage({ type: 'init' });
