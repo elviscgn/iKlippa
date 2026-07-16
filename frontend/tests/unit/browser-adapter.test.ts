@@ -44,14 +44,23 @@ describe('browserBlobFactory', () => {
 });
 
 describe('browserUrlFactory', () => {
+  beforeEach(() => {
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn().mockReturnValue('blob:fake'),
+      revokeObjectURL: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('creates and revokes object URLs', () => {
     const url = browserUrlFactory.createObjectURL(new Blob());
-    expect(url).toBeDefined();
+    expect(url).toBe('blob:fake');
 
-    const spy = vi.spyOn(URL, 'revokeObjectURL');
     browserUrlFactory.revokeObjectURL(url);
-    expect(spy).toHaveBeenCalledWith(url);
-    spy.mockRestore();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(url);
   });
 });
 

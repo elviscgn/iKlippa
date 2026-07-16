@@ -683,6 +683,8 @@ export const __TEST_HOOKS__ = {
   set lastRafTs(val: number | null) { lastRafTs = val; },
   get rafHandle() { return rafHandle; },
   set rafHandle(val: number | null) { rafHandle = val; },
+  get seekTargetMs() { return seekTargetMs; },
+  set seekTargetMs(val: number) { seekTargetMs = val; },
   setTimeline,
   getProjectJson,
 };
