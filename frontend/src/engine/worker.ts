@@ -41,7 +41,6 @@ let audioConfig: AudioDecoderConfig | null = null;
 let audioSamples: MP4Sample[] = [];
 
 let isSeeking = false;
-let pendingSeekMs: number | null = null;
 let isDecodingNext = false;
 
 let lastDecodedSampleIdx = -1;
@@ -61,6 +60,7 @@ let offscreenCanvas: OffscreenCanvas | null = null;
 let offscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
 
 let currentSeekId = 0;
+let latestSeekId = 0;
 
 const MAX_DECODE_QUEUE = 8;
 
@@ -176,8 +176,17 @@ function handleGetProjectJson() {
 let messageQueue: Promise<void> = Promise.resolve();
 
 self.onmessage = (e: MessageEvent<any>) => {
+  const msg = e.data;
+  if (msg.type === 'seek' && msg.seekId !== undefined) {
+    latestSeekId = msg.seekId;
+  }
+
   messageQueue = messageQueue.then(async () => {
-    const msg = e.data;
+    if (msg.type === 'seek' && msg.seekId !== undefined && msg.seekId !== latestSeekId) {
+      wwarn('worker', `skipping obsolete seek ${msg.seekId} (latest is ${latestSeekId})`);
+      return;
+    }
+
     if (msg.type === 'init') await handleInit();
     else if (msg.type === 'load') await handleLoad(msg);
     else if (msg.type === 'seek') await handleSeek(msg);
@@ -337,11 +346,8 @@ export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, hei
 // fallow-ignore-next-line complexity
 export async function seekAndDecodeFrame(targetMs: number) {
   if (isSeeking) {
-    wlog('seek', `seek to ${targetMs}ms queued (already seeking)`);
-    pendingSeekMs = targetMs;
     return;
   }
-
   isSeeking = true;
   decodeSessionId++;
   decoderSeeded = false;
@@ -374,7 +380,10 @@ export async function seekAndDecodeFrame(targetMs: number) {
   decoder!.configure(clips[0]!.codecConfig);
 
   for (let i = vKeyIdx; i < samples.length; i++) {
-    if (pendingSeekMs !== null) break;
+    if (latestSeekId !== currentSeekId) {
+      wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
+      break;
+    }
 
     const s = samples[i]!;
     const sMs = Math.round((s.cts * 1000) / s.timescale);
@@ -413,12 +422,6 @@ export async function seekAndDecodeFrame(targetMs: number) {
 
   decoderSeeded = true;
   isSeeking = false;
-
-  if (pendingSeekMs !== null) {
-    const nextMs = pendingSeekMs;
-    pendingSeekMs = null;
-    seekAndDecodeFrame(nextMs);
-  }
 }
 
 export async function primeAudioDecode() {
