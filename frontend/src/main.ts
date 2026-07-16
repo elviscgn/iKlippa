@@ -270,10 +270,25 @@ fileInput.addEventListener('change', async () => {
 
 // ── Engine Initialization ───────────────────────────────────────────────
 initEngine(canvasEl)
-  .then(() => {
+  .then(async () => {
     console.log('[iKlippa] Engine ready. Drop a video file to begin.');
     statusBadge.innerHTML = '<i data-lucide="cloud-lightning"></i> Engine ready';
     window.lucide.createIcons({ nodes: [statusBadge] });
+
+    // Dev auto-load helper
+    if (import.meta.env.DEV) {
+      try {
+        const res = await fetch('/test.mp4');
+        if (res.ok) {
+          const blob = await res.blob();
+          const file = new File([blob], 'test.mp4', { type: 'video/mp4' });
+          console.log('[Dev Auto-Load] test.mp4 found, importing...');
+          await importFile(file);
+        }
+      } catch (err) {
+        console.warn('[Dev Auto-Load] No test.mp4 auto-load:', err);
+      }
+    }
   })
   .catch((error: Error) => {
     console.error('[iKlippa] WASM load failed:', error);
