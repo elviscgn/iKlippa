@@ -128,6 +128,7 @@ const MAX_TIMELINE_THUMBNAILS = 60;
 // ── Seek target tracking ────────────────────────────────────────────────
 let seekTargetMs = -1;
 let seekPaintTimeout: ReturnType<typeof setTimeout> | null = null;
+let seekGeneration = 0;
 
 // ── Pending thumbnail capture callback ──────────────────────────────────
 let _pendingThumbCapture: ((frameMs: number) => void) | null = null;
@@ -264,6 +265,10 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
 }
 
 function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }>): void {
+  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+    log('paint', `dropping stale frame from seek ${msg.seekId} (current: ${seekGeneration})`);
+    return;
+  }
   perf.recordFrameArrival(msg.ms, msg.gradeMs);
   const arr = new Uint8ClampedArray(msg.buffer);
   pendingFrames.set(
@@ -295,6 +300,10 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
 }
 
 function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'audio_chunk' }>): void {
+  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+    log('audio', `dropping stale audio chunk from seek ${msg.seekId} (current: ${seekGeneration})`);
+    return;
+  }
   if (!audioCtx) {
     logOnce('audio-ctx-missing', 'audio', 'audio_chunk received but AudioContext not initialised yet');
     return;
@@ -896,7 +905,8 @@ export async function seekTo(ms: number): Promise<void> {
   audioConfigVersion++;
   worker!.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
   const sourceTargetMs = mapTimelineToSourceMs(ms);
-  worker!.postMessage({ type: 'seek', ms: sourceTargetMs });
+  seekGeneration++;
+  worker!.postMessage({ type: 'seek', ms: sourceTargetMs, seekId: seekGeneration });
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
