@@ -3,7 +3,7 @@
 // doesn't complain when main.ts or state.ts sets/reads these properties.
 
 import type { ClipWithMeta, ThumbnailEntry } from '../state/types';
-import type { ClipImportedData } from '../engine/types';
+import type { ClipImportedData, EngineError } from '../engine/types';
 /** The IKState module shape exposed on window */
 interface IKStateAPI {
   init(width: number, height: number): void;
@@ -106,6 +106,7 @@ declare global {
 
     // Engine callbacks
     onEngineStatus?: (msg: string) => void;
+    onEngineError?: (e: EngineError) => void;
     onPlayheadUpdate?: (ms: number) => void;
     onThumbnailsUpdated?: (thumbnails: ThumbnailEntry[]) => void;
     onClipImported?: (data: ClipImportedData) => void;
