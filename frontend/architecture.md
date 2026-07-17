@@ -33,6 +33,8 @@ During development, several rendering bugs occurred due to "lazy" state manageme
     Because the worker must sequentially decode from a keyframe up to the seek target, it rapidly emits intermediate frames. The main thread implements a strict **target lock** (`msg.ms >= seekTargetMs - 33`) so it actively drops intermediate pre-roll frames when paused, preventing the canvas from flickering or playing in fast-forward.
 3.  **Throttling & Stale Frames**: 
     The engine aggressively garbage collects old frames via `cleanupStaleFrames()` to prevent out-of-memory crashes when dealing with massive 4K raw frame buffers in the heap.
+4.  **Audio Decode Ahead-Throttle & Resume Reseed**: 
+    The worker never decodes audio further than `AUDIO_LOOKAHEAD_MS` (1s) past the playhead. Without this cap the audio front ran arbitrarily far ahead (decoding the whole file during playback), which exploded the main thread's scheduled-node list and meant a pause discarded audio the worker would never re-send. Additionally, `startPlayback` posts a `resync_audio` command so the worker rewinds its audio decode front to the playhead and re-primes; leftover pre-pause chunks in `pendingAudio` are dropped (never scheduled) so every chunk is scheduled exactly once. Finished audio nodes are removed from `scheduledAudioNodes` via `onended` to keep the list bounded.
 
 ## 4. Master Clock Strategy
 Most standard video players use the audio track as the master clock to prevent drift. However, in an NLE (Non-Linear Editor), the playhead frequently traverses empty gaps where no audio exists, or overlaps multiple audio tracks. 
