@@ -123,4 +123,166 @@ describe('Worker Message Integration (Tier 2 - adapter ports)', () => {
     const messageTypes = postMessageMock.mock.calls.map((c: any[]) => c[0]?.type);
     expect(messageTypes).not.toContain('frame');
   });
+
+  it('handleSetGrade: calls postMessage with forceRenderMs after load', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        type: 'load',
+        file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(100)) }) },
+        codecConfig: { codec: 'avc' },
+        width: 1920,
+        height: 1080,
+        samples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        durationMs: 1000,
+      },
+    });
+    postMessageMock.mockClear();
+
+    await workerOnMessage({
+      data: { type: 'set_grade', params: { exposure: 0.5 }, forceRenderMs: 100 },
+    });
+
+    const decodeCalls = postMessageMock.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'decode_submit'
+    );
+    expect(decodeCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('handleSetGrade: does not crash without forceRenderMs', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        type: 'load',
+        file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(100)) }) },
+        codecConfig: { codec: 'avc' },
+        width: 1920,
+        height: 1080,
+        samples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        durationMs: 1000,
+      },
+    });
+    postMessageMock.mockClear();
+
+    await workerOnMessage({
+      data: { type: 'set_grade', params: { exposure: 0.5 } },
+    });
+
+    const decodeCalls = postMessageMock.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'decode_submit'
+    );
+    expect(decodeCalls.length).toBe(0);
+  });
+
+  it('handleSetTimeline: responds with ok:true for valid JSON', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        type: 'load',
+        file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(100)) }) },
+        codecConfig: { codec: 'avc' },
+        width: 1920,
+        height: 1080,
+        samples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        durationMs: 1000,
+      },
+    });
+    postMessageMock.mockClear();
+
+    await workerOnMessage({
+      data: { type: 'set_timeline', json: '{"tracks":[]}' },
+    });
+
+    const timelineSetCalls = postMessageMock.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'timeline_set'
+    );
+    expect(timelineSetCalls.length).toBe(1);
+    expect(timelineSetCalls[0][0]).toEqual({ type: 'timeline_set', ok: true });
+  });
+
+  it('handleSetTimeline: responds with ok:false on error', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        type: 'load',
+        file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(100)) }) },
+        codecConfig: { codec: 'avc' },
+        width: 1920,
+        height: 1080,
+        samples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        durationMs: 1000,
+      },
+    });
+
+    const engine = await import('../../src/engine/pkg/iklippa_engine');
+    const instance = (engine.IklippaEngine as any).mock.results.at(-1).value;
+    instance.set_timeline.mockImplementationOnce(() => { throw new Error('bad json'); });
+    postMessageMock.mockClear();
+
+    await workerOnMessage({
+      data: { type: 'set_timeline', json: 'invalid' },
+    });
+
+    const timelineSetCalls = postMessageMock.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'timeline_set'
+    );
+    expect(timelineSetCalls.length).toBe(1);
+    expect(timelineSetCalls[0][0].ok).toBe(false);
+    expect(timelineSetCalls[0][0].error).toBeDefined();
+  });
+
+  it('handleGetProjectJson: responds with project_json after load', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        type: 'load',
+        file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(100)) }) },
+        codecConfig: { codec: 'avc' },
+        width: 1920,
+        height: 1080,
+        samples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        durationMs: 1000,
+      },
+    });
+    postMessageMock.mockClear();
+
+    await workerOnMessage({ data: { type: 'get_project_json' } });
+
+    const projectJsonCalls = postMessageMock.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'project_json'
+    );
+    expect(projectJsonCalls.length).toBe(1);
+    expect(projectJsonCalls[0][0].json).toBe('{}');
+  });
+
+  it('handleSetAudioVersion: sets version without crashing', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    postMessageMock.mockClear();
+
+    await workerOnMessage({ data: { type: 'set_audio_version', version: 5 } });
+
+    expect(true).toBe(true);
+  });
+
+  it('handleSync: processes sync message without crashing', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        type: 'load',
+        file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(100)) }) },
+        codecConfig: { codec: 'avc' },
+        width: 1920,
+        height: 1080,
+        samples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        durationMs: 1000,
+      },
+    });
+    postMessageMock.mockClear();
+
+    await workerOnMessage({
+      data: { type: 'sync', playheadMs: 500, isPlaying: true, framesAhead: 5 },
+    });
+
+    expect(true).toBe(true);
+  });
 });
