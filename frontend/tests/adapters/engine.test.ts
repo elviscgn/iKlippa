@@ -845,6 +845,7 @@ describe('renderLoop (Tier 2)', () => {
     __TEST_HOOKS__.playheadMs = 0;
     __TEST_HOOKS__.lastRafTs = null;
     __TEST_HOOKS__.rafHandle = null;
+    __TEST_HOOKS__.lastSyncSig = '';
   });
 
   afterEach(() => {

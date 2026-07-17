@@ -14,6 +14,8 @@ The editor separates the heavy lifting of video decoding from the UI rendering t
     *   Maintains a `pendingFrames` and `pendingAudio` cache.
     *   Runs the primary `requestAnimationFrame` loop (`renderLoop`) which composites the frames onto an HTML5 `<canvas>` using the timeline's Z-index and opacity metadata.
 
+**Worker Message Scheduler**: the worker processes messages on a strictly serial drain loop (preserves init → load ordering), but `sync` messages **coalesce latest-wins** — a sync only carries "where is the playhead now", so a stale one is worthless. The main thread throttles sync sends to material changes (playhead moved ≥100ms, play state flipped, or the buffer crossed the pump threshold). This is load-bearing: each sync handler awaits file reads, and an unthrottled 60/s sync firehose put the queue seconds into debt during playback — decoded audio/frames arrived so late they were dropped as stale (the "audio dies after a few seconds" bug). Each queued message runs in its own try/catch so one failure can never corrupt or block the next.
+
 ## 2. Time Mapping (Timeline vs. Source)
 Because an editor allows users to cut, trim, and move clips, the time on the timeline does not 1-to-1 match the time in the source video file.
 
@@ -33,6 +35,8 @@ During development, several rendering bugs occurred due to "lazy" state manageme
     Because the worker must sequentially decode from a keyframe up to the seek target, it rapidly emits intermediate frames. The main thread implements a strict **target lock** (`msg.ms >= seekTargetMs - 33`) so it actively drops intermediate pre-roll frames when paused, preventing the canvas from flickering or playing in fast-forward.
 3.  **Throttling & Stale Frames**: 
     The engine aggressively garbage collects old frames via `cleanupStaleFrames()` to prevent out-of-memory crashes when dealing with massive 4K raw frame buffers in the heap.
+4.  **Audio Decode Ahead-Throttle & Resume Reseed**: 
+    The worker never decodes audio further than `AUDIO_LOOKAHEAD_MS` (1s) past the playhead. Without this cap the audio front ran arbitrarily far ahead (decoding the whole file during playback), which exploded the main thread's scheduled-node list and meant a pause discarded audio the worker would never re-send. Additionally, `startPlayback` posts a `resync_audio` command so the worker rewinds its audio decode front to the playhead and re-primes; leftover pre-pause chunks in `pendingAudio` are dropped (never scheduled) so every chunk is scheduled exactly once. Finished audio nodes are removed from `scheduledAudioNodes` via `onended` to keep the list bounded.
 
 ## 4. Master Clock Strategy
 Most standard video players use the audio track as the master clock to prevent drift. However, in an NLE (Non-Linear Editor), the playhead frequently traverses empty gaps where no audio exists, or overlaps multiple audio tracks. 
