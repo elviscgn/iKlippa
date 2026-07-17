@@ -26,6 +26,7 @@ This document captures the audit findings, the four-part architecture, and the r
 - **Open (step 4):** `sync` messages (60/s, each awaiting file I/O) are never coalesced — a large share of the scrub-freeze queue debt that the `seekId` fix didn't remove.
 - **Open (step 2):** no heartbeat/watchdog — a truly wedged worker is indistinguishable from a busy one.
 - ✅→fixed (pause→play silence): the audio decoder ran unthrottled ahead of the playhead; pause discarded all scheduled/cached audio and resume never rewound the worker's decode front, so audio at the playhead was never re-sent. Fixed via `AUDIO_LOOKAHEAD_MS` throttle + `resync_audio` on playback start + `onended` node cleanup. **Lesson:** this bug threw *no exception*, so the step-1 funnel could not see it — logic bugs need the step-2 watchdogs (e.g. a scheduled-audio-vs-playhead mismatch detector) to become visible automatically.
+- ✅→fixed (audio dies a few seconds into playback): the 60/s `sync` firehose buried the worker's serial queue — each sync handler awaited up to 16 serial file reads, so the queue went seconds into debt and decoded audio/frames arrived late enough to be dropped as stale. Previously masked by unbounded audio-ahead decoding; exposed when the lookahead cap landed. Fixed via sync coalescing (latest-wins) in the worker scheduler, main-thread sync throttling (≥100ms playhead delta / state flip / buffer threshold), and `MAX_READS_PER_PUMP` caps per pump. This partially implements Part 4 below.
 
 ### Root pattern
 All of the above are three failures in costume:
@@ -117,8 +118,9 @@ One serialized chain for everything is wrong: message types need different polic
 | Step | Scope | Status |
 |---|---|---|
 | 1 | Error protocol + funnels + toast bridge | ✅ **Done** (types.ts, errors.ts, worker.ts, engine.ts, main.ts + 19 tests) |
+| 1.5 | Pause→play audio fix + sync coalescing/throttling + read caps | ✅ **Done** (pulled forward from step 3 after live diagnosis) |
 | 2 | Watchdogs, heartbeat, recovery snapshot/respawn | ⬜ Not started |
-| 3 | Scheduler lanes + `callWorker` + sync coalescing | ⬜ Not started |
+| 3 | Scheduler lanes + `callWorker` + remaining queue policies | 🔶 Partial (sync coalescing done; seek lanes, req/response IDs, export busy-wait remain) |
 | 4 | Worker state machine (absorb guards, entry/exit cleanup) | ⬜ Not started |
 | 5 | Decoder hardening + chaos/fault-injection tests | ⬜ Not started |
 
