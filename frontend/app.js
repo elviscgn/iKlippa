@@ -11,6 +11,7 @@ import {
     getThumbnails,
     getCurrentFileName,
     captureThumbnail,
+    captureThumbnailFromBuffer,
     setTimeline,
     getProjectJson,
 } from "./engine.js";
@@ -70,30 +71,30 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
 
-    // Capture thumbnail — try to get a representative frame, not black
-    const midMs = (durationSec / 2) * 1000;
-    window.S.time = midMs / 1000;
-    window.updatePlayhead();
+    // Capture thumbnail — grab decoded frame directly from the decode buffer
+    // (no clips on timeline yet, so canvas-based capture would show black)
+    const midMs = Math.round((durationSec / 2) * 1000);
     await seekTo(midMs);
 
     let thumbAttempts = 0;
     const tryCaptureThumb = () => {
         if (thumbAttempts++ > 20) {
-            // Fallback: seek to start if middle never rendered
             window.S.time = 0;
             window.updatePlayhead();
-            seekTo(0);
             return;
         }
-        const thumb = captureThumbnail();
+        const thumb = captureThumbnailFromBuffer(midMs);
         if (thumb && thumb.length > 500) {
             const entry = window.mediaPool.footage.find(f => f.id === sourceId);
             if (entry) { entry.thumbDataUrl = thumb; window.renderMedia("footage"); }
+            // Reset playhead to start — don't seekTo(0) as it clears decoded frames
+            window.S.time = 0;
+            window.updatePlayhead();
         } else {
-            setTimeout(tryCaptureThumb, 150);
+            setTimeout(tryCaptureThumb, 100);
         }
     };
-    setTimeout(tryCaptureThumb, 150);
+    setTimeout(tryCaptureThumb, 100);
 };
 
 // ── Trim applied: update duration ──────────────────────────────────

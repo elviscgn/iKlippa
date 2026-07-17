@@ -136,6 +136,25 @@ export function captureThumbnail() {
   } catch (e) { return null; }
 }
 
+/** Grab a decoded frame directly from the decode buffer for thumbnailing (no timeline needed). */
+export function captureThumbnailFromBuffer(ms) {
+  if (!canvas || !ctx || pendingFrames.size === 0) return null;
+  let bestMs = -1;
+  for (const [frameMs] of pendingFrames) {
+    if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
+  }
+  if (bestMs < 0) {
+    for (const [frameMs] of pendingFrames) { if (bestMs < 0 || frameMs < bestMs) bestMs = frameMs; }
+  }
+  if (bestMs < 0) return null;
+  const imageData = pendingFrames.get(bestMs);
+  if (!imageData) return null;
+  ctx.putImageData(imageData, 0, 0);
+  try {
+    return canvas.toDataURL('image/jpeg', 0.5);
+  } catch (e) { return null; }
+}
+
 export function getThumbnails() { return timelineThumbnails; }
 export function getCurrentFileName() { return currentFileName; }
 
