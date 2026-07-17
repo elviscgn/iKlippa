@@ -461,6 +461,77 @@ describe('Worker Message Integration (Tier 2 - adapter ports)', () => {
     expect(errCalls[0][0].error.code).toBe('DECODER_AUDIO_FATAL');
   });
 
+  // ── Pause→play audio recovery ───────────────────────────────────────
+
+  function stubAudioDecoderWithSpy() {
+    const decodeSpy = vi.fn();
+    vi.stubGlobal('AudioDecoder', class {
+      constructor(_init: any) {}
+      configure() {}
+      decode(...args: any[]) { decodeSpy(...args); }
+      flush() { return Promise.resolve(); }
+      close() {}
+      reset() {}
+      state = 'configured';
+      get decodeQueueSize() { return 0; }
+    });
+    return decodeSpy;
+  }
+
+  const audioCfg = { codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2 };
+
+  it('resync_audio rewinds the audio decode front and re-primes', async () => {
+    const decodeSpy = stubAudioDecoderWithSpy();
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        ...loadMsg,
+        audioConfig: audioCfg,
+        audioSamples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        audioConfigVersion: 1,
+      },
+    });
+    decodeSpy.mockClear();
+
+    await workerOnMessage({ data: { type: 'resync_audio', ms: 0 } });
+
+    expect(decodeSpy).toHaveBeenCalled(); // re-primed from the resync target
+  });
+
+  it('never decodes audio further than 1s past the playhead', async () => {
+    const decodeSpy = stubAudioDecoderWithSpy();
+    vi.stubGlobal('VideoDecoder', class {
+      constructor(_init: any) {}
+      configure() {}
+      decode() {}
+      flush() { return Promise.resolve(); }
+      close() {}
+      reset() {}
+      state = 'configured';
+      get decodeQueueSize() { return 0; }
+    });
+
+    const audioSamples = [0, 1000, 2000, 3000, 4000, 5000].map((ms) => ({
+      offset: 0, size: 100, timescale: 1000, duration: 1000, cts: ms, dts: ms, is_sync: true,
+    }));
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: { ...loadMsg, audioConfig: audioCfg, audioSamples, audioConfigVersion: 1 },
+    });
+    // load primes 600ms from 0 → only the 0ms sample
+    expect(decodeSpy.mock.calls.length).toBe(1);
+    decodeSpy.mockClear();
+
+    // playhead 0 → only the 1000ms sample is within lookahead
+    await workerOnMessage({ data: { type: 'sync', playheadMs: 0, isPlaying: true, framesAhead: 0 } });
+    expect(decodeSpy.mock.calls.length).toBe(1);
+
+    // playhead 3000 → 2000, 3000, 4000ms samples decode; 5000ms stays gated
+    // (spy is cumulative: 1 from the first sync + 3 here)
+    await workerOnMessage({ data: { type: 'sync', playheadMs: 3000, isPlaying: true, framesAhead: 0 } });
+    expect(decodeSpy.mock.calls.length).toBe(4);
+  });
+
   it('posts WASM_PANIC when process_frame throws inside the decoder callback', async () => {
     const captured = stubVideoDecoderCapturing();
     await workerOnMessage({ data: { type: 'init' } });

@@ -10,6 +10,7 @@ import type {
   WorkerSetTimelineCmd,
   WorkerSetAudioVersionCmd,
   WorkerSeekCmd,
+  WorkerResyncAudioCmd,
 } from './types';
 
 // ── Worker-side diagnostic logger ─────────────────────────────────────────────
@@ -82,6 +83,7 @@ function codeForFailedMessage(type: string): EngineErrorCode {
   if (type === 'init') return 'WASM_INIT_FAILED';
   if (type === 'load') return 'LOAD_FAILED';
   if (type === 'seek' || type === 'sync') return 'DECODER_VIDEO_FATAL';
+  if (type === 'resync_audio') return 'DECODER_AUDIO_FATAL';
   return 'PROTOCOL_ERROR';
 }
 
@@ -120,6 +122,11 @@ let currentSeekId = 0;
 let latestSeekId = 0;
 
 const MAX_DECODE_QUEUE = 8;
+// Never decode audio further than this past the playhead. Without a cap the
+// audio front runs arbitrarily far ahead (decoding the whole file during
+// playback), which both explodes the main thread's scheduled-node list and
+// means a pause discards audio the worker will never re-send.
+const AUDIO_LOOKAHEAD_MS = 1000;
 
 async function handleInit() {
   const wasmExports = await init();
@@ -174,6 +181,28 @@ async function handleSeek(msg: WorkerSeekCmd) {
   }
   wlog('worker', `seek → ${msg.ms}ms`);
   await seekAndDecodeFrame(msg.ms);
+  await primeAudioDecode();
+}
+
+async function handleResyncAudio(msg: WorkerResyncAudioCmd) {
+  if (!audioDecoder || audioDecoder.state === 'closed' || !audioConfig) return;
+  if (!audioSamples.length || !clips.length) return;
+
+  // The main thread dropped all scheduled/cached audio on pause. Rewind the
+  // decode front to the playhead so those chunks are re-sent exactly once.
+  wlog('audio', `resync_audio → rewinding decode front to ${msg.ms}ms`);
+  audioDecoder.reset();
+  audioDecoder.configure(audioConfig);
+
+  let targetIdx = audioSamples.length;
+  for (let i = 0; i < audioSamples.length; i++) {
+    const sMs = Math.round((audioSamples[i]!.cts * 1000) / audioSamples[i]!.timescale);
+    if (sMs >= msg.ms) {
+      targetIdx = i;
+      break;
+    }
+  }
+  lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
   await primeAudioDecode();
 }
 
@@ -247,6 +276,7 @@ self.onmessage = (e: MessageEvent<any>) => {
     if (msg.type === 'init') await handleInit();
     else if (msg.type === 'load') await handleLoad(msg);
     else if (msg.type === 'seek') await handleSeek(msg);
+    else if (msg.type === 'resync_audio') await handleResyncAudio(msg);
     else if (msg.type === 'sync') await handleSync(msg);
     else if (msg.type === 'set_audio_version') handleSetAudioVersion(msg);
     else if (msg.type === 'set_grade') await handleSetGrade(msg);
@@ -539,6 +569,8 @@ export async function decodeNextSamples() {
       const startIdx = lastDecodedAudioIdx + 1;
       if (startIdx >= audioSamples.length) break;
       const s = audioSamples[startIdx]!;
+      const sMs = Math.round((s.cts * 1000) / s.timescale);
+      if (sMs > currentPlayheadMs + AUDIO_LOOKAHEAD_MS) break; // stay near the playhead
       const data = await readSampleData(file, s);
       if (session !== decodeSessionId) {
         isDecodingNext = false;
