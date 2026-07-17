@@ -656,7 +656,17 @@ export const __TEST_HOOKS__ = {
   get exportFrames() { return exportFrames; },
   set exportFrames(val: Array<{ ms: number; imageData: ImageData }>) { exportFrames = val; },
   get videoDurationMs() { return videoDurationMs; },
-  set videoDurationMs(val: number) { videoDurationMs = val; }
+  set videoDurationMs(val: number) { videoDurationMs = val; },
+  get audioCtx() { return audioCtx; },
+  set audioCtx(val: AudioContextPort | null) { audioCtx = val; },
+  get isPlaying() { return isPlaying; },
+  set isPlaying(val: boolean) { isPlaying = val; },
+  get audioConfigVersion() { return audioConfigVersion; },
+  set audioConfigVersion(val: number) { audioConfigVersion = val; },
+  get audioPlayStartMs() { return audioPlayStartMs; },
+  set audioPlayStartMs(val: number) { audioPlayStartMs = val; },
+  setTimeline,
+  getProjectJson,
 };
 
 function paintFrameAtTime(ms: number): void {

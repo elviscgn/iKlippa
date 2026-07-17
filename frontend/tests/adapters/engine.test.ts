@@ -159,6 +159,7 @@ import {
   setPendingThumbCapture,
   handleWorkerMessage,
   togglePlayback,
+  importFile,
 } from '../../src/engine/engine';
 
 describe('seekTo (Tier 2 - adapter ports)', () => {
@@ -410,5 +411,262 @@ describe('engine frame/audio message handling (Tier 2)', () => {
       data: { type: 'decode_submit', ms: 100 },
     } as MessageEvent);
     // Just verify it doesn't throw
+  });
+});
+
+describe('handleWorkerFrame seek target (Tier 2)', () => {
+  let mockWorker: any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('ImageData', class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    });
+
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+
+    __TEST_HOOKS__.worker = mockWorker;
+    __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
+    __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn() } as any;
+    __TEST_HOOKS__.videoDurationMs = 10000;
+    __TEST_HOOKS__.isPlaying = false;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('paints when frame ms reaches seek target', () => {
+    seekTo(500);
+
+    const buf = new ArrayBuffer(100);
+    handleWorkerMessage({
+      data: { type: 'frame', ms: 500, gradeMs: 2.5, buffer: buf },
+    } as MessageEvent);
+
+    const ctx = __TEST_HOOKS__.ctx as any;
+    expect(ctx.fillRect).toHaveBeenCalled();
+  });
+
+  it('does not paint when frame ms is before seek target', () => {
+    seekTo(500);
+    const ctx = __TEST_HOOKS__.ctx as any;
+    ctx.fillRect.mockClear();
+
+    const buf = new ArrayBuffer(100);
+    handleWorkerMessage({
+      data: { type: 'frame', ms: 100, gradeMs: 2.5, buffer: buf },
+    } as MessageEvent);
+
+    expect(ctx.fillRect).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleWorkerAudioChunk with audio context ready (Tier 2)', () => {
+  let mockWorker: any;
+  let fakeCtx: any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+
+    __TEST_HOOKS__.worker = mockWorker;
+
+    fakeCtx = fakeEnginePorts.audioContextFactory.create();
+    __TEST_HOOKS__.audioCtx = fakeCtx;
+    __TEST_HOOKS__.audioConfigVersion = 0;
+    __TEST_HOOKS__.audioPlayStartMs = 0;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    __TEST_HOOKS__.audioCtx = null;
+    __TEST_HOOKS__.isPlaying = false;
+    resetLeakRegistry();
+  });
+
+  it('creates buffer when audioCtx is ready and not playing', () => {
+    vi.spyOn(fakeCtx, 'createBuffer');
+
+    handleWorkerMessage({
+      data: {
+        type: 'audio_chunk',
+        ms: 100,
+        channels: 2,
+        sampleRate: 48000,
+        length: 1024,
+        buffers: [new ArrayBuffer(4096), new ArrayBuffer(4096)],
+        configVersion: 0,
+      },
+    } as MessageEvent);
+
+    expect(fakeCtx.createBuffer).toHaveBeenCalledWith(2, 1024, 48000);
+  });
+
+  it('schedules audio node when isPlaying is true', () => {
+    __TEST_HOOKS__.isPlaying = true;
+
+    vi.spyOn(fakeCtx, 'createBuffer');
+    vi.spyOn(fakeCtx, 'createBufferSource');
+
+    handleWorkerMessage({
+      data: {
+        type: 'audio_chunk',
+        ms: 100,
+        channels: 2,
+        sampleRate: 48000,
+        length: 1024,
+        buffers: [new ArrayBuffer(4096), new ArrayBuffer(4096)],
+        configVersion: 0,
+      },
+    } as MessageEvent);
+
+    expect(fakeCtx.createBuffer).toHaveBeenCalled();
+    expect(fakeCtx.createBufferSource).toHaveBeenCalled();
+  });
+});
+
+describe('importFile (Tier 2)', () => {
+  let mockWorker: any;
+
+  beforeEach(() => {
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    __TEST_HOOKS__.worker = mockWorker;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    __TEST_HOOKS__.audioCtx = null;
+  });
+
+  it('rejects when MP4Box finds no video track', async () => {
+    const mp4Mock = {
+      onReady: null as any,
+      onSamples: null as any,
+      onError: null as any,
+      setExtractionOptions: vi.fn(),
+      start: vi.fn(),
+      appendBuffer: vi.fn(),
+      flush: vi.fn().mockImplementation(function(this: any) {
+        if (this.onReady) {
+          this.onReady({ videoTracks: [], audioTracks: [] });
+        }
+      }),
+      getTrackById: vi.fn(),
+    };
+
+    vi.stubGlobal('window', {
+      MP4Box: { createFile: vi.fn().mockReturnValue(mp4Mock) },
+    });
+
+    const mockFile = {
+      name: 'test.mp4',
+      size: 10,
+      slice: vi.fn().mockReturnValue({
+        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+      }),
+    };
+
+    await expect(importFile(mockFile as unknown as File)).rejects.toThrow(
+      'No video track found',
+    );
+  });
+
+  it('rejects when MP4Box fails to return video metadata', async () => {
+    const mp4Mock = {
+      onReady: null as any,
+      onSamples: null as any,
+      onError: null as any,
+      setExtractionOptions: vi.fn(),
+      start: vi.fn(),
+      appendBuffer: vi.fn(),
+      flush: vi.fn(),
+      getTrackById: vi.fn(),
+    };
+
+    vi.stubGlobal('window', {
+      MP4Box: { createFile: vi.fn().mockReturnValue(mp4Mock) },
+    });
+
+    const mockFile = {
+      name: 'test.mp4',
+      size: 10,
+      slice: vi.fn().mockReturnValue({
+        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+      }),
+    };
+
+    await expect(importFile(mockFile as unknown as File)).rejects.toThrow(
+      'Failed to find video metadata',
+    );
+  });
+});
+
+describe('setTimeline and getProjectJson (Tier 2)', () => {
+  let mockWorker: any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      _handlers: [] as Array<(...args: any[]) => void>,
+    };
+    mockWorker.addEventListener.mockImplementation((type: string, handler: any) => {
+      if (type === 'message') mockWorker._handlers.push(handler);
+    });
+    mockWorker.removeEventListener.mockImplementation(
+      (type: string, handler: any) => {
+        if (type === 'message') {
+          const idx = mockWorker._handlers.indexOf(handler);
+          if (idx >= 0) mockWorker._handlers.splice(idx, 1);
+        }
+      },
+    );
+
+    __TEST_HOOKS__.worker = mockWorker;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('setTimeline posts set_timeline and resolves on timeline_set response', async () => {
+    const promise = __TEST_HOOKS__.setTimeline('{"clips":[]}');
+    expect(mockWorker.postMessage).toHaveBeenCalledWith({
+      type: 'set_timeline',
+      json: '{"clips":[]}',
+    });
+
+    const handler = mockWorker._handlers[0];
+    handler({ data: { type: 'timeline_set', ok: true } });
+    const result = await promise;
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('getProjectJson posts get_project_json and resolves on project_json response', async () => {
+    const promise = __TEST_HOOKS__.getProjectJson();
+    expect(mockWorker.postMessage).toHaveBeenCalledWith({
+      type: 'get_project_json',
+    });
+
+    const handler = mockWorker._handlers[0];
+    handler({ data: { type: 'project_json', json: '{"key":"val"}' } });
+    const result = await promise;
+    expect(result).toBe('{"key":"val"}');
   });
 });

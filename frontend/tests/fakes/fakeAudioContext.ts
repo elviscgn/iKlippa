@@ -65,6 +65,10 @@ class FakeAudioBufferSourceNode {
   _scheduleTime?: number;
   _stopTime?: number;
 
+  constructor() {
+    registerTracked(this);
+  }
+
   get buffer(): AudioBuffer | null { return this._buffer; }
   set buffer(val: AudioBuffer | null) { this._buffer = val; }
 
@@ -101,7 +105,10 @@ class FakeAudioBufferSourceNode {
   loopStart: number = 0;
   loopEnd: number = 0;
 
-  close(): void {}
+  close(): void {
+    if (isClosed(this)) return;
+    unregisterTracked(this);
+  }
 }
 
 class FakeAudioDestinationNode {
