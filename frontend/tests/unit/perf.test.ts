@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PerformanceMonitor } from '../src/engine/perf';
+import { PerformanceMonitor } from '../../src/engine/perf';
 
 describe('PerformanceMonitor', () => {
   let monitor: PerformanceMonitor;

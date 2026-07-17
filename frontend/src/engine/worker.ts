@@ -1,4 +1,5 @@
 import init, { IklippaEngine } from './pkg/iklippa_engine';
+import { getPorts } from '../adapters';
 import type {
   WorkerIncomingMessage,
   MP4Sample,
@@ -30,8 +31,10 @@ function werr(tag: string, msg: string, data?: unknown) {
 let wasmModule: IklippaEngine | null = null;
 let wasmMemory: WebAssembly.Memory | null = null;
 let frameView: Uint8ClampedArray | null = null;
-let decoder: VideoDecoder | null = null;
-let audioDecoder: AudioDecoder | null = null;
+import type { VideoDecoderPort, AudioDecoderPort } from '../adapters';
+
+let decoder: VideoDecoderPort | null = null;
+let audioDecoder: AudioDecoderPort | null = null;
 
 let clips: { file: File; codecConfig: VideoDecoderConfig; samples: MP4Sample[] }[] = [];
 let audioConfig: AudioDecoderConfig | null = null;
@@ -182,16 +185,16 @@ function postMessage(msg: WorkerIncomingMessage, transfer?: Transferable[]) {
 }
 
 function setupOffscreenCanvas(width: number, height: number) {
-  offscreenCanvas = new OffscreenCanvas(width, height);
+  offscreenCanvas = getPorts().offscreenCanvasFactory.create(width, height) as unknown as OffscreenCanvas;
   offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
 }
 
 export function setupAudioDecoder(config: AudioDecoderConfig) {
   if (audioDecoder && audioDecoder.state !== 'closed') audioDecoder.close();
 
-  audioDecoder = new AudioDecoder({
+  audioDecoder = getPorts().audioDecoderFactory.create(
     // fallow-ignore-next-line complexity
-    output: (audioData: AudioData) => {
+    (audioData: AudioData) => {
       if (globalStartOffsetUs === -1) {
         globalStartOffsetUs = audioData.timestamp;
       }
@@ -250,8 +253,8 @@ export function setupAudioDecoder(config: AudioDecoderConfig) {
         buffers
       );
     },
-    error: (e) => console.error('[AudioDecoder]', e),
-  });
+    (e) => console.error('[AudioDecoder]', e),
+  );
 
   audioDecoder.configure(config);
 }
@@ -259,8 +262,8 @@ export function setupAudioDecoder(config: AudioDecoderConfig) {
 export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, height: number) {
   if (decoder && decoder.state !== 'closed') decoder.close();
 
-  decoder = new VideoDecoder({
-    output: async (videoFrame: VideoFrame) => {
+  decoder = getPorts().videoDecoderFactory.create(
+    async (videoFrame: VideoFrame) => {
       if (globalStartOffsetUs === -1) {
         globalStartOffsetUs = videoFrame.timestamp;
       }
@@ -304,8 +307,8 @@ export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, hei
         [ownedPixels.buffer]
       );
     },
-    error: (e) => console.error('[Worker Decoder]', e),
-  });
+    (e) => console.error('[Worker Decoder]', e),
+  );
 
   decoder.configure({
     codec: codecConfig.codec,
@@ -491,5 +494,5 @@ export async function decodeNextSamples() {
 }
 
 function readSampleData(file: File, sample: MP4Sample): Promise<ArrayBuffer> {
-  return file.slice(sample.offset, sample.offset + sample.size).arrayBuffer();
+  return getPorts().sampleReader.readSampleData(file, sample);
 }

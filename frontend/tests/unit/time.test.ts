@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { usToSec, secToUs } from '../src/utils/time';
+import { usToSec, secToUs } from '../../src/utils/time';
 
 describe('usToSec', () => {
   it('converts 0 µs to 0 seconds', () => {

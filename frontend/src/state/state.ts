@@ -362,9 +362,18 @@ function trimClip(
       const linkedNewSourceStart =
         linkedClip.source_start_us +
         Math.round(deltaStartUs / linkedClip.speed);
-      trimClip(linkedId, linkedNewStart, linkedNewEnd, linkedNewSourceStart);
+      linkedClip.timeline_start_us = linkedNewStart;
+      linkedClip.timeline_end_us = linkedNewEnd;
+      linkedClip.source_start_us = linkedNewSourceStart;
+      linkedClip.source_end_us = linkedNewSourceStart + Math.round((linkedNewEnd - linkedNewStart) / linkedClip.speed);
+      
+      const linkedTrack = findClipTrack(linkedId);
+      if (linkedTrack) {
+        linkedTrack.clips.sort((a, b) => a.timeline_start_us - b.timeline_start_us);
+      }
     }
   }
+
 
   computeDuration();
   return true;
@@ -469,7 +478,7 @@ function verifyRoundTrip(rustJson: string, receivedJson: string): boolean {
 }
 
 // ── Public API ──────────────────────────────────────────────────────
-const IKState = {
+export const IKState = {
   init,
   isReady,
   usToSec,
@@ -499,14 +508,16 @@ const IKState = {
 };
 
 // ── Attach to window for backward compat with ui.js ─────────────────
-window.IKState = IKState;
+if (typeof window !== 'undefined') {
+  (window as any).IKState = IKState;
 
-// ── window.videoClips / window.audioClips as live getters ────────────
-Object.defineProperty(window, 'videoClips', {
-  get: () => window.IKState.getVideoClips(),
-  configurable: true,
-});
-Object.defineProperty(window, 'audioClips', {
-  get: () => window.IKState.getAudioClips(),
-  configurable: true,
-});
+  // ── window.videoClips / window.audioClips as live getters ────────────
+  Object.defineProperty(window, 'videoClips', {
+    get: () => (window as any).IKState.getVideoClips(),
+    configurable: true,
+  });
+  Object.defineProperty(window, 'audioClips', {
+    get: () => (window as any).IKState.getAudioClips(),
+    configurable: true,
+  });
+}
