@@ -385,7 +385,7 @@ window.IKState = (() => {
     return {
         init, isReady,
         usToSec, secToUs,
-        getVideoClips, getAudioClips,
+        getVideoClips, getAudioClips, getAllVideoClips,
         addVideoClip, addAudioClip,
         findClip, findClipTrack, removeClip, splitClip, moveClip, trimClip,
         setClipMeta, getClipMeta,
