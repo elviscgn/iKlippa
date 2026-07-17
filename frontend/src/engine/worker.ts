@@ -2,6 +2,7 @@ import init, { IklippaEngine } from './pkg/iklippa_engine';
 import { getPorts } from '../adapters';
 import type {
   WorkerIncomingMessage,
+  EngineErrorCode,
   MP4Sample,
   WorkerLoadCmd,
   WorkerSetGradeCmd,
@@ -12,20 +13,76 @@ import type {
 } from './types';
 
 // ── Worker-side diagnostic logger ─────────────────────────────────────────────
+// Every log line is also kept in a ring buffer that is attached to error
+// reports, so a crash can be diagnosed without reproducing it.
+const DIAG_RING_SIZE = 200;
+const diagRing: string[] = [];
+function recordDiag(line: string) {
+  diagRing.push(line);
+  if (diagRing.length > DIAG_RING_SIZE) diagRing.shift();
+}
+
 function wlog(tag: string, msg: string, data?: unknown) {
   const line = `[iKlippa:${tag}] ${msg}`;
+  recordDiag(line);
   if (data !== undefined) console.log(line, data);
   else console.log(line);
 }
 function wwarn(tag: string, msg: string, data?: unknown) {
   const line = `[iKlippa:${tag}] ⚠ ${msg}`;
+  recordDiag(line);
   if (data !== undefined) console.warn(line, data);
   else console.warn(line);
 }
 function werr(tag: string, msg: string, data?: unknown) {
   const line = `[iKlippa:${tag}] ✖ ${msg}`;
+  recordDiag(line);
   if (data !== undefined) console.error(line, data);
   else console.error(line);
+}
+
+// ── Error funnel ──────────────────────────────────────────────────────────────
+// THE rule: every failure in this worker leaves through reportError() and
+// becomes a visible toast on the main thread. Never console-error-and-
+// continue — that is how silent bugs are born.
+function reportError(
+  code: EngineErrorCode,
+  err: unknown,
+  opts: { fatal?: boolean; opId?: number } = {},
+) {
+  const e = err instanceof Error ? err : new Error(String(err));
+  werr('error', code, e.message);
+  const recent = diagRing.slice(-20).join('\n');
+  postMessage({
+    type: 'error',
+    error: {
+      code,
+      message: e.message,
+      detail: [e.stack, recent ? `--- recent worker log ---\n${recent}` : '']
+        .filter(Boolean)
+        .join('\n\n'),
+      fatal: opts.fatal ?? true,
+      opId: opts.opId,
+      at: performance.now(),
+    },
+  });
+}
+
+// Last-resort nets: anything we forgot to catch still reaches the UI.
+self.onerror = (event, _source, _lineno, _colno, error) => {
+  reportError('WORKER_UNCAUGHT', error ?? event);
+  return true;
+};
+self.onunhandledrejection = (ev: PromiseRejectionEvent) => {
+  reportError('WORKER_UNHANDLED_REJECTION', ev.reason);
+  ev.preventDefault();
+};
+
+function codeForFailedMessage(type: string): EngineErrorCode {
+  if (type === 'init') return 'WASM_INIT_FAILED';
+  if (type === 'load') return 'LOAD_FAILED';
+  if (type === 'seek' || type === 'sync') return 'DECODER_VIDEO_FATAL';
+  return 'PROTOCOL_ERROR';
 }
 
 let wasmModule: IklippaEngine | null = null;
@@ -41,7 +98,6 @@ let audioConfig: AudioDecoderConfig | null = null;
 let audioSamples: MP4Sample[] = [];
 
 let isSeeking = false;
-let pendingSeekMs: number | null = null;
 let isDecodingNext = false;
 
 let lastDecodedSampleIdx = -1;
@@ -59,6 +115,9 @@ let isWorkerPlaying = false;
 
 let offscreenCanvas: OffscreenCanvas | null = null;
 let offscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
+
+let currentSeekId = 0;
+let latestSeekId = 0;
 
 const MAX_DECODE_QUEUE = 8;
 
@@ -106,6 +165,9 @@ async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfi
 }
 
 async function handleSeek(msg: WorkerSeekCmd) {
+  if (msg.seekId !== undefined) {
+    currentSeekId = msg.seekId;
+  }
   if (clips.length === 0) {
     wwarn('worker', 'seek received but no clips loaded yet');
     return;
@@ -171,8 +233,17 @@ function handleGetProjectJson() {
 let messageQueue: Promise<void> = Promise.resolve();
 
 self.onmessage = (e: MessageEvent<any>) => {
+  const msg = e.data;
+  if (msg.type === 'seek' && msg.seekId !== undefined) {
+    latestSeekId = msg.seekId;
+  }
+
   messageQueue = messageQueue.then(async () => {
-    const msg = e.data;
+    if (msg.type === 'seek' && msg.seekId !== undefined && msg.seekId !== latestSeekId) {
+      wwarn('worker', `skipping obsolete seek ${msg.seekId} (latest is ${latestSeekId})`);
+      return;
+    }
+
     if (msg.type === 'init') await handleInit();
     else if (msg.type === 'load') await handleLoad(msg);
     else if (msg.type === 'seek') await handleSeek(msg);
@@ -182,7 +253,9 @@ self.onmessage = (e: MessageEvent<any>) => {
     else if (msg.type === 'set_timeline') handleSetTimeline(msg);
     else if (msg.type === 'get_project_json') handleGetProjectJson();
   }).catch((err) => {
-    wwarn('worker', 'error processing message', err);
+    // Was: wwarn(...) — a silent swallow that left the main thread waiting
+    // forever. Now every failed message reaches the UI as a toast.
+    reportError(codeForFailedMessage(msg.type), err);
   });
   return messageQueue;
 };
@@ -256,11 +329,12 @@ export function setupAudioDecoder(config: AudioDecoderConfig) {
           length,
           buffers,
           configVersion: audioConfigVersion,
+          seekId: currentSeekId,
         },
         buffers
       );
     },
-    (e) => console.error('[AudioDecoder]', e),
+    (e) => reportError('DECODER_AUDIO_FATAL', e),
   );
 
   audioDecoder.configure(config);
@@ -296,7 +370,20 @@ export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, hei
       let gradeMs = 0;
       if (!isWorkerPlaying) {
         const gradeStart = performance.now();
-        wasmModule!.process_frame();
+        try {
+          wasmModule!.process_frame();
+        } catch (e) {
+          // A Rust panic poisons the WASM module (panic=abort): every later
+          // call throws. Report fatal and kill the decoder — the main thread
+          // surfaces a toast and resets instead of starving silently.
+          reportError('WASM_PANIC', e, { fatal: true });
+          try {
+            decoder?.close();
+          } catch {
+            // already closed
+          }
+          return;
+        }
         gradeMs = performance.now() - gradeStart;
       }
 
@@ -310,11 +397,12 @@ export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, hei
           ms: tsMs,
           gradeMs,
           buffer: ownedPixels.buffer,
+          seekId: currentSeekId,
         },
         [ownedPixels.buffer]
       );
     },
-    (e) => console.error('[Worker Decoder]', e),
+    (e) => reportError('DECODER_VIDEO_FATAL', e),
   );
 
   decoder.configure({
@@ -330,11 +418,8 @@ export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, hei
 // fallow-ignore-next-line complexity
 export async function seekAndDecodeFrame(targetMs: number) {
   if (isSeeking) {
-    wlog('seek', `seek to ${targetMs}ms queued (already seeking)`);
-    pendingSeekMs = targetMs;
     return;
   }
-
   isSeeking = true;
   decodeSessionId++;
   decoderSeeded = false;
@@ -367,7 +452,10 @@ export async function seekAndDecodeFrame(targetMs: number) {
   decoder!.configure(clips[0]!.codecConfig);
 
   for (let i = vKeyIdx; i < samples.length; i++) {
-    if (pendingSeekMs !== null) break;
+    if (latestSeekId !== currentSeekId) {
+      wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
+      break;
+    }
 
     const s = samples[i]!;
     const sMs = Math.round((s.cts * 1000) / s.timescale);
@@ -406,12 +494,6 @@ export async function seekAndDecodeFrame(targetMs: number) {
 
   decoderSeeded = true;
   isSeeking = false;
-
-  if (pendingSeekMs !== null) {
-    const nextMs = pendingSeekMs;
-    pendingSeekMs = null;
-    seekAndDecodeFrame(nextMs);
-  }
 }
 
 export async function primeAudioDecode() {
