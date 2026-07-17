@@ -84,6 +84,12 @@ window.IKState = (() => {
         if (!project) return null;
         return project.tracks.find(t => t.track_type === "audio") || null;
     }
+    function getAllVideoClips() {
+        if (!project) return [];
+        return project.tracks
+            .filter(t => t.track_type === "video")
+            .flatMap(t => t.clips.map(c => ({ ...c, track_type: t.track_type })));
+    }
 
     // ── Clip accessors (return live refs from project.tracks) ───────────
     // Display metadata is merged IN-PLACE onto the clip objects so the UI can
