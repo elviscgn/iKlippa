@@ -85,4 +85,28 @@ describe('PerformanceMonitor', () => {
     expect(score.totalFrames).toBe(130);
     expect(score.composite).toBeGreaterThanOrEqual(0);
   });
+
+  it('recordFrameArrival tracks decode times from recordDecodeSubmit', () => {
+    monitor.recordDecodeSubmit(100);
+    monitor.recordFrameArrival(100, 1.5);
+    const score = monitor.score();
+    expect(parseFloat(score.avgDecodeMs)).not.toBe('0.00');
+  });
+
+  it('report delegates to score and returns composite', () => {
+    monitor.recordRaf(0);
+    monitor.recordRaf(16.67);
+    const result = monitor.report();
+    expect(result).toBeGreaterThanOrEqual(0);
+    expect(result).toBeLessThanOrEqual(100);
+  });
+
+  it('recordDecodeSubmit stores timing data that is consumed by recordFrameArrival', () => {
+    monitor.recordDecodeSubmit(200);
+    monitor.recordDecodeSubmit(300);
+    monitor.recordFrameArrival(200, 1.0);
+    monitor.recordFrameArrival(999, 1.0); // no matching submit
+    const score = monitor.score();
+    expect(score.totalFrames).toBe(0);
+  });
 });

@@ -54,10 +54,34 @@ describe('Worker Message Integration (Tier 2 - adapter ports)', () => {
       },
     });
 
+    vi.stubGlobal('VideoDecoder', class {
+      configure() {}
+      decode() {}
+      flush() { return Promise.resolve(); }
+      close() {}
+      reset() {}
+      state = 'unconfigured';
+      get decodeQueueSize() { return 0; }
+    });
+    vi.stubGlobal('AudioDecoder', class {
+      configure() {}
+      decode() {}
+      flush() { return Promise.resolve(); }
+      close() {}
+      reset() {}
+      state = 'unconfigured';
+      get decodeQueueSize() { return 0; }
+    });
+    vi.stubGlobal('OffscreenCanvas', class {
+      width: number = 0;
+      height: number = 0;
+      constructor(w: number, h: number) { this.width = w; this.height = h; }
+      getContext() { return { clearRect: vi.fn(), drawImage: vi.fn(), getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(100) })) }; }
+    });
     vi.stubGlobal('EncodedVideoChunk', class {});
     vi.stubGlobal('EncodedAudioChunk', class {});
-    vi.stubGlobal('VideoFrame', class { close() {} });
-    vi.stubGlobal('AudioData', class { close() {} });
+    vi.stubGlobal('VideoFrame', class { close() {} timestamp: number = 0; format: string | null = null; copyTo() {} });
+    vi.stubGlobal('AudioData', class { close() {} timestamp: number = 0; numberOfChannels: number = 0; sampleRate: number = 0; numberOfFrames: number = 0; format: string = 'f32'; allocationSize() { return 0; }; copyTo() {} });
 
     await import('../../src/engine/worker');
   });
