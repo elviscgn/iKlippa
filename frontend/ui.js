@@ -854,15 +854,30 @@ window.renderClips = function () {
     if (aiLane) aiLane.appendChild(spacer(tw));
 };
 
-$("#lane-v1").ondragover = (e) => e.preventDefault();
+$("#lane-v1").ondragover = (e) => {
+    e.preventDefault();
+    // Show snap guide while hovering during a media-pool drag
+    const tw = getLaneW();
+    const rect = $("#lane-v1").getBoundingClientRect();
+    const rawUs = Math.round(
+        ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur * 1_000_000
+    );
+    const snapped = applySnap(rawUs, null, tw);
+    if (snapped !== null) showSnapGuide(snapped, tw);
+    else hideSnapGuide();
+};
+$("#lane-v1").ondragleave = () => hideSnapGuide();
 $("#lane-v1").ondrop = (e) => {
     e.preventDefault();
+    hideSnapGuide();
     const data = JSON.parse(e.dataTransfer.getData("text/plain"));
     const tw = getLaneW();
     const rect = $("#lane-v1").getBoundingClientRect();
-    const t =
-        ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur;
-    const startUs = Math.round(t * 1_000_000);
+    const rawUs = Math.round(
+        ((e.clientX - rect.left + $("#tl-tracks").scrollLeft) / tw) * window.S.dur * 1_000_000
+    );
+    const snapped = applySnap(rawUs, null, tw);
+    const startUs = Math.max(0, snapped !== null ? snapped : rawUs);
     saveSnapshot();
     if (data.isReal && data.sourceId) {
         // Real imported video — use its actual duration
@@ -875,7 +890,7 @@ $("#lane-v1").ondrop = (e) => {
         showToast("Clip added to timeline", "film");
     } else {
         // Stock clip — 4 seconds
-        const endUs = Math.min(Math.round((t + 4.0) * 1_000_000), Math.round(window.S.dur * 1_000_000));
+        const endUs = Math.min(startUs + 4_000_000, Math.round(window.S.dur * 1_000_000));
         IKState.addVideoClip("stock_" + data.id, startUs, endUs, {
             name: data.name,
             isReal: false,
