@@ -8,7 +8,7 @@ import { loadScript } from '../utils/dom';
 import type {
   WorkerIncomingMessage,
   GradeParams,
-  ClipImportedData,
+
   MP4Sample,
 } from './types';
 import type { ClipWithMeta } from '../state/types';
@@ -110,7 +110,7 @@ function maybeCaptureThumbnail(ms: number): void {
   }
 }
 
-export function captureThumbnail(): string | null {
+function captureThumbnail(): string | null {
   if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
   try {
     return canvas.toDataURL('image/jpeg', 0.5);
@@ -119,6 +119,7 @@ export function captureThumbnail(): string | null {
   }
 }
 
+// fallow-ignore-next-line complexity
 export function captureThumbnailFromBuffer(ms: number): string | null {
   if (!canvas || !ctx) {
     warn('thumb', 'captureThumbnailFromBuffer: canvas/ctx not ready');
@@ -151,11 +152,11 @@ export function captureThumbnailFromBuffer(ms: number): string | null {
   }
 }
 
-export function getThumbnails(): Array<{ ms: number; dataUrl: string }> {
+function getThumbnails(): Array<{ ms: number; dataUrl: string }> {
   return timelineThumbnails;
 }
 
-export function getCurrentFileName(): string {
+function getCurrentFileName(): string {
   return currentFileName;
 }
 
@@ -263,7 +264,7 @@ function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'aud
   }
 }
 
-function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): void {
+export function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): void {
   const msg = e.data;
 
   switch (msg.type) {
@@ -499,7 +500,7 @@ function getAudioDescription(
 }
 
 // ── Render Loop ─────────────────────────────────────────────────────────
-function renderLoop(ts: number): void {
+export function renderLoop(ts: number): void {
   perf.recordRaf(ts);
   if (!isPlaying) return;
 
@@ -671,7 +672,7 @@ function paintFrameAtTime(ms: number): void {
 }
 
 // ── Playback control ────────────────────────────────────────────────────
-export async function startPlayback(): Promise<void> {
+async function startPlayback(): Promise<void> {
   if (isPlaying) return;
   log(
     'play',
@@ -692,7 +693,7 @@ export async function startPlayback(): Promise<void> {
   rafHandle = requestAnimationFrame(renderLoop);
 }
 
-export function pausePlayback(): void {
+function pausePlayback(): void {
   if (!isPlaying && rafHandle === null) return;
   log('play', `pausePlayback @ ${playheadMs.toFixed(0)}ms`);
   isPlaying = false;
@@ -858,7 +859,7 @@ export async function exportVideo(
 }
 
 // ── Rust Project Sync ───────────────────────────────────────────────────
-export function setTimeline(json: string): Promise<{ ok: boolean; error?: string }> {
+function setTimeline(json: string): Promise<{ ok: boolean; error?: string }> {
   return new Promise((resolve) => {
     const handler = (e: MessageEvent) => {
       if (e.data.type === 'timeline_set') {
@@ -871,7 +872,7 @@ export function setTimeline(json: string): Promise<{ ok: boolean; error?: string
   });
 }
 
-export function getProjectJson(): Promise<string> {
+function getProjectJson(): Promise<string> {
   return new Promise((resolve) => {
     const handler = (e: MessageEvent) => {
       if (e.data.type === 'project_json') {

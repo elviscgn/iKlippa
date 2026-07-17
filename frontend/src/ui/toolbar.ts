@@ -139,7 +139,7 @@ function initChat() {
   };
 }
 
-export function appendChat(text: string, isUser = false) {
+function appendChat(text: string, isUser = false) {
   const el = document.createElement('div');
   el.className = 'chat-msg ' + (isUser ? 'user' : 'ai');
   el.innerHTML = isUser

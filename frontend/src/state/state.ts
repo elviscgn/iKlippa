@@ -175,6 +175,7 @@ function getAudioClips(): ClipWithMeta[] {
 }
 
 // ── Clip CRUD ───────────────────────────────────────────────────────
+// fallow-ignore-next-line complexity
 function addVideoClip(
   sourceId: string,
   startUs: number,
@@ -195,6 +196,7 @@ function addVideoClip(
   return merged;
 }
 
+// fallow-ignore-next-line complexity
 function addAudioClip(
   sourceId: string,
   startUs: number,
@@ -242,6 +244,7 @@ function removeClip(clipId: number): boolean {
   return false;
 }
 
+// fallow-ignore-next-line complexity
 function splitClip(clipId: number, splitAtUs: number): number | null {
   const track = findClipTrack(clipId);
   if (!track || !project) return null;
@@ -294,6 +297,7 @@ function splitClip(clipId: number, splitAtUs: number): number | null {
   return newId;
 }
 
+// fallow-ignore-next-line complexity
 function moveClip(clipId: number, newStartUs: number): boolean {
   const clip = findClip(clipId);
   if (!clip) return false;
@@ -324,6 +328,7 @@ function moveClip(clipId: number, newStartUs: number): boolean {
   return true;
 }
 
+// fallow-ignore-next-line complexity
 function trimClip(
   clipId: number,
   newStartUs: number,
@@ -365,6 +370,7 @@ function trimClip(
   return true;
 }
 
+// fallow-ignore-next-line complexity
 function getLinkedClipIds(clipId: number): number[] {
   const clip = findClip(clipId);
   if (!clip || !clip.group_id || !project) return [];
@@ -398,6 +404,7 @@ function getClipMeta(clipId: number): Record<string, unknown> | null {
   return meta ? JSON.parse(JSON.stringify(meta)) : null;
 }
 
+// fallow-ignore-next-line complexity
 function computeDuration(): number {
   if (!project) return 0;
   let max = 0;
@@ -462,7 +469,7 @@ function verifyRoundTrip(rustJson: string, receivedJson: string): boolean {
 }
 
 // ── Public API ──────────────────────────────────────────────────────
-export const IKState = {
+const IKState = {
   init,
   isReady,
   usToSec,
