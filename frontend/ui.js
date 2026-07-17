@@ -878,11 +878,19 @@ $("#lane-v1").ondrop = (e) => {
     // Always snap to t=0 when cursor is within 24px of the left edge
     const snapped = cursorPx <= 24 ? 0 : applySnap(rawUs, null, tw);
     const startUs = Math.max(0, snapped !== null ? snapped : rawUs);
+    console.log(`[iKlippa:ui] drop on lane-v1 — cursorPx:${cursorPx.toFixed(0)} rawUs:${rawUs} snappedUs:${snapped} startUs:${startUs} S.dur:${window.S.dur}s tw:${tw.toFixed(0)}px`);
     saveSnapshot();
     if (data.isReal && data.sourceId) {
         // Real imported video — use its actual duration
         const durSec = parseFloat(data.dur) || 4.0;
-        const endUs = Math.round(Math.min(startUs + durSec * 1_000_000, window.S.dur * 1_000_000));
+        // Extend S.dur if the clip would exceed the current timeline length
+        const neededDurSec = startUs / 1_000_000 + durSec;
+        if (neededDurSec > window.S.dur) {
+            window.S.dur = neededDurSec + 10;
+            console.log(`[iKlippa:ui] extended S.dur to ${window.S.dur.toFixed(1)}s to fit clip`);
+        }
+        const endUs = Math.round(startUs + durSec * 1_000_000);
+        console.log(`[iKlippa:ui] addVideoClip "${data.name}" ${(startUs/1e6).toFixed(2)}s → ${(endUs/1e6).toFixed(2)}s (dur: ${durSec}s)`);
         IKState.addVideoClip(data.sourceId, startUs, endUs, {
             name: data.name,
             isReal: true,
@@ -890,7 +898,7 @@ $("#lane-v1").ondrop = (e) => {
         showToast("Clip added to timeline", "film");
     } else {
         // Stock clip — 4 seconds
-        const endUs = Math.min(startUs + 4_000_000, Math.round(window.S.dur * 1_000_000));
+        const endUs = startUs + 4_000_000;
         IKState.addVideoClip("stock_" + data.id, startUs, endUs, {
             name: data.name,
             isReal: false,
