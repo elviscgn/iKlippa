@@ -803,7 +803,10 @@ export async function exportVideo(
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i]!;
-    const frame = new VideoFrame(imageData, {
+    const frame = new VideoFrame(imageData.data.buffer, {
+      format: 'RGBA',
+      codedWidth: sourceVideoWidth,
+      codedHeight: sourceVideoHeight,
       timestamp: ms * 1000,
       duration: frameMs * 1000,
     });
