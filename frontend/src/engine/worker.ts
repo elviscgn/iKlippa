@@ -1,7 +1,7 @@
 import init, { IklippaEngine } from './pkg/iklippa_engine';
+import { getPorts } from '../adapters';
 import type {
   WorkerIncomingMessage,
-  WorkerOutgoingMessage,
   MP4Sample,
   WorkerLoadCmd,
   WorkerSetGradeCmd,
@@ -31,8 +31,10 @@ function werr(tag: string, msg: string, data?: unknown) {
 let wasmModule: IklippaEngine | null = null;
 let wasmMemory: WebAssembly.Memory | null = null;
 let frameView: Uint8ClampedArray | null = null;
-let decoder: VideoDecoder | null = null;
-let audioDecoder: AudioDecoder | null = null;
+import type { VideoDecoderPort, AudioDecoderPort } from '../adapters';
+
+let decoder: VideoDecoderPort | null = null;
+let audioDecoder: AudioDecoderPort | null = null;
 
 let clips: { file: File; codecConfig: VideoDecoderConfig; samples: MP4Sample[] }[] = [];
 let audioConfig: AudioDecoderConfig | null = null;
@@ -60,99 +62,122 @@ let offscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
 
 const MAX_DECODE_QUEUE = 8;
 
-self.onmessage = async (e: MessageEvent<WorkerOutgoingMessage>) => {
-  const msg = e.data;
+async function handleInit() {
+  const wasmExports = await init();
+  wasmMemory = wasmExports.memory;
+  wlog('worker', 'WASM initialised ✓');
+  postMessage({ type: 'status', msg: 'WASM engine running in background worker ✓' });
+}
 
-  if (msg.type === 'init') {
-    const wasmExports = await init();
-    wasmMemory = wasmExports.memory;
-    wlog('worker', 'WASM initialised ✓');
-    postMessage({ type: 'status', msg: 'WASM engine running in background worker ✓' });
-  } else if (msg.type === 'load') {
-    globalStartOffsetUs = -1;
-    const { file, codecConfig, width, height, samples, durationMs } = msg as WorkerLoadCmd;
-    wlog(
-      'worker',
-      `load: ${width}×${height} · ${(durationMs / 1000).toFixed(2)}s · ${samples.length} video samples · ${(msg.audioSamples || []).length} audio samples · codec: ${codecConfig.codec}`
-    );
-    if (!wasmModule) {
-      wasmModule = new IklippaEngine(width, height);
-    } else {
-      wasmModule.resize(width, height);
-    }
-
-    frameView = new Uint8ClampedArray(
-      wasmMemory!.buffer,
-      wasmModule.frame_ptr(),
-      wasmModule.frame_len()
-    );
-    clips = [{ file, codecConfig, samples }];
-
-    audioConfig = msg.audioConfig || null;
-    audioSamples = msg.audioSamples || [];
-    audioConfigVersion = msg.audioConfigVersion || 0;
-
-    if (!audioConfig) wwarn('worker', 'no audio track found in this file');
-
-    setupOffscreenCanvas(width, height);
-    setupDecoder(codecConfig, width, height);
-    if (audioConfig) setupAudioDecoder(audioConfig);
-
-    await seekAndDecodeFrame(0);
-    await primeAudioDecode();
-    wlog('worker', `ready posted — pendingFrames now sending to main thread`);
-    postMessage({ type: 'ready', durationMs, width, height });
-  } else if (msg.type === 'seek') {
-    if (clips.length === 0) {
-      wwarn('worker', 'seek received but no clips loaded yet');
-      return;
-    }
-    wlog('worker', `seek → ${msg.ms}ms`);
-    await seekAndDecodeFrame(msg.ms);
-    await primeAudioDecode();
-  } else if (msg.type === 'sync') {
-    currentPlayheadMs = msg.playheadMs;
-    isWorkerPlaying = msg.isPlaying;
-
-    if (isWorkerPlaying && msg.framesAhead < 15) {
-      await decodeNextSamples();
-    }
-  } else if (msg.type === 'set_audio_version') {
-    audioConfigVersion = msg.version;
-  } else if (msg.type === 'set_grade') {
-    if (!wasmModule) return;
-    const p = msg.params;
-    if (p.exposure !== undefined) wasmModule.set_exposure(p.exposure);
-    if (p.contrast !== undefined) wasmModule.set_contrast(p.contrast);
-    if (p.saturation !== undefined) wasmModule.set_saturation(p.saturation);
-    if (p.temperature !== undefined) wasmModule.set_temperature(p.temperature);
-    if (p.highlights !== undefined) wasmModule.set_highlights(p.highlights);
-    if (p.shadows !== undefined) wasmModule.set_shadows(p.shadows);
-    if (p.vignette !== undefined) wasmModule.set_vignette(p.vignette);
-    if (p.grain !== undefined) wasmModule.set_grain(p.grain);
-    if (p.lut !== undefined) wasmModule.set_lut(p.lut);
-
-    if (msg.forceRenderMs !== undefined) {
-      await seekAndDecodeFrame(msg.forceRenderMs);
-    }
-  } else if (msg.type === 'set_timeline') {
-    if (!wasmModule) {
-      wwarn('worker', 'set_timeline received but WASM not ready');
-      return;
-    }
-    try {
-      wasmModule.set_timeline(msg.json);
-      wlog('worker', 'set_timeline OK');
-      postMessage({ type: 'timeline_set', ok: true });
-    } catch (e) {
-      werr('worker', 'set_timeline failed', String(e));
-      postMessage({ type: 'timeline_set', ok: false, error: String(e) });
-    }
-  } else if (msg.type === 'get_project_json') {
-    if (!wasmModule) return;
-    const json = wasmModule.to_json();
-    postMessage({ type: 'project_json', json });
+async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfig, audioSamples?: MP4Sample[], audioConfigVersion?: number }) {
+  globalStartOffsetUs = -1;
+  const { file, codecConfig, width, height, samples, durationMs } = msg;
+  wlog(
+    'worker',
+    `load: ${width}×${height} · ${(durationMs / 1000).toFixed(2)}s · ${samples.length} video samples · ${(msg.audioSamples || []).length} audio samples · codec: ${codecConfig.codec}`
+  );
+  if (!wasmModule) {
+    wasmModule = new IklippaEngine(width, height);
+  } else {
+    wasmModule.resize(width, height);
   }
+
+  frameView = new Uint8ClampedArray(
+    wasmMemory!.buffer,
+    wasmModule.frame_ptr(),
+    wasmModule.frame_len()
+  );
+  clips = [{ file, codecConfig, samples }];
+
+  audioConfig = msg.audioConfig || null;
+  audioSamples = msg.audioSamples || [];
+  audioConfigVersion = msg.audioConfigVersion || 0;
+
+  if (!audioConfig) wwarn('worker', 'no audio track found in this file');
+
+  setupOffscreenCanvas(width, height);
+  setupDecoder(codecConfig, width, height);
+  if (audioConfig) setupAudioDecoder(audioConfig);
+
+  await seekAndDecodeFrame(0);
+  await primeAudioDecode();
+  wlog('worker', `ready posted — pendingFrames now sending to main thread`);
+  postMessage({ type: 'ready', durationMs, width, height });
+}
+
+async function handleSeek(msg: WorkerSeekCmd) {
+  if (clips.length === 0) {
+    wwarn('worker', 'seek received but no clips loaded yet');
+    return;
+  }
+  wlog('worker', `seek → ${msg.ms}ms`);
+  await seekAndDecodeFrame(msg.ms);
+  await primeAudioDecode();
+}
+
+async function handleSync(msg: WorkerSyncCmd) {
+  currentPlayheadMs = msg.playheadMs;
+  isWorkerPlaying = msg.isPlaying;
+
+  if (isWorkerPlaying && msg.framesAhead < 15) {
+    await decodeNextSamples();
+  }
+}
+
+function handleSetAudioVersion(msg: WorkerSetAudioVersionCmd) {
+  audioConfigVersion = msg.version;
+}
+
+// fallow-ignore-next-line complexity
+async function handleSetGrade(msg: WorkerSetGradeCmd) {
+  if (!wasmModule) return;
+  const p = msg.params;
+  if (p.exposure !== undefined) wasmModule.set_exposure(p.exposure);
+  if (p.contrast !== undefined) wasmModule.set_contrast(p.contrast);
+  if (p.saturation !== undefined) wasmModule.set_saturation(p.saturation);
+  if (p.temperature !== undefined) wasmModule.set_temperature(p.temperature);
+  if (p.highlights !== undefined) wasmModule.set_highlights(p.highlights);
+  if (p.shadows !== undefined) wasmModule.set_shadows(p.shadows);
+  if (p.vignette !== undefined) wasmModule.set_vignette(p.vignette);
+  if (p.grain !== undefined) wasmModule.set_grain(p.grain);
+  if (p.lut !== undefined) wasmModule.set_lut(p.lut);
+
+  if (msg.forceRenderMs !== undefined) {
+    await seekAndDecodeFrame(msg.forceRenderMs);
+  }
+}
+
+function handleSetTimeline(msg: WorkerSetTimelineCmd) {
+  if (!wasmModule) {
+    wwarn('worker', 'set_timeline received but WASM not ready');
+    return;
+  }
+  try {
+    wasmModule.set_timeline(msg.json);
+    wlog('worker', 'set_timeline OK');
+    postMessage({ type: 'timeline_set', ok: true });
+  } catch (e) {
+    werr('worker', 'set_timeline failed', String(e));
+    postMessage({ type: 'timeline_set', ok: false, error: String(e) });
+  }
+}
+
+function handleGetProjectJson() {
+  if (!wasmModule) return;
+  const json = wasmModule.to_json();
+  postMessage({ type: 'project_json', json });
+}
+
+self.onmessage = async (e: MessageEvent<any>) => {
+  const msg = e.data;
+  if (msg.type === 'init') await handleInit();
+  else if (msg.type === 'load') await handleLoad(msg);
+  else if (msg.type === 'seek') await handleSeek(msg);
+  else if (msg.type === 'sync') await handleSync(msg);
+  else if (msg.type === 'set_audio_version') handleSetAudioVersion(msg);
+  else if (msg.type === 'set_grade') await handleSetGrade(msg);
+  else if (msg.type === 'set_timeline') handleSetTimeline(msg);
+  else if (msg.type === 'get_project_json') handleGetProjectJson();
 };
 
 function postMessage(msg: WorkerIncomingMessage, transfer?: Transferable[]) {
@@ -160,15 +185,16 @@ function postMessage(msg: WorkerIncomingMessage, transfer?: Transferable[]) {
 }
 
 function setupOffscreenCanvas(width: number, height: number) {
-  offscreenCanvas = new OffscreenCanvas(width, height);
+  offscreenCanvas = getPorts().offscreenCanvasFactory.create(width, height) as unknown as OffscreenCanvas;
   offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
 }
 
-function setupAudioDecoder(config: AudioDecoderConfig) {
+export function setupAudioDecoder(config: AudioDecoderConfig) {
   if (audioDecoder && audioDecoder.state !== 'closed') audioDecoder.close();
 
-  audioDecoder = new AudioDecoder({
-    output: (audioData: AudioData) => {
+  audioDecoder = getPorts().audioDecoderFactory.create(
+    // fallow-ignore-next-line complexity
+    (audioData: AudioData) => {
       if (globalStartOffsetUs === -1) {
         globalStartOffsetUs = audioData.timestamp;
       }
@@ -227,17 +253,17 @@ function setupAudioDecoder(config: AudioDecoderConfig) {
         buffers
       );
     },
-    error: (e) => console.error('[AudioDecoder]', e),
-  });
+    (e) => console.error('[AudioDecoder]', e),
+  );
 
   audioDecoder.configure(config);
 }
 
-function setupDecoder(codecConfig: VideoDecoderConfig, width: number, height: number) {
+export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, height: number) {
   if (decoder && decoder.state !== 'closed') decoder.close();
 
-  decoder = new VideoDecoder({
-    output: async (videoFrame: VideoFrame) => {
+  decoder = getPorts().videoDecoderFactory.create(
+    async (videoFrame: VideoFrame) => {
       if (globalStartOffsetUs === -1) {
         globalStartOffsetUs = videoFrame.timestamp;
       }
@@ -281,8 +307,8 @@ function setupDecoder(codecConfig: VideoDecoderConfig, width: number, height: nu
         [ownedPixels.buffer]
       );
     },
-    error: (e) => console.error('[Worker Decoder]', e),
-  });
+    (e) => console.error('[Worker Decoder]', e),
+  );
 
   decoder.configure({
     codec: codecConfig.codec,
@@ -294,7 +320,8 @@ function setupDecoder(codecConfig: VideoDecoderConfig, width: number, height: nu
   } as VideoDecoderConfig);
 }
 
-async function seekAndDecodeFrame(targetMs: number) {
+// fallow-ignore-next-line complexity
+export async function seekAndDecodeFrame(targetMs: number) {
   if (isSeeking) {
     wlog('seek', `seek to ${targetMs}ms queued (already seeking)`);
     pendingSeekMs = targetMs;
@@ -380,7 +407,7 @@ async function seekAndDecodeFrame(targetMs: number) {
   }
 }
 
-async function primeAudioDecode() {
+export async function primeAudioDecode() {
   if (!audioDecoder || audioDecoder.state !== 'configured') return;
   if (!audioSamples.length || !clips.length) return;
   const { file } = clips[0]!;
@@ -408,7 +435,8 @@ async function primeAudioDecode() {
   }
 }
 
-async function decodeNextSamples() {
+// fallow-ignore-next-line complexity
+export async function decodeNextSamples() {
   if (!clips.length || !decoder || decoder.state !== 'configured') return;
   if (!decoderSeeded || isSeeking || isDecodingNext) return;
 
@@ -466,5 +494,5 @@ async function decodeNextSamples() {
 }
 
 function readSampleData(file: File, sample: MP4Sample): Promise<ArrayBuffer> {
-  return file.slice(sample.offset, sample.offset + sample.size).arrayBuffer();
+  return getPorts().sampleReader.readSampleData(file, sample);
 }

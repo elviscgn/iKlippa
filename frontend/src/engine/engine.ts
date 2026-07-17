@@ -5,10 +5,12 @@
 
 import { PerformanceMonitor } from './perf';
 import { loadScript } from '../utils/dom';
+import { getPorts } from '../adapters';
+import type { EnginePorts, AudioContextPort } from '../adapters';
 import type {
   WorkerIncomingMessage,
   GradeParams,
-  ClipImportedData,
+
   MP4Sample,
 } from './types';
 import type { ClipWithMeta } from '../state/types';
@@ -61,7 +63,7 @@ let isExporting = false;
 let exportFrames: Array<{ ms: number; imageData: ImageData }> = [];
 
 // ── Web Audio State ─────────────────────────────────────────────────────
-let audioCtx: AudioContext | null = null;
+let audioCtx: AudioContextPort | null = null;
 let pendingAudio = new Map<number, AudioBuffer>();
 let scheduledAudioNodes: AudioBufferSourceNode[] = [];
 let nextAudioStartTime = 0;
@@ -92,7 +94,9 @@ let _frameCtx: CanvasRenderingContext2D | null = null;
 
 // ── Performance Monitor ─────────────────────────────────────────────────
 export const perf = new PerformanceMonitor();
-window.iklippaScore = () => perf.report();
+if (typeof window !== 'undefined') {
+  (window as any).iklippaScore = () => perf.report();
+}
 
 // ── Thumbnail Capture ───────────────────────────────────────────────────
 function maybeCaptureThumbnail(ms: number): void {
@@ -110,7 +114,7 @@ function maybeCaptureThumbnail(ms: number): void {
   }
 }
 
-export function captureThumbnail(): string | null {
+function captureThumbnail(): string | null {
   if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
   try {
     return canvas.toDataURL('image/jpeg', 0.5);
@@ -119,6 +123,7 @@ export function captureThumbnail(): string | null {
   }
 }
 
+// fallow-ignore-next-line complexity
 export function captureThumbnailFromBuffer(ms: number): string | null {
   if (!canvas || !ctx) {
     warn('thumb', 'captureThumbnailFromBuffer: canvas/ctx not ready');
@@ -151,11 +156,11 @@ export function captureThumbnailFromBuffer(ms: number): string | null {
   }
 }
 
-export function getThumbnails(): Array<{ ms: number; dataUrl: string }> {
+function getThumbnails(): Array<{ ms: number; dataUrl: string }> {
   return timelineThumbnails;
 }
 
-export function getCurrentFileName(): string {
+function getCurrentFileName(): string {
   return currentFileName;
 }
 
@@ -178,7 +183,7 @@ export async function initEngine(canvasEl: HTMLCanvasElement): Promise<boolean> 
 
 async function initAudio(): Promise<void> {
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    audioCtx = getPorts().audioContextFactory.create();
     log('audio', `AudioContext created (sampleRate: ${audioCtx.sampleRate}Hz)`);
   }
   if (audioCtx.state !== 'running') {
@@ -263,7 +268,7 @@ function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'aud
   }
 }
 
-function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): void {
+export function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): void {
   const msg = e.data;
 
   switch (msg.type) {
@@ -499,7 +504,7 @@ function getAudioDescription(
 }
 
 // ── Render Loop ─────────────────────────────────────────────────────────
-function renderLoop(ts: number): void {
+export function renderLoop(ts: number): void {
   perf.recordRaf(ts);
   if (!isPlaying) return;
 
@@ -532,7 +537,7 @@ function renderLoop(ts: number): void {
   }
   worker!.postMessage({ type: 'sync', playheadMs, isPlaying, framesAhead });
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
-  rafHandle = requestAnimationFrame(renderLoop);
+  rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
 
 function _getCompositeCanvas(
@@ -540,7 +545,7 @@ function _getCompositeCanvas(
   h: number,
 ): [HTMLCanvasElement, CanvasRenderingContext2D] {
   if (!_compositeCanvas) {
-    _compositeCanvas = document.createElement('canvas');
+    _compositeCanvas = getPorts().canvasFactory.createCanvas() as unknown as HTMLCanvasElement;
     _compositeCtx = _compositeCanvas.getContext('2d')!;
   }
   if (_compositeCanvas.width !== w || _compositeCanvas.height !== h) {
@@ -555,7 +560,7 @@ function _getFrameCanvas(
   h: number,
 ): [HTMLCanvasElement, CanvasRenderingContext2D] {
   if (!_frameCanvas) {
-    _frameCanvas = document.createElement('canvas');
+    _frameCanvas = getPorts().canvasFactory.createCanvas() as unknown as HTMLCanvasElement;
     _frameCtx = _frameCanvas.getContext('2d')!;
   }
   if (_frameCanvas.width !== w || _frameCanvas.height !== h) {
@@ -636,6 +641,34 @@ function drawResolvedFrames(resolved: Array<{ clip: ClipWithMeta; imageData: Ima
   }
 }
 
+// ── Test Hooks ──────────────────────────────────────────────────────────
+export const __TEST_HOOKS__ = {
+  get worker() { return worker; },
+  set worker(val: Worker | null) { worker = val; },
+  get pendingFrames() { return pendingFrames; },
+  set pendingFrames(val: Map<number, ImageData>) { pendingFrames = val; },
+  get canvas() { return canvas; },
+  set canvas(val: HTMLCanvasElement | null) { canvas = val; },
+  get ctx() { return ctx; },
+  set ctx(val: CanvasRenderingContext2D | null) { ctx = val; },
+  get isExporting() { return isExporting; },
+  set isExporting(val: boolean) { isExporting = val; },
+  get exportFrames() { return exportFrames; },
+  set exportFrames(val: Array<{ ms: number; imageData: ImageData }>) { exportFrames = val; },
+  get videoDurationMs() { return videoDurationMs; },
+  set videoDurationMs(val: number) { videoDurationMs = val; },
+  get audioCtx() { return audioCtx; },
+  set audioCtx(val: AudioContextPort | null) { audioCtx = val; },
+  get isPlaying() { return isPlaying; },
+  set isPlaying(val: boolean) { isPlaying = val; },
+  get audioConfigVersion() { return audioConfigVersion; },
+  set audioConfigVersion(val: number) { audioConfigVersion = val; },
+  get audioPlayStartMs() { return audioPlayStartMs; },
+  set audioPlayStartMs(val: number) { audioPlayStartMs = val; },
+  setTimeline,
+  getProjectJson,
+};
+
 function paintFrameAtTime(ms: number): void {
   if (!ctx || !canvas) return;
 
@@ -671,7 +704,7 @@ function paintFrameAtTime(ms: number): void {
 }
 
 // ── Playback control ────────────────────────────────────────────────────
-export async function startPlayback(): Promise<void> {
+async function startPlayback(): Promise<void> {
   if (isPlaying) return;
   log(
     'play',
@@ -689,16 +722,16 @@ export async function startPlayback(): Promise<void> {
     scheduleAudioNode(ms, buffer);
   }
   syncWorkerState();
-  rafHandle = requestAnimationFrame(renderLoop);
+  rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
 
-export function pausePlayback(): void {
+function pausePlayback(): void {
   if (!isPlaying && rafHandle === null) return;
   log('play', `pausePlayback @ ${playheadMs.toFixed(0)}ms`);
   isPlaying = false;
   lastRafTs = null;
   if (rafHandle) {
-    cancelAnimationFrame(rafHandle);
+    getPorts().rafScheduler.cancelAnimationFrame(rafHandle);
     rafHandle = null;
   }
   stopAllAudioNodes();
@@ -721,7 +754,7 @@ export async function seekTo(ms: number): Promise<void> {
     isPlaying = false;
     lastRafTs = null;
     if (rafHandle) {
-      cancelAnimationFrame(rafHandle);
+      getPorts().rafScheduler.cancelAnimationFrame(rafHandle);
       rafHandle = null;
     }
     stopAllAudioNodes();
@@ -791,19 +824,20 @@ export async function exportVideo(
   }
 
   logStatus('Export: encoding…');
+  const ports = getPorts();
   const encodedChunks: Array<{
     buf: ArrayBuffer;
     timestamp: number;
     type: string;
   }> = [];
-  const encoder = new VideoEncoder({
-    output: (chunk) => {
+  const encoder = ports.videoEncoderFactory.create(
+    (chunk) => {
       const buf = new ArrayBuffer(chunk.byteLength);
       chunk.copyTo(buf);
       encodedChunks.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
     },
-    error: (e) => console.error(e),
-  });
+    (e) => console.error(e),
+  );
   encoder.configure({
     codec: 'avc1.42001f',
     width: sourceVideoWidth,
@@ -847,8 +881,8 @@ export async function exportVideo(
   }
   if (onProgress) onProgress(0.95);
   const { buffer } = muxer.finalize();
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([buffer], { type: 'video/mp4' }));
+  const a = ports.canvasFactory.createElement('a') as HTMLAnchorElement;
+  a.href = ports.urlFactory.createObjectURL(ports.blobFactory.create([buffer], { type: 'video/mp4' }));
   a.download = `iklippa-export-${Date.now()}.mp4`;
   a.click();
   isExporting = false;
@@ -858,7 +892,7 @@ export async function exportVideo(
 }
 
 // ── Rust Project Sync ───────────────────────────────────────────────────
-export function setTimeline(json: string): Promise<{ ok: boolean; error?: string }> {
+function setTimeline(json: string): Promise<{ ok: boolean; error?: string }> {
   return new Promise((resolve) => {
     const handler = (e: MessageEvent) => {
       if (e.data.type === 'timeline_set') {
@@ -871,7 +905,7 @@ export function setTimeline(json: string): Promise<{ ok: boolean; error?: string
   });
 }
 
-export function getProjectJson(): Promise<string> {
+function getProjectJson(): Promise<string> {
   return new Promise((resolve) => {
     const handler = (e: MessageEvent) => {
       if (e.data.type === 'project_json') {
