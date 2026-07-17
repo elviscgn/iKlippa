@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 // logic, not the DOM binding.
 
 import type { Project, Clip, ClipMeta, SavedState, ClipWithMeta } from '../src/state/types';
-import { deepEqual } from '../src/utils/helpers';
+import { deepEqual } from '../src/utils/object';
 
 // ── Replicated state logic for testability ──────────────────────────────
 // This is a self-contained copy of the IKState CRUD logic without window deps.
