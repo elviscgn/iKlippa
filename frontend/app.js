@@ -56,55 +56,16 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     const durationSec = durationMs / 1000;
     const displayName = fileName || "Imported Video";
 
-    // Check if timeline is empty BEFORE we touch anything
-    const timelineEmpty = !IKState.isReady() || IKState.getAllVideoClips().length === 0;
-
-    // Only init project if not already ready — re-init would wipe existing clips
+    // Init project if not already ready
     if (!IKState.isReady()) {
         IKState.init(width, height);
     }
 
-    const durationUs = Math.round(durationSec * 1_000_000);
-    const groupId = `group_${Date.now()}`;
     const sourceId = "imported_" + Date.now();
 
-    if (timelineEmpty) {
-        // First import: auto-add to timeline so playback starts immediately
-        window.S.dur = durationSec;
-        window.saveSnapshot();
-        IKState.addVideoClip(sourceId, 0, durationUs, {
-            name: displayName,
-            isReal: true,
-            thumbnails: getThumbnails ? getThumbnails() : [],
-        }, groupId);
-
-        // Sync to Rust + verify round-trip
-        const rustJson = IKState.toRustJson();
-        const syncResult = await setTimeline(rustJson);
-        if (syncResult.ok) {
-            const receivedJson = await getProjectJson();
-            const roundTripOk = IKState.verifyRoundTrip(rustJson, receivedJson);
-            console.log("%c[iKlippa] Project round-trip: " + (roundTripOk ? "PASS ✓" : "FAIL ✗"),
-                "color:" + (roundTripOk ? "#10b981" : "#ef4444") + ";font-weight:700;");
-            if (!roundTripOk) {
-                console.warn("Sent:     ", rustJson);
-                console.warn("Received: ", receivedJson);
-            }
-        } else {
-            console.error("[iKlippa] Rust timeline sync failed:", syncResult.error);
-        }
-
-        window.aiNodes = [];
-        if (window.resetAiActions) window.resetAiActions();
-
-        window.calculateTimelineDuration();
-        window.renderRuler();
-        window.renderClips();
-    }
-
-    // Always add to media pool (all imports)
+    // Add to media pool only — user drags onto timeline when ready
     window.mediaPool.footage.push({
-        id: sourceId, name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null
+        id: sourceId, name: displayName, isReal: true, dur: durationSec.toFixed(1) + "s", thumbDataUrl: null, width, height
     });
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
