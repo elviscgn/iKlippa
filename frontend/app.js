@@ -70,22 +70,25 @@ window.onClipImported = async ({ width, height, durationMs, fileName }) => {
     window.renderMedia("footage");
     window.showToast(`Clip loaded (${width}×${height})`, "film");
 
-    // Seek to middle of video for a representative thumbnail
-    const seekMs = (durationSec / 2) * 1000;
-    window.S.time = seekMs / 1000;
+    // Capture thumbnail — try to get a representative frame, not black
+    const midMs = (durationSec / 2) * 1000;
+    window.S.time = midMs / 1000;
     window.updatePlayhead();
-    await seekTo(seekMs);
+    await seekTo(midMs);
 
     let thumbAttempts = 0;
     const tryCaptureThumb = () => {
-        if (thumbAttempts++ > 15) return;
+        if (thumbAttempts++ > 20) {
+            // Fallback: seek to start if middle never rendered
+            window.S.time = 0;
+            window.updatePlayhead();
+            seekTo(0);
+            return;
+        }
         const thumb = captureThumbnail();
-        if (thumb) {
+        if (thumb && thumb.length > 500) {
             const entry = window.mediaPool.footage.find(f => f.id === sourceId);
-            if (entry) {
-                entry.thumbDataUrl = thumb;
-                window.renderMedia("footage");
-            }
+            if (entry) { entry.thumbDataUrl = thumb; window.renderMedia("footage"); }
         } else {
             setTimeout(tryCaptureThumb, 150);
         }
