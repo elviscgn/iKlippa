@@ -185,6 +185,9 @@ export function captureThumbnailFromBuffer(ms) {
 
 export function getThumbnails() { return timelineThumbnails; }
 export function getCurrentFileName() { return currentFileName; }
+/** Register a one-shot callback that fires with the frameMs of the first decoded frame
+ *  of the current import. Cleared on next importFile() call so stale callbacks never fire. */
+export function setPendingThumbCapture(cb) { _pendingThumbCapture = cb; }
 
 // ── Init & Worker Bridge ──────────────────────────────────────────────────────
 export async function initEngine(canvasEl) {
@@ -237,6 +240,14 @@ function handleWorkerMessage(e) {
     const arr = new Uint8ClampedArray(data.buffer);
     pendingFrames.set(data.ms, new ImageData(arr, sourceVideoWidth, sourceVideoHeight));
     if (isExporting) exportFrames.push({ ms: data.ms, imageData: pendingFrames.get(data.ms) });
+
+    // Fire pending thumbnail capture the moment the first frame of a new import arrives.
+    // This is race-free: we're already inside the message handler with the frame in pendingFrames.
+    if (_pendingThumbCapture) {
+      const cb = _pendingThumbCapture;
+      _pendingThumbCapture = null; // clear before calling so a re-import during cb is safe
+      try { cb(data.ms); } catch (e) { err('thumb', 'pendingThumbCapture callback threw', e.message); }
+    }
 
     if (!isPlaying) {
       if (seekTargetMs >= 0) {
@@ -301,6 +312,10 @@ function stopAllAudioNodes() {
 }
 
 // ── Demux ─────────────────────────────────────────────────────────────────────
+// Callback set by onClipImported — fires once when the first frame of a new
+// import lands in pendingFrames. Cleared immediately after use.
+let _pendingThumbCapture = null;
+
 export async function importFile(file) {
   log('import', `importFile: "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
   logStatus(`Importing: ${file.name}`);
@@ -309,6 +324,8 @@ export async function importFile(file) {
   lastThumbnailCaptureMs = -Infinity;
   seekTargetMs = -1;
   clearTimeout(seekPaintTimeout);
+  _pendingThumbCapture = null; // cancel any in-flight thumbnail from previous import
+  _loggedOnce.clear();         // reset once-guards so second import logs fresh
 
   initAudio();
   pendingFrames.clear(); pendingAudio.clear(); stopAllAudioNodes();
