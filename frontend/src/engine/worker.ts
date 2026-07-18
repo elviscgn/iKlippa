@@ -122,6 +122,10 @@ let currentSeekId = 0;
 let latestSeekId = 0;
 
 const MAX_DECODE_QUEUE = 8;
+// Max file reads per decodeNextSamples() call. Each read is an awaited slice
+// of the file; an unbounded pump can hold the serial queue for 100ms+ and
+// starve every message behind it.
+const MAX_READS_PER_PUMP = 8;
 // Never decode audio further than this past the playhead. Without a cap the
 // audio front runs arbitrarily far ahead (decoding the whole file during
 // playback), which both explodes the main thread's scheduled-node list and
@@ -259,35 +263,68 @@ function handleGetProjectJson() {
   postMessage({ type: 'project_json', json });
 }
 
-let messageQueue: Promise<void> = Promise.resolve();
+// ── Message scheduler ─────────────────────────────────────────────────────────
+// The queue is strictly serial (preserves init → load ordering), but 'sync'
+// messages coalesce latest-wins: a sync only carries "where is the playhead
+// now", so a stale one is worthless. The main thread fires syncs up to 60×/s
+// and each sync handler awaits file reads — without coalescing the queue went
+// seconds into debt during playback, and decoded audio/frames arrived so late
+// the main thread dropped them as stale (the "audio dies after a few seconds"
+// bug). Each message still runs in its own try/catch so one failure can never
+// corrupt or block the next.
+const pendingMsgs: any[] = [];
+let drainRunning = false;
+let drainPromise: Promise<void> = Promise.resolve();
+
+function enqueueMessage(msg: any): Promise<void> {
+  if (msg.type === 'sync') {
+    const i = pendingMsgs.findIndex((q) => q.type === 'sync');
+    if (i >= 0) {
+      pendingMsgs[i] = msg; // latest-wins, keeps queue position
+      return drainPromise;
+    }
+  }
+  pendingMsgs.push(msg);
+  if (!drainRunning) drainPromise = drainQueue();
+  return drainPromise;
+}
+
+async function drainQueue(): Promise<void> {
+  drainRunning = true;
+  while (pendingMsgs.length > 0) {
+    const msg = pendingMsgs.shift()!;
+    try {
+      await routeMessage(msg);
+    } catch (err) {
+      reportError(codeForFailedMessage(msg.type), err);
+    }
+  }
+  drainRunning = false;
+}
+
+async function routeMessage(msg: any): Promise<void> {
+  if (msg.type === 'seek' && msg.seekId !== undefined && msg.seekId !== latestSeekId) {
+    wwarn('worker', `skipping obsolete seek ${msg.seekId} (latest is ${latestSeekId})`);
+    return;
+  }
+
+  if (msg.type === 'init') await handleInit();
+  else if (msg.type === 'load') await handleLoad(msg);
+  else if (msg.type === 'seek') await handleSeek(msg);
+  else if (msg.type === 'resync_audio') await handleResyncAudio(msg);
+  else if (msg.type === 'sync') await handleSync(msg);
+  else if (msg.type === 'set_audio_version') handleSetAudioVersion(msg);
+  else if (msg.type === 'set_grade') await handleSetGrade(msg);
+  else if (msg.type === 'set_timeline') handleSetTimeline(msg);
+  else if (msg.type === 'get_project_json') handleGetProjectJson();
+}
 
 self.onmessage = (e: MessageEvent<any>) => {
   const msg = e.data;
   if (msg.type === 'seek' && msg.seekId !== undefined) {
     latestSeekId = msg.seekId;
   }
-
-  messageQueue = messageQueue.then(async () => {
-    if (msg.type === 'seek' && msg.seekId !== undefined && msg.seekId !== latestSeekId) {
-      wwarn('worker', `skipping obsolete seek ${msg.seekId} (latest is ${latestSeekId})`);
-      return;
-    }
-
-    if (msg.type === 'init') await handleInit();
-    else if (msg.type === 'load') await handleLoad(msg);
-    else if (msg.type === 'seek') await handleSeek(msg);
-    else if (msg.type === 'resync_audio') await handleResyncAudio(msg);
-    else if (msg.type === 'sync') await handleSync(msg);
-    else if (msg.type === 'set_audio_version') handleSetAudioVersion(msg);
-    else if (msg.type === 'set_grade') await handleSetGrade(msg);
-    else if (msg.type === 'set_timeline') handleSetTimeline(msg);
-    else if (msg.type === 'get_project_json') handleGetProjectJson();
-  }).catch((err) => {
-    // Was: wwarn(...) — a silent swallow that left the main thread waiting
-    // forever. Now every failed message reaches the UI as a toast.
-    reportError(codeForFailedMessage(msg.type), err);
-  });
-  return messageQueue;
+  return enqueueMessage(msg);
 };
 
 function postMessage(msg: WorkerIncomingMessage, transfer?: Transferable[]) {
@@ -565,13 +602,15 @@ export async function decodeNextSamples() {
 
   // ── Audio first (cheaper, more urgent for A/V sync) ──────────────
   if (audioDecoder && audioDecoder.state === 'configured' && audioSamples.length > 0) {
-    while (audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE) {
+    let audioReads = 0;
+    while (audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE && audioReads < MAX_READS_PER_PUMP) {
       const startIdx = lastDecodedAudioIdx + 1;
       if (startIdx >= audioSamples.length) break;
       const s = audioSamples[startIdx]!;
       const sMs = Math.round((s.cts * 1000) / s.timescale);
       if (sMs > currentPlayheadMs + AUDIO_LOOKAHEAD_MS) break; // stay near the playhead
       const data = await readSampleData(file, s);
+      audioReads++;
       if (session !== decodeSessionId) {
         isDecodingNext = false;
         return;
@@ -590,11 +629,13 @@ export async function decodeNextSamples() {
   }
 
   // ── Video second ──────────────────────────────────────────────────
-  while (decoder.decodeQueueSize < MAX_DECODE_QUEUE) {
+  let videoReads = 0;
+  while (decoder.decodeQueueSize < MAX_DECODE_QUEUE && videoReads < MAX_READS_PER_PUMP) {
     const startIdx = lastDecodedSampleIdx + 1;
     if (startIdx >= samples.length) break;
     const s = samples[startIdx]!;
     const data = await readSampleData(file, s);
+    videoReads++;
     if (session !== decodeSessionId) {
       isDecodingNext = false;
       return;
