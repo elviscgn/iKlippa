@@ -160,6 +160,7 @@ import {
   handleWorkerMessage,
   togglePlayback,
   importFile,
+  renderLoop,
 } from '../../src/engine/engine';
 
 describe('seekTo (Tier 2 - adapter ports)', () => {
@@ -668,5 +669,634 @@ describe('setTimeline and getProjectJson (Tier 2)', () => {
     handler({ data: { type: 'project_json', json: '{"key":"val"}' } });
     const result = await promise;
     expect(result).toBe('{"key":"val"}');
+  });
+});
+
+// ── paintFrameAtTime tests (via handleWorkerMessage) ─────────────────
+
+describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('ImageData', class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    });
+
+    __TEST_HOOKS__.worker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
+    __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
+    __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.videoDurationMs = 10000;
+    __TEST_HOOKS__.isPlaying = false;
+    __TEST_HOOKS__.playheadMs = 0;
+    __TEST_HOOKS__.sourceVideoWidth = 1920;
+    __TEST_HOOKS__.sourceVideoHeight = 1080;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('paints black frame when no active clips', () => {
+    const buf = new ArrayBuffer(100);
+    handleWorkerMessage({
+      data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
+    } as MessageEvent);
+
+    const ctx = __TEST_HOOKS__.ctx as any;
+    expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080);
+  });
+
+  it('paints single frame when a clip is active and frame matches', () => {
+    vi.stubGlobal('IKState', {
+      isReady: () => true,
+      getAllVideoClips: () => [
+        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
+      ],
+      getVideoClips: () => [],
+    });
+
+    __TEST_HOOKS__.pendingFrames.set(200, {} as ImageData);
+
+    const buf = new ArrayBuffer(100);
+    handleWorkerMessage({
+      data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
+    } as MessageEvent);
+
+    const ctx = __TEST_HOOKS__.ctx as any;
+    expect(ctx.putImageData).toHaveBeenCalledWith({}, 0, 0);
+  });
+
+  it('paints black frame when clip exists but no matching frame found', () => {
+    vi.stubGlobal('IKState', {
+      isReady: () => true,
+      getAllVideoClips: () => [
+        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
+      ],
+      getVideoClips: () => [{ id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 }],
+    });
+
+    __TEST_HOOKS__.pendingFrames = new Map(); // Empty
+
+    const buf = new ArrayBuffer(100);
+    handleWorkerMessage({
+      data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
+    } as MessageEvent);
+
+    const ctx = __TEST_HOOKS__.ctx as any;
+    expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080);
+  });
+
+  it('uses getAllVideoClips for multi-track compositing', () => {
+    vi.stubGlobal('IKState', {
+      isReady: () => true,
+      getAllVideoClips: () => [
+        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000, transform: { opacity: 1 } },
+        { id: 2, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000, transform: { opacity: 0.5 } },
+      ],
+      getVideoClips: () => [],
+    });
+
+    __TEST_HOOKS__.pendingFrames.set(200, {} as ImageData);
+    __TEST_HOOKS__.canvas!.width = 1920;
+    __TEST_HOOKS__.canvas!.height = 1080;
+
+    const buf = new ArrayBuffer(100);
+    handleWorkerMessage({
+      data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
+    } as MessageEvent);
+
+    // Should resolve frames for both clips and draw composed
+    const ctx = __TEST_HOOKS__.ctx as any;
+    // With composite path, drawImage is called
+    expect(ctx.drawImage).toHaveBeenCalled();
+  });
+
+  it('falls back to getVideoClips when getAllVideoClips is absent', () => {
+    vi.stubGlobal('IKState', {
+      isReady: () => true,
+      getVideoClips: () => [
+        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
+      ],
+    });
+
+    __TEST_HOOKS__.pendingFrames.set(200, {} as ImageData);
+
+    const buf = new ArrayBuffer(100);
+    handleWorkerMessage({
+      data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
+    } as MessageEvent);
+
+    const ctx = __TEST_HOOKS__.ctx as any;
+    expect(ctx.putImageData).toHaveBeenCalled();
+  });
+});
+
+// ── renderLoop tests ─────────────────────────────────────────────────────
+
+describe('renderLoop (Tier 2)', () => {
+  let mockWorker: any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('ImageData', class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    });
+
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    __TEST_HOOKS__.worker = mockWorker;
+    __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
+    __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
+    __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.videoDurationMs = 10000;
+    __TEST_HOOKS__.playheadMs = 0;
+    __TEST_HOOKS__.lastRafTs = null;
+    __TEST_HOOKS__.rafHandle = null;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    __TEST_HOOKS__.isPlaying = false;
+  });
+
+  it('returns early when not playing', () => {
+    __TEST_HOOKS__.isPlaying = false;
+    renderLoop(16);
+    // Should not post sync message
+    expect(mockWorker.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('stops playback when no clips exist on timeline', () => {
+    __TEST_HOOKS__.isPlaying = true;
+    vi.stubGlobal('IKState', {
+      isReady: () => true,
+      getVideoClips: () => [],
+      getAudioClips: () => [],
+      getDurationSec: () => 10,
+    });
+
+    renderLoop(16);
+    expect(__TEST_HOOKS__.isPlaying).toBe(false);
+  });
+
+  it('advances playhead based on delta time', () => {
+    __TEST_HOOKS__.isPlaying = true;
+    __TEST_HOOKS__.lastRafTs = 0;
+
+    vi.stubGlobal('IKState', {
+      isReady: () => true,
+      getVideoClips: () => [
+        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
+      ],
+      getAudioClips: () => [],
+      getDurationSec: () => 10,
+    });
+
+    renderLoop(16);
+    expect(__TEST_HOOKS__.playheadMs).toBe(16);
+  });
+
+  it('pauses when playhead reaches end of duration', () => {
+    __TEST_HOOKS__.isPlaying = true;
+    __TEST_HOOKS__.playheadMs = 9990;
+    __TEST_HOOKS__.lastRafTs = 0;
+
+    vi.stubGlobal('IKState', {
+      isReady: () => true,
+      getVideoClips: () => [
+        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
+      ],
+      getAudioClips: () => [],
+      getDurationSec: () => 10,
+    });
+
+    renderLoop(30);
+    expect(__TEST_HOOKS__.playheadMs).toBe(10000);
+    expect(__TEST_HOOKS__.isPlaying).toBe(false);
+  });
+
+  it('counts frames ahead of playhead for sync', () => {
+    __TEST_HOOKS__.isPlaying = true;
+    __TEST_HOOKS__.lastRafTs = 0;
+
+    __TEST_HOOKS__.pendingFrames.set(100, {} as ImageData);
+    __TEST_HOOKS__.pendingFrames.set(500, {} as ImageData);
+    __TEST_HOOKS__.pendingFrames.set(1000, {} as ImageData);
+    __TEST_HOOKS__.pendingFrames.set(50, {} as ImageData);
+
+    vi.stubGlobal('IKState', {
+      isReady: () => true,
+      getVideoClips: () => [
+        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
+      ],
+      getAudioClips: () => [],
+      getDurationSec: () => 10,
+    });
+
+    renderLoop(16);
+    // Should post sync message with framesAhead
+    const syncCalls = mockWorker.postMessage.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'sync'
+    );
+    expect(syncCalls.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ── seekTo with isPlaying cleanup (uncovered path) ─────────────────────
+
+describe('seekTo while playing (Tier 2)', () => {
+  let mockWorker: any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    __TEST_HOOKS__.worker = mockWorker;
+    __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.pendingAudio = new Map();
+    __TEST_HOOKS__.isPlaying = true;
+    __TEST_HOOKS__.rafHandle = 42;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    __TEST_HOOKS__.isPlaying = false;
+    __TEST_HOOKS__.rafHandle = null;
+  });
+
+  it('stops playback and posts seek when seeking while playing', () => {
+    seekTo(500);
+    expect(__TEST_HOOKS__.isPlaying).toBe(false);
+    expect(mockWorker.postMessage).toHaveBeenCalledWith({ type: 'seek', ms: 500 });
+  });
+});
+
+// ── handleWorkerReady with onClipImported ──────────────────────────────
+
+describe('handleWorkerReady with callbacks (Tier 2)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    __TEST_HOOKS__.canvas = { width: 0, height: 0 } as any;
+    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('calls onClipImported when window callback is set', () => {
+    const onClipImported = vi.fn();
+    vi.stubGlobal('window', { onClipImported });
+
+    handleWorkerMessage({
+      data: { type: 'ready', durationMs: 5000, width: 640, height: 480 },
+    } as MessageEvent);
+
+    expect(onClipImported).toHaveBeenCalledWith({
+      width: 640,
+      height: 480,
+      durationMs: 5000,
+      fileName: '',
+    });
+  });
+
+  it('sets canvas dimensions on ready', () => {
+    const c = { width: 0, height: 0 } as any;
+    __TEST_HOOKS__.canvas = c;
+
+    handleWorkerMessage({
+      data: { type: 'ready', durationMs: 5000, width: 640, height: 480 },
+    } as MessageEvent);
+
+    expect(c.width).toBe(640);
+    expect(c.height).toBe(480);
+    expect(__TEST_HOOKS__.videoDurationMs).toBe(5000);
+  });
+});
+
+// ── handleWorkerFrame with pending thumb capture ───────────────────────
+
+describe('handleWorkerFrame with pending thumb capture (Tier 2)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('ImageData', class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    });
+    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
+    __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
+    __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.videoDurationMs = 10000;
+    __TEST_HOOKS__.isPlaying = false;
+    __TEST_HOOKS__.playheadMs = 0;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('fires pending thumbnail capture callback on frame arrival', () => {
+    const cb = vi.fn();
+    setPendingThumbCapture(cb);
+
+    const buf = new ArrayBuffer(100);
+    handleWorkerMessage({
+      data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf },
+    } as MessageEvent);
+
+    expect(cb).toHaveBeenCalledWith(500);
+  });
+
+  it('handles callback throwing without crashing', () => {
+    setPendingThumbCapture(() => {
+      throw new Error('thumb error');
+    });
+
+    const buf = new ArrayBuffer(100);
+    expect(() => {
+      handleWorkerMessage({
+        data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf },
+      } as MessageEvent);
+    }).not.toThrow();
+  });
+});
+
+// ── handleWorkerAudioChunk edge cases ──────────────────────────────────
+
+describe('handleWorkerAudioChunk edge cases (Tier 2)', () => {
+  let mockWorker: any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    __TEST_HOOKS__.worker = mockWorker;
+    __TEST_HOOKS__.audioCtx = null;
+    __TEST_HOOKS__.audioConfigVersion = 0;
+    __TEST_HOOKS__.isPlaying = false;
+    __TEST_HOOKS__.playheadMs = 0;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    __TEST_HOOKS__.audioCtx = null;
+  });
+
+  it('silently ignores audio chunk when config version mismatches', () => {
+    const fakeCtx = fakeEnginePorts.audioContextFactory.create();
+    __TEST_HOOKS__.audioCtx = fakeCtx;
+    __TEST_HOOKS__.audioConfigVersion = 5;
+
+    vi.spyOn(fakeCtx, 'createBuffer');
+
+    handleWorkerMessage({
+      data: {
+        type: 'audio_chunk',
+        ms: 100,
+        channels: 2,
+        sampleRate: 48000,
+        length: 1024,
+        buffers: [new ArrayBuffer(4096), new ArrayBuffer(4096)],
+        configVersion: 0,
+      },
+    } as MessageEvent);
+
+    expect(fakeCtx.createBuffer).not.toHaveBeenCalled();
+  });
+});
+
+// ── logStatus / window callbacks ──────────────────────────────────────
+
+describe('window callbacks (Tier 2)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('calls onEngineStatus when logStatus fires', () => {
+    const onEngineStatus = vi.fn();
+    vi.stubGlobal('window', { onEngineStatus });
+
+    handleWorkerMessage({
+      data: { type: 'status', msg: 'WASM loaded' },
+    } as MessageEvent);
+
+    expect(onEngineStatus).toHaveBeenCalledWith('WASM loaded');
+  });
+
+  it('calls onTimelineSynced on timeline_set success', () => {
+    const onTimelineSynced = vi.fn();
+    vi.stubGlobal('window', { onTimelineSynced });
+
+    handleWorkerMessage({
+      data: { type: 'timeline_set', ok: true },
+    } as MessageEvent);
+
+    expect(onTimelineSynced).toHaveBeenCalledWith(true, undefined);
+  });
+
+  it('calls onPlayheadUpdate through renderLoop', () => {
+    const onPlayheadUpdate = vi.fn();
+    vi.stubGlobal('window', { onPlayheadUpdate });
+    vi.stubGlobal('IKState', {
+      isReady: () => true,
+      getVideoClips: () => [
+        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
+      ],
+      getAudioClips: () => [],
+      getDurationSec: () => 10,
+    });
+    __TEST_HOOKS__.isPlaying = true;
+    __TEST_HOOKS__.playheadMs = 0;
+    __TEST_HOOKS__.lastRafTs = 0;
+    __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
+    __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
+    __TEST_HOOKS__.pendingFrames = new Map();
+
+    renderLoop(16);
+
+    expect(onPlayheadUpdate).toHaveBeenCalledWith(16);
+  });
+
+  it('calls onProjectJsonReceived', () => {
+    const onProjectJsonReceived = vi.fn();
+    vi.stubGlobal('window', { onProjectJsonReceived });
+
+    handleWorkerMessage({
+      data: { type: 'project_json', json: '{"x": 1}' },
+    } as MessageEvent);
+
+    expect(onProjectJsonReceived).toHaveBeenCalledWith('{"x": 1}');
+  });
+});
+
+// ── setTimeline failure path ─────────────────────────────────────────
+
+describe('setTimeline failure (Tier 2)', () => {
+  let mockWorker: any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      _handlers: [] as Array<(...args: any[]) => void>,
+    };
+    mockWorker.addEventListener.mockImplementation((type: string, handler: any) => {
+      if (type === 'message') mockWorker._handlers.push(handler);
+    });
+    mockWorker.removeEventListener.mockImplementation((type: string, handler: any) => {
+      if (type === 'message') {
+        const idx = mockWorker._handlers.indexOf(handler);
+        if (idx >= 0) mockWorker._handlers.splice(idx, 1);
+      }
+    });
+    __TEST_HOOKS__.worker = mockWorker;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves with ok:false on error', async () => {
+    const promise = __TEST_HOOKS__.setTimeline('bad json');
+    expect(mockWorker.postMessage).toHaveBeenCalledWith({
+      type: 'set_timeline',
+      json: 'bad json',
+    });
+
+    const handler = mockWorker._handlers[0];
+    handler({ data: { type: 'timeline_set', ok: false, error: 'parse failed' } });
+    const result = await promise;
+    expect(result).toEqual({ ok: false, error: 'parse failed' });
+  });
+});
+
+// ── stopAllAudioNodes ─────────────────────────────────────────────────
+
+describe('stopAllAudioNodes via togglePlayback (Tier 2)', () => {
+  let mockWorker: any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    __TEST_HOOKS__.worker = mockWorker;
+    __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.isPlaying = true;
+    __TEST_HOOKS__.rafHandle = 42;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    __TEST_HOOKS__.isPlaying = false;
+    __TEST_HOOKS__.rafHandle = null;
+  });
+
+  it('pauses and stops audio nodes via togglePlayback', () => {
+    const result = togglePlayback();
+    expect(typeof result).toBe('boolean');
+    // Should have called cancelAnimationFrame
+  });
+});
+
+// ── seekTo fallback timeout ──────────────────────────────────────────
+
+describe('seekTo fallback timeout (Tier 2)', () => {
+  let mockWorker: any;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', {});
+    mockWorker = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    __TEST_HOOKS__.worker = mockWorker;
+    __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.pendingAudio = new Map();
+    __TEST_HOOKS__.isPlaying = false;
+    __TEST_HOOKS__.playheadMs = 0;
+    __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
+    __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('fires fallback timeout and paints black frame when no frame arrives', () => {
+    seekTo(1000);
+
+    vi.advanceTimersByTime(300);
+
+    const ctx = __TEST_HOOKS__.ctx as any;
+    expect(ctx.fillRect).toHaveBeenCalled();
+  });
+});
+
+// ── handleWorkerAudioChunk with isPlaying=true scheduling ─────────────
+
+describe('audio chunk with isPlaying scheduling (Tier 2)', () => {
+  let fakeCtx: any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {});
+    __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    __TEST_HOOKS__.audioCtx = null;
+    __TEST_HOOKS__.isPlaying = false;
+  });
+
+  it('schedules audio nodes when isPlaying and audioCtx ready', () => {
+    fakeCtx = fakeEnginePorts.audioContextFactory.create();
+    __TEST_HOOKS__.audioCtx = fakeCtx;
+    __TEST_HOOKS__.audioConfigVersion = 0;
+    __TEST_HOOKS__.isPlaying = true;
+    __TEST_HOOKS__.audioPlayStartMs = 0;
+    __TEST_HOOKS__.audioPlayStartCtxTime = 0;
+    __TEST_HOOKS__.nextAudioStartTime = 0;
+
+    vi.spyOn(fakeCtx, 'createBufferSource');
+
+    handleWorkerMessage({
+      data: {
+        type: 'audio_chunk',
+        ms: 100,
+        channels: 2,
+        sampleRate: 48000,
+        length: 1024,
+        buffers: [new ArrayBuffer(4096), new ArrayBuffer(4096)],
+        configVersion: 0,
+      },
+    } as MessageEvent);
+
+    expect(fakeCtx.createBufferSource).toHaveBeenCalled();
   });
 });

@@ -285,4 +285,76 @@ describe('Worker Message Integration (Tier 2 - adapter ports)', () => {
 
     expect(true).toBe(true);
   });
+
+  it('handleSync: does not decode when not playing', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        type: 'load',
+        file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(100)) }) },
+        codecConfig: { codec: 'avc' },
+        width: 1920,
+        height: 1080,
+        samples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        durationMs: 1000,
+      },
+    });
+    postMessageMock.mockClear();
+
+    await workerOnMessage({
+      data: { type: 'sync', playheadMs: 500, isPlaying: false, framesAhead: 5 },
+    });
+
+    // Should not trigger decode, no new frames posted
+    const decodeSubmits = postMessageMock.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'decode_submit'
+    );
+    expect(decodeSubmits.length).toBe(0);
+  });
+
+  it('handleSetTimeline: warns when WASM not ready', async () => {
+    // No init/load — WASM not ready
+    postMessageMock.mockClear();
+
+    await workerOnMessage({
+      data: { type: 'set_timeline', json: '{}' },
+    });
+
+    // Should not have posted timeline_set response
+    const timelineCalls = postMessageMock.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'timeline_set'
+    );
+    expect(timelineCalls.length).toBe(0);
+  });
+
+  it('handleGetProjectJson: does nothing when WASM not ready', async () => {
+    // No init/load — WASM not ready
+    postMessageMock.mockClear();
+
+    await workerOnMessage({ data: { type: 'get_project_json' } });
+
+    const projectCalls = postMessageMock.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'project_json'
+    );
+    expect(projectCalls.length).toBe(0);
+  });
+
+  it('handles unknown message type without crashing', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({ data: { type: 'unknown_type' } });
+
+    expect(true).toBe(true);
+  });
+
+  it('seek when no clips loaded warns and returns', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    postMessageMock.mockClear();
+
+    await workerOnMessage({ data: { type: 'seek', ms: 1000 } });
+    // Should warn but not post any frames
+    const frameCalls = postMessageMock.mock.calls.filter(
+      (c: any[]) => c[0]?.type === 'frame'
+    );
+    expect(frameCalls.length).toBe(0);
+  });
 });

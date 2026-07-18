@@ -6,6 +6,7 @@ export default defineConfig({
       'tests/unit/**/*.test.ts',
       'tests/adapters/**/*.test.ts',
       'tests/browser/**/*.browser.test.ts',
+      'tests/ui/**/*.test.ts',
     ],
     environment: 'node',
     coverage: {
