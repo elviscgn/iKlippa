@@ -175,7 +175,6 @@ async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfi
   if (audioConfig) setupAudioDecoder(audioConfig);
 
   await seekAndDecodeFrame(0);
-  await primeAudioDecode();
   wlog('worker', `ready posted — pendingFrames now sending to main thread`);
   postMessage({ type: 'ready', durationMs, width, height });
 }
@@ -190,7 +189,6 @@ async function handleSeek(msg: WorkerSeekCmd) {
   }
   wlog('worker', `seek → ${msg.ms}ms`);
   await seekAndDecodeFrame(msg.ms);
-  await primeAudioDecode();
 }
 
 async function handleResyncAudio(msg: WorkerResyncAudioCmd) {
@@ -532,10 +530,41 @@ export async function seekAndDecodeFrame(targetMs: number) {
       decoder!.configure(clips[0]!.codecConfig);
     }
 
+    // Set up audio decoder BEFORE the video loop so audio chunks start
+    // arriving during video decode instead of after it.
+    if (audioDecoder && audioSamples.length > 0) {
+      if (audioDecoder.state === 'closed') {
+        setupAudioDecoder(audioConfig!);
+      } else {
+        audioDecoder.reset();
+        audioDecoder.configure(audioConfig!);
+      }
+
+      let targetIdx = 0;
+      for (let i = 0; i < audioSamples.length; i++) {
+        const sMs = Math.round((audioSamples[i]!.cts * 1000) / audioSamples[i]!.timescale);
+        if (sMs >= targetMs) {
+          targetIdx = i;
+          break;
+        }
+      }
+      lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
+
+      // Fire-and-forget: audio chunks start arriving during the video
+      // decode loop (each await readSampleData yields to microtasks).
+      primeAudioDecode().catch((e: unknown) =>
+        reportError('DECODER_AUDIO_FATAL', e)
+      );
+    }
+
     for (let i = vKeyIdx; i < samples.length; i++) {
       if (latestSeekId !== currentSeekId) {
         wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
-        try { decoder!.close(); } catch {}
+        // Don't close the decoder — let it drain naturally; the next seek
+        // will reset it.  Reset lastDecodedSampleIdx to the keyframe so
+        // decodeNextSamples (if it runs before the next seek) restarts
+        // from a keyframe instead of hitting "key frame required".
+        lastDecodedSampleIdx = vKeyIdx - 1;
         break;
       }
 
@@ -557,25 +586,6 @@ export async function seekAndDecodeFrame(targetMs: number) {
         lastDecodedSampleIdx = i;
         break;
       }
-    }
-
-    if (audioDecoder && audioSamples.length > 0) {
-      if (audioDecoder.state === 'closed') {
-        setupAudioDecoder(audioConfig!);
-      } else {
-        audioDecoder.reset();
-        audioDecoder.configure(audioConfig!);
-      }
-
-      let targetIdx = 0;
-      for (let i = 0; i < audioSamples.length; i++) {
-        const sMs = Math.round((audioSamples[i]!.cts * 1000) / audioSamples[i]!.timescale);
-        if (sMs >= targetMs) {
-          targetIdx = i;
-          break;
-        }
-      }
-      lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
     }
 
     decoderSeeded = true;

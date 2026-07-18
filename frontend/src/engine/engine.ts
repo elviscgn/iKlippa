@@ -878,7 +878,7 @@ function paintFrameAtTime(ms: number): void {
 }
 
 // ── Playback control ────────────────────────────────────────────────────
-async function startPlayback(): Promise<void> {
+async function startPlayback(opts?: { fromSeek?: boolean }): Promise<void> {
   if (isPlaying) return;
   log(
     'play',
@@ -893,12 +893,21 @@ async function startPlayback(): Promise<void> {
   // Never schedule leftover chunks from before a pause: the worker re-sends
   // everything from the playhead (resync_audio below), so scheduling the
   // leftovers as well would double-stack them — the "screech" class of bug.
-  pendingAudio.clear();
+  // Skip when called from seekTo: seekTo already cleared pendingAudio, and
+  // the seek handler's audio chunks must survive to be scheduled.
+  if (!opts?.fromSeek) {
+    pendingAudio.clear();
+  }
   // Rewind the worker's audio decode front to the playhead. Pause stops and
   // discards all scheduled audio; without this the worker resumes decoding
   // from wherever it had pre-decoded to (possibly EOF), and the audio at the
   // playhead is never re-sent — the pause→play silence bug.
-  worker?.postMessage({ type: 'resync_audio', ms: mapTimelineToSourceMs(playheadMs) });
+  // Skip when called from seekTo: the seek handler already decoded audio from
+  // the correct position; a resync_audio here would reset the decoder and
+  // discard those chunks, wasting time and arriving stale.
+  if (!opts?.fromSeek) {
+    worker?.postMessage({ type: 'resync_audio', ms: mapTimelineToSourceMs(playheadMs) });
+  }
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
@@ -968,7 +977,7 @@ export async function seekTo(ms: number): Promise<void> {
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
-  if (wasPlaying) startPlayback();
+  if (wasPlaying) startPlayback({ fromSeek: true });
 }
 
 function syncWorkerState(): void {
