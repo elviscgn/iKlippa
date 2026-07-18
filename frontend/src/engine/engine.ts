@@ -132,6 +132,12 @@ let seekTargetMs = -1;
 let seekPaintTimeout: ReturnType<typeof setTimeout> | null = null;
 let seekGeneration = 0;
 
+// ── Worker sync throttling ──────────────────────────────────────────────
+// renderLoop runs at 60fps; posting an identical 'sync' every frame buries
+// the worker's serial queue (each sync handler awaits file reads) and delays
+// real decode work by seconds. Only post when something material changed.
+let lastSyncSig = '';
+
 // ── Pending thumbnail capture callback ──────────────────────────────────
 let _pendingThumbCapture: ((frameMs: number) => void) | null = null;
 
@@ -667,13 +673,20 @@ export function renderLoop(ts: number): void {
   // If in a gap, tell worker to sleep by reporting fake frames ahead
   const inGap = activeNow.length === 0;
   if (inGap) framesAhead = 100;
-  
-  worker!.postMessage({ 
-    type: 'sync', 
-    playheadMs: sourcePlayheadMs, 
-    isPlaying: isPlaying && !inGap, 
-    framesAhead 
-  });
+
+  // Throttle syncs: only when the playhead moved ≥100ms, play state flipped,
+  // or the buffer crossed the worker's pump threshold.
+  const playingNow = isPlaying && !inGap;
+  const syncSig = `${Math.round(sourcePlayheadMs / 100)}|${playingNow ? 1 : 0}|${framesAhead >= 15 ? 1 : 0}`;
+  if (syncSig !== lastSyncSig) {
+    lastSyncSig = syncSig;
+    worker!.postMessage({
+      type: 'sync',
+      playheadMs: sourcePlayheadMs,
+      isPlaying: playingNow,
+      framesAhead
+    });
+  }
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
@@ -824,6 +837,8 @@ export const __TEST_HOOKS__ = {
   set rafHandle(val: number | null) { rafHandle = val; },
   get seekTargetMs() { return seekTargetMs; },
   set seekTargetMs(val: number) { seekTargetMs = val; },
+  get lastSyncSig() { return lastSyncSig; },
+  set lastSyncSig(val: string) { lastSyncSig = val; },
   setTimeline,
   getProjectJson,
 };
@@ -961,11 +976,16 @@ function syncWorkerState(): void {
   const inGap = activeNow.length === 0;
   const sourcePlayheadMs = mapTimelineToSourceMs(playheadMs);
   if (worker) {
-    worker.postMessage({ 
-      type: 'sync', 
-      playheadMs: sourcePlayheadMs, 
-      isPlaying: isPlaying && !inGap, 
-      framesAhead: inGap ? 100 : 0 
+    const playingNow = isPlaying && !inGap;
+    const framesAhead = inGap ? 100 : 0;
+    // Discrete transitions always sync — and record the sig so renderLoop
+    // doesn't immediately re-send a duplicate.
+    lastSyncSig = `${Math.round(sourcePlayheadMs / 100)}|${playingNow ? 1 : 0}|${framesAhead >= 15 ? 1 : 0}`;
+    worker.postMessage({
+      type: 'sync',
+      playheadMs: sourcePlayheadMs,
+      isPlaying: playingNow,
+      framesAhead
     });
   }
 }
