@@ -19,7 +19,6 @@ func main() {
 
 	api := router.Group("/api")
 	{
-		// TODO 1: Create a POST route at "/director/generate"
 
 		api.POST("/director/generate", func(c *gin.Context) {
 
@@ -47,18 +46,21 @@ func main() {
 
 			payload, _ := json.Marshal(pythonPayload)
 
-			// TODO 3: Make an http.Post() request to "http://localhost:8000/analyze".
-			// Pass "application/json" as the content-type, and bytes.NewBuffer(yourJsonBytes) as the body.
-			// Don't forget to check for an error, and defer closing the response body!
+			response, err := http.Post("http://localhost:8000/analyze", "application/json", bytes.NewBuffer(payload))
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			defer response.Body.Close()
 
-			// TODO 4: Create a variable of type map[string]interface{} (this is how Go handles dynamic JSON).
-			// Use json.NewDecoder(resp.Body).Decode(&yourMap) to unpack Python's response.
+			responseMap := make(map[string]interface{})
+			_ = json.NewDecoder(response.Body).Decode(&responseMap)
 
-			// TODO 5: Send the final combined payload back to the React frontend!
-			// Use c.JSON(http.StatusOK, gin.H{
-			//     "script": result,
-			//     "ml_data": yourMap,
-			// })
+			// Send the final combined payload back to the React frontend!
+			c.JSON(http.StatusOK, gin.H{
+				"script":  result,
+				"ml_data": responseMap,
+			})
 		})
 
 	}
