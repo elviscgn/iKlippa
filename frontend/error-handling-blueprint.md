@@ -25,6 +25,7 @@ This document captures the audit findings, the four-part architecture, and the r
 - **Open (step 3):** the decoder output callback reads `currentSeekId` at post time, so a frame from seek N−1 still awaiting `copyTo` when seek N starts gets tagged as seek N and passes the `seekGeneration` filter (one-frame wrong-position flicker).
 - **Open (step 4):** `sync` messages (60/s, each awaiting file I/O) are never coalesced — a large share of the scrub-freeze queue debt that the `seekId` fix didn't remove.
 - **Open (step 2):** no heartbeat/watchdog — a truly wedged worker is indistinguishable from a busy one.
+- ✅→fixed (pause→play silence): the audio decoder ran unthrottled ahead of the playhead; pause discarded all scheduled/cached audio and resume never rewound the worker's decode front, so audio at the playhead was never re-sent. Fixed via `AUDIO_LOOKAHEAD_MS` throttle + `resync_audio` on playback start + `onended` node cleanup. **Lesson:** this bug threw *no exception*, so the step-1 funnel could not see it — logic bugs need the step-2 watchdogs (e.g. a scheduled-audio-vs-playhead mismatch detector) to become visible automatically.
 
 ### Root pattern
 All of the above are three failures in costume:
