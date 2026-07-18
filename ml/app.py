@@ -29,6 +29,10 @@ async def analyze_script(req: ScriptRequest):
     videos = search_stock_videos(first_keyword)
 
     mood_label = script_extraction["mood"]["label"]
+    if mood_label == "neutral":
+        mood_label = "ambient"
+        script_extraction["mood"]["label"] = "ambient"
+    
     background_music = search_background_music(mood_label)
 
     return AnalysisResponse(
