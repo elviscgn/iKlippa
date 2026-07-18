@@ -120,7 +120,7 @@ textarea {
   gap: 16px;
 }
 .topnav-logo {
-  height: 26px;
+  height: 38px;
   display: block;
   object-fit: contain;
 }
@@ -385,6 +385,35 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.media-del-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.7);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 2;
+  padding: 0;
+}
+.media-del-btn svg {
+  width: 12px;
+  height: 12px;
+}
+.media-item:hover .media-del-btn {
+  opacity: 1;
+}
+.media-del-btn:hover {
+  background: #ef4444;
 }
 
 .audio-item {
@@ -1307,6 +1336,12 @@ textarea {
   display: flex;
   height: 32px;
   padding: 8px 16px 0 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.tl-ruler-wrapper::-webkit-scrollbar {
+  display: none;
 }
 .tl-gutter {
   min-width: 80px;
@@ -1315,7 +1350,6 @@ textarea {
   border-right: 1px solid var(--border-subtle);
 }
 .tl-ruler {
-  flex: 1;
   position: relative;
   cursor: text;
   background: rgba(0, 0, 0, 0.3);
@@ -1349,7 +1383,7 @@ textarea {
 .tl-tracks {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   position: relative;
   padding: 8px 16px 8px 20px;
 }
