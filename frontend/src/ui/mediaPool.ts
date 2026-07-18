@@ -8,7 +8,8 @@ declare global {
 }
 
 // ── Media Rendering Logic ──────────────────────────────────────────────
-export function renderMedia(
+// fallow-ignore-next-line complexity
+export async function renderMedia(
   type: 'footage' | 'audio' | 'stock',
   subType: 'video' | 'image' | 'music' | null = null
 ) {
