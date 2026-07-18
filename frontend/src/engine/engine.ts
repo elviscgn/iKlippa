@@ -338,6 +338,14 @@ function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'aud
     return;
   }
   if (msg.configVersion !== audioConfigVersion) return;
+  // Anchor the audio clock to the moment the first chunk actually arrives,
+  // not the moment seekTo/startPlayback fired.  The video decode loop
+  // (seekAndDecodeFrame) can take 100-300ms; if we already set
+  // audioPlayStartCtxTime back then, every chunk arrives "stale" and gets
+  // dropped.  Setting it here means the first chunk always lands on time.
+  if (nextAudioStartTime === 0) {
+    audioPlayStartCtxTime = audioCtx.currentTime;
+  }
   const audioBuffer = audioCtx.createBuffer(msg.channels, msg.length, msg.sampleRate);
   for (let c = 0; c < msg.channels; c++) {
     audioBuffer.copyToChannel(new Float32Array(msg.buffers[c]!), c);
