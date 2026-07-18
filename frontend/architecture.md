@@ -48,3 +48,12 @@ The UI is strictly separated from the engine. It communicates with `engine.ts` p
 *   **Technical Debt Note**: The `window.*` hooks are acknowledged technical debt from the initial prototyping phase. They lack type safety and teardown lifecycles. They should be migrated to a dedicated Pub/Sub `EventBus`.
 *   The UI never touches the `AudioContext` or `CanvasRenderingContext2D`.
 *   The UI manages its own internal playhead interpolation loop for 60 FPS smoothness, which is periodically synced by the `engine.ts` absolute state.
+
+## 7. Error Boundary (No Silent Failures)
+All engine errors — WASM panics, WebCodecs crashes, worker promise rejections — are funnelled into a single typed protocol and surfaced as UI toasts. The full design and rollout plan lives in `error-handling-blueprint.md`.
+
+*   **Protocol (`types.ts`)**: `EngineError { code, message, detail, fatal, opId, at }`. The worker reports failures as `{ type: 'error', error }` messages.
+*   **Worker funnel (`worker.ts`)**: `reportError()` is the ONLY way errors leave the worker. It captures: decoder error callbacks, the message-queue catch (previously a silent `wwarn`), WASM `process_frame()` panics (always fatal — with `panic=abort` the module is poisoned), and global `self.onerror` / `self.onunhandledrejection` nets. A ring buffer of the last 200 log lines is attached to every report so crashes are diagnosable without a repro.
+*   **Main-thread sink (`errors.ts` + `engine.ts`)**: the `errorBus` pub/sub receives worker reports, `worker.onerror` / `worker.onmessageerror`, explicit local failures (`emitLocal`: demux, export, playback), and a last-resort `window.unhandledrejection` net. A `WeakSet` dedupes errors already reported with a specific code so nothing toasts twice.
+*   **UI (`main.ts`)**: `window.onEngineError` renders a toast (`USER_ERROR_MESSAGES[code]`); fatal errors also update the status badge.
+*   **The rule**: an error must terminate in a recovery routine or a visible toast — never the console.
