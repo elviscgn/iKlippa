@@ -16,8 +16,8 @@ type WatsonxClient struct {
 // NewWatsonxClient creates a new client to talk to local Ollama
 func NewWatsonxClient() *WatsonxClient {
 	return &WatsonxClient{
-		// Local LLMs running on CPU/Laptop GPUs can take 10-30 seconds to reply!
-		HttpClient: &http.Client{Timeout: 60 * time.Second},
+		// Local LLMs running on CPU/Laptop GPUs can take 1-5 minutes to reply!
+		HttpClient: &http.Client{Timeout: 300 * time.Second},
 	}
 }
 
