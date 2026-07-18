@@ -143,6 +143,14 @@ export interface WorkerSeekCmd {
   seekId?: number;
 }
 
+/** Rewind the audio decode front to `ms` (source time) and re-prime.
+ *  Sent when playback resumes after a pause: pause drops all scheduled/
+ *  cached audio, so the chunks at the playhead must be re-sent. */
+export interface WorkerResyncAudioCmd {
+  type: 'resync_audio';
+  ms: number;
+}
+
 export interface WorkerSyncCmd {
   type: 'sync';
   playheadMs: number;
@@ -174,6 +182,7 @@ type WorkerOutgoingMessage =
   | WorkerInitCmd
   | WorkerLoadCmd
   | WorkerSeekCmd
+  | WorkerResyncAudioCmd
   | WorkerSyncCmd
   | WorkerSetGradeCmd
   | WorkerSetTimelineCmd
