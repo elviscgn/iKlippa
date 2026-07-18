@@ -14,6 +14,8 @@ The editor separates the heavy lifting of video decoding from the UI rendering t
     *   Maintains a `pendingFrames` and `pendingAudio` cache.
     *   Runs the primary `requestAnimationFrame` loop (`renderLoop`) which composites the frames onto an HTML5 `<canvas>` using the timeline's Z-index and opacity metadata.
 
+**Worker Message Scheduler**: the worker processes messages on a strictly serial drain loop (preserves init → load ordering), but `sync` messages **coalesce latest-wins** — a sync only carries "where is the playhead now", so a stale one is worthless. The main thread throttles sync sends to material changes (playhead moved ≥100ms, play state flipped, or the buffer crossed the pump threshold). This is load-bearing: each sync handler awaits file reads, and an unthrottled 60/s sync firehose put the queue seconds into debt during playback — decoded audio/frames arrived so late they were dropped as stale (the "audio dies after a few seconds" bug). Each queued message runs in its own try/catch so one failure can never corrupt or block the next.
+
 ## 2. Time Mapping (Timeline vs. Source)
 Because an editor allows users to cut, trim, and move clips, the time on the timeline does not 1-to-1 match the time in the source video file.
 
