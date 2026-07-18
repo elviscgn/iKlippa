@@ -155,9 +155,9 @@ window.onPlaybackPaused = (): void => {
 
 // ── Timeline Scrub: Throttled ───────────────────────────────────────────
 let lastSeekMs = -1;
-window.onPlayheadScrub = (timeSec: number): void => {
+window.onPlayheadScrub = (timeSec: number, force?: boolean): void => {
   const ms = Math.round(timeSec * 1000);
-  if (Math.abs(ms - lastSeekMs) < 50) return;
+  if (!force && Math.abs(ms - lastSeekMs) < 50) return;
   lastSeekMs = ms;
   seekTo(ms).catch(console.error);
 };
@@ -270,10 +270,25 @@ fileInput.addEventListener('change', async () => {
 
 // ── Engine Initialization ───────────────────────────────────────────────
 initEngine(canvasEl)
-  .then(() => {
+  .then(async () => {
     console.log('[iKlippa] Engine ready. Drop a video file to begin.');
     statusBadge.innerHTML = '<i data-lucide="cloud-lightning"></i> Engine ready';
     window.lucide.createIcons({ nodes: [statusBadge] });
+
+    // Dev auto-load helper
+    if (import.meta.env.DEV) {
+      try {
+        const res = await fetch('/test.mp4');
+        if (res.ok) {
+          const blob = await res.blob();
+          const file = new File([blob], 'test.mp4', { type: 'video/mp4' });
+          console.log('[Dev Auto-Load] test.mp4 found, importing...');
+          await importFile(file);
+        }
+      } catch (err) {
+        console.warn('[Dev Auto-Load] No test.mp4 auto-load:', err);
+      }
+    }
   })
   .catch((error: Error) => {
     console.error('[iKlippa] WASM load failed:', error);

@@ -285,7 +285,7 @@ export function initTimelineUI() {
   const tlBody = $('#tl-body');
   if (tlBody) {
     tlBody.addEventListener('wheel', (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey || !e.shiftKey) {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) {
         e.preventDefault();
         S.zoom = Math.max(0.5, Math.min(50, S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)));
         const zt = $('#zoom-text');
