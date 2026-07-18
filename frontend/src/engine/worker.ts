@@ -121,6 +121,9 @@ let offscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
 let currentSeekId = 0;
 let latestSeekId = 0;
 
+let currentWidth = 0;
+let currentHeight = 0;
+
 const MAX_DECODE_QUEUE = 8;
 // Max file reads per decodeNextSamples() call. Each read is an awaited slice
 // of the file; an unbounded pump can hold the serial queue for 100ms+ and
@@ -142,6 +145,8 @@ async function handleInit() {
 async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfig, audioSamples?: MP4Sample[], audioConfigVersion?: number }) {
   globalStartOffsetUs = -1;
   const { file, codecConfig, width, height, samples, durationMs } = msg;
+  currentWidth = width;
+  currentHeight = height;
   wlog(
     'worker',
     `load: ${width}×${height} · ${(durationMs / 1000).toFixed(2)}s · ${samples.length} video samples · ${(msg.audioSamples || []).length} audio samples · codec: ${codecConfig.codec}`
@@ -189,14 +194,18 @@ async function handleSeek(msg: WorkerSeekCmd) {
 }
 
 async function handleResyncAudio(msg: WorkerResyncAudioCmd) {
-  if (!audioDecoder || audioDecoder.state === 'closed' || !audioConfig) return;
+  if (!audioConfig) return;
   if (!audioSamples.length || !clips.length) return;
+  if (!audioDecoder || audioDecoder.state === 'closed') {
+    setupAudioDecoder(audioConfig);
+  } else {
+    audioDecoder.reset();
+    audioDecoder.configure(audioConfig);
+  }
 
   // The main thread dropped all scheduled/cached audio on pause. Rewind the
   // decode front to the playhead so those chunks are re-sent exactly once.
   wlog('audio', `resync_audio → rewinding decode front to ${msg.ms}ms`);
-  audioDecoder.reset();
-  audioDecoder.configure(audioConfig);
 
   let targetIdx = audioSamples.length;
   for (let i = 0; i < audioSamples.length; i++) {
@@ -491,76 +500,88 @@ export async function seekAndDecodeFrame(targetMs: number) {
   decodeSessionId++;
   decoderSeeded = false;
 
-  const { samples, file } = clips[0]!;
+  try {
+    const { samples, file } = clips[0]!;
 
-  let vKeyIdx = -1;
-  for (let i = 0; i < samples.length; i++) {
-    const sMs = Math.round((samples[i]!.cts * 1000) / samples[i]!.timescale);
-    if (sMs <= targetMs && samples[i]!.is_sync) vKeyIdx = i;
-    if (sMs > targetMs) break;
-  }
-  if (vKeyIdx === -1) {
+    let vKeyIdx = -1;
     for (let i = 0; i < samples.length; i++) {
-      if (samples[i]!.is_sync) {
-        vKeyIdx = i;
-        break;
+      const sMs = Math.round((samples[i]!.cts * 1000) / samples[i]!.timescale);
+      if (sMs <= targetMs && samples[i]!.is_sync) vKeyIdx = i;
+      if (sMs > targetMs) break;
+    }
+    if (vKeyIdx === -1) {
+      for (let i = 0; i < samples.length; i++) {
+        if (samples[i]!.is_sync) {
+          vKeyIdx = i;
+          break;
+        }
       }
     }
-  }
-  if (vKeyIdx === -1) {
-    wwarn('seek', `no keyframe found for target ${targetMs}ms`);
-    isSeeking = false;
-    return;
-  }
-
-  const keyframeMs = Math.round((samples[vKeyIdx]!.cts * 1000) / samples[vKeyIdx]!.timescale);
-  wlog('seek', `seekAndDecodeFrame ${targetMs}ms — keyframe at sample[${vKeyIdx}] = ${keyframeMs}ms`);
-  decoder!.reset();
-  decoder!.configure(clips[0]!.codecConfig);
-
-  for (let i = vKeyIdx; i < samples.length; i++) {
-    if (latestSeekId !== currentSeekId) {
-      wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
-      break;
+    if (vKeyIdx === -1) {
+      wwarn('seek', `no keyframe found for target ${targetMs}ms`);
+      return;
     }
 
-    const s = samples[i]!;
-    const sMs = Math.round((s.cts * 1000) / s.timescale);
-    const data = await readSampleData(file, s);
+    const keyframeMs = Math.round((samples[vKeyIdx]!.cts * 1000) / samples[vKeyIdx]!.timescale);
+    wlog('seek', `seekAndDecodeFrame ${targetMs}ms — keyframe at sample[${vKeyIdx}] = ${keyframeMs}ms`);
 
-    postMessage({ type: 'decode_submit', ms: sMs });
-    decoder!.decode(
-      new EncodedVideoChunk({
-        type: s.is_sync ? 'key' : 'delta',
-        timestamp: (s.cts * 1_000_000) / s.timescale,
-        duration: (s.duration * 1_000_000) / s.timescale,
-        data,
-      })
-    );
-
-    if (sMs >= targetMs) {
-      lastDecodedSampleIdx = i;
-      break;
+    if (decoder && decoder.state === 'closed') {
+      setupDecoder(clips[0]!.codecConfig, currentWidth, currentHeight);
+    } else {
+      decoder!.reset();
+      decoder!.configure(clips[0]!.codecConfig);
     }
-  }
 
-  if (audioDecoder && audioSamples.length > 0) {
-    audioDecoder.reset();
-    audioDecoder.configure(audioConfig!);
+    for (let i = vKeyIdx; i < samples.length; i++) {
+      if (latestSeekId !== currentSeekId) {
+        wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
+        try { decoder!.close(); } catch {}
+        break;
+      }
 
-    let targetIdx = 0;
-    for (let i = 0; i < audioSamples.length; i++) {
-      const sMs = Math.round((audioSamples[i]!.cts * 1000) / audioSamples[i]!.timescale);
+      const s = samples[i]!;
+      const sMs = Math.round((s.cts * 1000) / s.timescale);
+      const data = await readSampleData(file, s);
+
+      postMessage({ type: 'decode_submit', ms: sMs });
+      decoder!.decode(
+        new EncodedVideoChunk({
+          type: s.is_sync ? 'key' : 'delta',
+          timestamp: (s.cts * 1_000_000) / s.timescale,
+          duration: (s.duration * 1_000_000) / s.timescale,
+          data,
+        })
+      );
+
       if (sMs >= targetMs) {
-        targetIdx = i;
+        lastDecodedSampleIdx = i;
         break;
       }
     }
-    lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
-  }
 
-  decoderSeeded = true;
-  isSeeking = false;
+    if (audioDecoder && audioSamples.length > 0) {
+      if (audioDecoder.state === 'closed') {
+        setupAudioDecoder(audioConfig!);
+      } else {
+        audioDecoder.reset();
+        audioDecoder.configure(audioConfig!);
+      }
+
+      let targetIdx = 0;
+      for (let i = 0; i < audioSamples.length; i++) {
+        const sMs = Math.round((audioSamples[i]!.cts * 1000) / audioSamples[i]!.timescale);
+        if (sMs >= targetMs) {
+          targetIdx = i;
+          break;
+        }
+      }
+      lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
+    }
+
+    decoderSeeded = true;
+  } finally {
+    isSeeking = false;
+  }
 }
 
 export async function primeAudioDecode() {
@@ -593,7 +614,11 @@ export async function primeAudioDecode() {
 
 // fallow-ignore-next-line complexity
 export async function decodeNextSamples() {
-  if (!clips.length || !decoder || decoder.state !== 'configured') return;
+  if (!clips.length || !decoder) return;
+  if (decoder.state === 'closed') {
+    setupDecoder(clips[0]!.codecConfig, currentWidth, currentHeight);
+  }
+  if (decoder.state !== 'configured') return;
   if (!decoderSeeded || isSeeking || isDecodingNext) return;
 
   isDecodingNext = true;
@@ -601,6 +626,9 @@ export async function decodeNextSamples() {
   const { samples, file } = clips[0]!;
 
   // ── Audio first (cheaper, more urgent for A/V sync) ──────────────
+  if (audioDecoder && audioDecoder.state === 'closed' && audioConfig) {
+    setupAudioDecoder(audioConfig);
+  }
   if (audioDecoder && audioDecoder.state === 'configured' && audioSamples.length > 0) {
     let audioReads = 0;
     while (audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE && audioReads < MAX_READS_PER_PUMP) {
