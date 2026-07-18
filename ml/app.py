@@ -34,14 +34,8 @@ async def analyze_script(req: ScriptRequest):
     first_keyword = script_extraction["keywords"][0] if script_extraction["keywords"] else "cinematic"
     videos = search_stock_videos(first_keyword)
 
-
-
-
-
-    # TODO 3: Search for background music
-    # Grab the mood label.
-    # e.g., mood_label = script_extraction["mood"]["label"]
-    # Then call search_background_music() with it.
+    mood_label = script_extraction["mood"]["label"]
+    background_music = search_background_music(mood_label)
 
     # TODO 4: Return an AnalysisResponse with all the data plugged in!
     # return AnalysisResponse(
