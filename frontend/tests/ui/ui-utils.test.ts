@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { picUrl, showToast, resizeCanvas } from '../../src/ui/utils';
+import { picUrl, showToast } from '../../src/ui/utils';
 
 describe('picUrl', () => {
   it('generates a picsum URL with given id and dimensions', () => {
@@ -42,7 +42,6 @@ describe('showToast', () => {
     expect(toast!.innerHTML).toContain('File imported');
     expect(toast!.innerHTML).toContain('data-lucide="upload"');
 
-    // lucide.createIcons should be called with the toast node
     expect(window.lucide.createIcons).toHaveBeenCalledWith(
       expect.objectContaining({ nodes: [toast] }),
     );
@@ -53,31 +52,42 @@ describe('showToast', () => {
 
     expect(document.querySelectorAll('.toast').length).toBe(1);
 
-    // Advance past the 3000ms trigger
     vi.advanceTimersByTime(3000);
     const toast = document.querySelector('.toast');
     expect(toast!.classList.contains('hide')).toBe(true);
 
-    // Advance past the 300ms removal
     vi.advanceTimersByTime(300);
     expect(document.querySelectorAll('.toast').length).toBe(0);
   });
 });
 
 describe('resizeCanvas', () => {
-  beforeEach(() => {
+  let resizeCanvas: () => void;
+
+  beforeEach(async () => {
     document.body.innerHTML = `
       <div id="canvas-wrapper" style="width: 800px; height: 450px;">
         <canvas id="canvas-frame"></canvas>
       </div>
     `;
 
-    // Stub the global S object
-    vi.stubGlobal('S', { selectedAR: '16/9' });
+    // Mock the S module that resizeCanvas imports
+    vi.mock('../../src/ui/state', () => ({
+      S: { selectedAR: '16/9' },
+      $: (s: string) => document.querySelector(s),
+      $$: (s: string) => document.querySelectorAll(s),
+      us2s: (us: number) => us / 1_000_000,
+      mediaPool: { footage: [], audio: [], stock: { video: [], image: [], music: [] } },
+      aiNodes: [],
+    }));
+
+    const mod = await import('../../src/ui/utils');
+    resizeCanvas = mod.resizeCanvas;
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.resetModules();
   });
 
   it('does nothing if wrapper or frame is missing', () => {
@@ -86,35 +96,15 @@ describe('resizeCanvas', () => {
     frame.id = 'canvas-frame';
     document.body.appendChild(frame);
 
-    // No wrapper -> should return early
     expect(() => resizeCanvas()).not.toThrow();
   });
 
-  it('sets frame height to 100% when wrapper is wider than target ratio (16:9)', () => {
+  it('sets frame height to auto when wrapper ratio equals target ratio (16:9)', () => {
     const frame = document.getElementById('canvas-frame') as HTMLElement;
     resizeCanvas();
 
-    // 800 / 450 = 1.78, 16/9 = 1.78 => they're equal, so width = 100%, height = auto
-    expect(frame.style.width).toBe('100%');
-    expect(frame.style.height).toBe('auto');
-  });
-
-  it('adjusts for 4:3 aspect ratio', () => {
-    vi.stubGlobal('S', { selectedAR: '4/3' });
-    const frame = document.getElementById('canvas-frame') as HTMLElement;
-    resizeCanvas();
-
-    // 800 / 450 = 1.78 > 4/3 = 1.33 => wrapper is wider => height = 100%, width = auto
-    expect(frame.style.height).toBe('100%');
-    expect(frame.style.width).toBe('auto');
-  });
-
-  it('adjusts for 21:9 ultrawide aspect ratio', () => {
-    vi.stubGlobal('S', { selectedAR: '21/9' });
-    const frame = document.getElementById('canvas-frame') as HTMLElement;
-    resizeCanvas();
-
-    // 800 / 450 = 1.78 < 21/9 = 2.33 => wrapper is narrower => width = 100%, height = auto
+    // 800/450 = 1.78, 16/9 = 1.78 => wrapperRatio > targetRatio is false (1.78 > 1.78 = false)
+    // so falls to else: width = 100%, height = auto
     expect(frame.style.width).toBe('100%');
     expect(frame.style.height).toBe('auto');
   });

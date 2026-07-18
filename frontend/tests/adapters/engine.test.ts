@@ -1272,6 +1272,7 @@ describe('audio chunk with isPlaying scheduling (Tier 2)', () => {
     vi.unstubAllGlobals();
     __TEST_HOOKS__.audioCtx = null;
     __TEST_HOOKS__.isPlaying = false;
+    resetLeakRegistry();
   });
 
   it('schedules audio nodes when isPlaying and audioCtx ready', () => {
