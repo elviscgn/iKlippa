@@ -223,7 +223,7 @@ async function handleSync(msg: WorkerSyncCmd) {
   currentPlayheadMs = msg.playheadMs;
   isWorkerPlaying = msg.isPlaying;
 
-  if (isWorkerPlaying && msg.framesAhead < 15) {
+  if (isWorkerPlaying) {
     await decodeNextSamples();
   }
 }
