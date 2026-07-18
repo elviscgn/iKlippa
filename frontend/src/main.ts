@@ -20,7 +20,8 @@ import {
   setPendingThumbCapture,
 } from './engine/engine';
 
-import type { GradeParams } from './engine/types';
+import type { EngineError, GradeParams } from './engine/types';
+import { USER_ERROR_MESSAGES, emitLocal } from './engine/errors';
 
 // Import CSS so Vite bundles it
 import '../styles.css';
@@ -38,6 +39,22 @@ window.onEngineStatus = (msg: string): void => {
   statusBadge.innerHTML = `<i data-lucide="zap"></i> ${msg}`;
   window.lucide.createIcons({ nodes: [statusBadge] });
   window.showToast(msg, 'zap');
+};
+
+// ── Engine Errors to UI ─────────────────────────────────────────────────
+// The visible end of the error boundary: every failure in either thread
+// lands here as a toast. Full technical detail stays in the console.
+window.onEngineError = (e: EngineError): void => {
+  console.error(`[iKlippa:error] ${e.code}${e.fatal ? ' (fatal)' : ''}`, e.detail ?? e.message);
+  const friendly = USER_ERROR_MESSAGES[e.code] ?? 'Something went wrong';
+  window.showToast(
+    e.fatal ? `${friendly} — please re-import the file` : friendly,
+    'alert-triangle',
+  );
+  if (e.fatal) {
+    statusBadge.innerHTML = `<i data-lucide="alert-triangle"></i> ${friendly}`;
+    window.lucide.createIcons({ nodes: [statusBadge] });
+  }
 };
 
 // ── Playhead updates: Engine → UI ───────────────────────────────────────
@@ -159,7 +176,7 @@ window.onPlayheadScrub = (timeSec: number, force?: boolean): void => {
   const ms = Math.round(timeSec * 1000);
   if (!force && Math.abs(ms - lastSeekMs) < 50) return;
   lastSeekMs = ms;
-  seekTo(ms).catch(console.error);
+  seekTo(ms).catch((e) => emitLocal('UNHANDLED_REJECTION', e, { fatal: false }));
 };
 
 // ── Video Export Trigger ────────────────────────────────────────────────
