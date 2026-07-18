@@ -402,6 +402,12 @@ function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(audioCtx.destination);
+  // Keep scheduledAudioNodes bounded: without removal, thousands of finished
+  // nodes accumulate over a playback session (GC pressure + stop-all cost).
+  source.onended = () => {
+    const i = scheduledAudioNodes.indexOf(source);
+    if (i >= 0) scheduledAudioNodes.splice(i, 1);
+  };
   source.start(nextAudioStartTime);
   nextAudioStartTime += audioBuffer.duration;
   scheduledAudioNodes.push(source);
@@ -869,21 +875,15 @@ async function startPlayback(): Promise<void> {
   audioPlayStartCtxTime = audioCtx!.currentTime;
   audioPlayStartMs = playheadMs;
   nextAudioStartTime = 0;
-  // Only pre-schedule audio when the playhead is over an active clip
-  // (pendingAudio is cleared on each seek, so this mainly covers edge cases
-  // where audio chunks arrived before startPlayback was called)
-  const hasActiveClipNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000)).length > 0;
-  if (hasActiveClipNow) {
-    const sorted = Array.from(pendingAudio.entries()).sort((a, b) => a[0] - b[0]);
-    log('play', `scheduling ${sorted.length} pre-buffered audio chunks`);
-    for (const [ms, buffer] of sorted) {
-      scheduleAudioNode(ms, buffer);
-    }
-    pendingAudio.clear();
-  } else {
-    log('play', 'playhead over gap — skipping pre-buffered audio scheduling');
-    pendingAudio.clear();
-  }
+  // Never schedule leftover chunks from before a pause: the worker re-sends
+  // everything from the playhead (resync_audio below), so scheduling the
+  // leftovers as well would double-stack them — the "screech" class of bug.
+  pendingAudio.clear();
+  // Rewind the worker's audio decode front to the playhead. Pause stops and
+  // discards all scheduled audio; without this the worker resumes decoding
+  // from wherever it had pre-decoded to (possibly EOF), and the audio at the
+  // playhead is never re-sent — the pause→play silence bug.
+  worker?.postMessage({ type: 'resync_audio', ms: mapTimelineToSourceMs(playheadMs) });
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
