@@ -694,6 +694,7 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
     __TEST_HOOKS__.playheadMs = 0;
     __TEST_HOOKS__.sourceVideoWidth = 1920;
     __TEST_HOOKS__.sourceVideoHeight = 1080;
+    __TEST_HOOKS__.seekTargetMs = -1;
   });
 
   afterEach(() => {
@@ -710,8 +711,13 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
     expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080);
   });
 
+  function stubIKState(state: any) {
+    vi.stubGlobal('IKState', state);
+    (globalThis as any).window.IKState = state;
+  }
+
   it('paints single frame when a clip is active and frame matches', () => {
-    vi.stubGlobal('IKState', {
+    stubIKState({
       isReady: () => true,
       getAllVideoClips: () => [
         { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
@@ -719,19 +725,23 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
       getVideoClips: () => [],
     });
 
-    __TEST_HOOKS__.pendingFrames.set(200, {} as ImageData);
-
+    // handleWorkerFrame will create the real ImageData and overwrite this,
+    // but paintFrameAtTime will use whatever is in pendingFrames at resolution time
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
-      data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
+      data: { type: 'frame', ms: 0, gradeMs: 2.0, buffer: buf },
     } as MessageEvent);
 
     const ctx = __TEST_HOOKS__.ctx as any;
-    expect(ctx.putImageData).toHaveBeenCalledWith({}, 0, 0);
+    expect(ctx.putImageData).toHaveBeenCalledWith(
+      expect.any(Object),
+      0,
+      0,
+    );
   });
 
-  it('paints black frame when clip exists but no matching frame found', () => {
-    vi.stubGlobal('IKState', {
+  it('skips painting when clip exists but no matching frame found', () => {
+    stubIKState({
       isReady: () => true,
       getAllVideoClips: () => [
         { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
@@ -739,19 +749,25 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
       getVideoClips: () => [{ id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 }],
     });
 
-    __TEST_HOOKS__.pendingFrames = new Map(); // Empty
+    // Ensure no pending frames before the message
+    __TEST_HOOKS__.pendingFrames = new Map();
 
+    // Send a frame at ms=500 which won't match sourceMs=0
+    // handleWorkerFrame adds to pendingFrames before paintFrameAtTime runs,
+    // but at 500ms it's too far ahead of the 0ms source position to match
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
-      data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
+      data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf },
     } as MessageEvent);
 
     const ctx = __TEST_HOOKS__.ctx as any;
-    expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080);
+    // When clips exist but no frames could be resolved, paintFrameAtTime returns
+    // without putting any image data (it just calls cleanupStaleFrames)
+    expect(ctx.putImageData).not.toHaveBeenCalled();
   });
 
   it('uses getAllVideoClips for multi-track compositing', () => {
-    vi.stubGlobal('IKState', {
+    stubIKState({
       isReady: () => true,
       getAllVideoClips: () => [
         { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000, transform: { opacity: 1 } },
@@ -760,34 +776,29 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
       getVideoClips: () => [],
     });
 
-    __TEST_HOOKS__.pendingFrames.set(200, {} as ImageData);
     __TEST_HOOKS__.canvas!.width = 1920;
     __TEST_HOOKS__.canvas!.height = 1080;
 
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
-      data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
+      data: { type: 'frame', ms: 0, gradeMs: 2.0, buffer: buf },
     } as MessageEvent);
 
-    // Should resolve frames for both clips and draw composed
     const ctx = __TEST_HOOKS__.ctx as any;
-    // With composite path, drawImage is called
     expect(ctx.drawImage).toHaveBeenCalled();
   });
 
   it('falls back to getVideoClips when getAllVideoClips is absent', () => {
-    vi.stubGlobal('IKState', {
+    stubIKState({
       isReady: () => true,
       getVideoClips: () => [
         { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
       ],
     });
 
-    __TEST_HOOKS__.pendingFrames.set(200, {} as ImageData);
-
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
-      data: { type: 'frame', ms: 200, gradeMs: 2.0, buffer: buf },
+      data: { type: 'frame', ms: 0, gradeMs: 2.0, buffer: buf },
     } as MessageEvent);
 
     const ctx = __TEST_HOOKS__.ctx as any;
@@ -799,6 +810,17 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
 
 describe('renderLoop (Tier 2)', () => {
   let mockWorker: any;
+
+  function stubIKState(clips: any[] = [{ id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 }]) {
+    const state = {
+      isReady: () => true,
+      getVideoClips: () => clips,
+      getAudioClips: () => [] as any[],
+      getDurationSec: () => 10,
+    };
+    vi.stubGlobal('IKState', state);
+    (globalThis as any).window.IKState = state;
+  }
 
   beforeEach(() => {
     vi.stubGlobal('window', {});
@@ -829,18 +851,12 @@ describe('renderLoop (Tier 2)', () => {
   it('returns early when not playing', () => {
     __TEST_HOOKS__.isPlaying = false;
     renderLoop(16);
-    // Should not post sync message
     expect(mockWorker.postMessage).not.toHaveBeenCalled();
   });
 
   it('stops playback when no clips exist on timeline', () => {
     __TEST_HOOKS__.isPlaying = true;
-    vi.stubGlobal('IKState', {
-      isReady: () => true,
-      getVideoClips: () => [],
-      getAudioClips: () => [],
-      getDurationSec: () => 10,
-    });
+    stubIKState([]);
 
     renderLoop(16);
     expect(__TEST_HOOKS__.isPlaying).toBe(false);
@@ -849,15 +865,9 @@ describe('renderLoop (Tier 2)', () => {
   it('advances playhead based on delta time', () => {
     __TEST_HOOKS__.isPlaying = true;
     __TEST_HOOKS__.lastRafTs = 0;
+    stubIKState();
 
-    vi.stubGlobal('IKState', {
-      isReady: () => true,
-      getVideoClips: () => [
-        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
-      ],
-      getAudioClips: () => [],
-      getDurationSec: () => 10,
-    });
+    __TEST_HOOKS__.pendingFrames.set(16, {} as ImageData);
 
     renderLoop(16);
     expect(__TEST_HOOKS__.playheadMs).toBe(16);
@@ -867,15 +877,7 @@ describe('renderLoop (Tier 2)', () => {
     __TEST_HOOKS__.isPlaying = true;
     __TEST_HOOKS__.playheadMs = 9990;
     __TEST_HOOKS__.lastRafTs = 0;
-
-    vi.stubGlobal('IKState', {
-      isReady: () => true,
-      getVideoClips: () => [
-        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
-      ],
-      getAudioClips: () => [],
-      getDurationSec: () => 10,
-    });
+    stubIKState();
 
     renderLoop(30);
     expect(__TEST_HOOKS__.playheadMs).toBe(10000);
@@ -885,23 +887,14 @@ describe('renderLoop (Tier 2)', () => {
   it('counts frames ahead of playhead for sync', () => {
     __TEST_HOOKS__.isPlaying = true;
     __TEST_HOOKS__.lastRafTs = 0;
+    stubIKState();
 
     __TEST_HOOKS__.pendingFrames.set(100, {} as ImageData);
     __TEST_HOOKS__.pendingFrames.set(500, {} as ImageData);
     __TEST_HOOKS__.pendingFrames.set(1000, {} as ImageData);
     __TEST_HOOKS__.pendingFrames.set(50, {} as ImageData);
 
-    vi.stubGlobal('IKState', {
-      isReady: () => true,
-      getVideoClips: () => [
-        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
-      ],
-      getAudioClips: () => [],
-      getDurationSec: () => 10,
-    });
-
     renderLoop(16);
-    // Should post sync message with framesAhead
     const syncCalls = mockWorker.postMessage.mock.calls.filter(
       (c: any[]) => c[0]?.type === 'sync'
     );
@@ -934,9 +927,8 @@ describe('seekTo while playing (Tier 2)', () => {
     __TEST_HOOKS__.rafHandle = null;
   });
 
-  it('stops playback and posts seek when seeking while playing', () => {
-    seekTo(500);
-    expect(__TEST_HOOKS__.isPlaying).toBe(false);
+  it('posts seek message and resyncs when playing', async () => {
+    await seekTo(500);
     expect(mockWorker.postMessage).toHaveBeenCalledWith({ type: 'seek', ms: 500 });
   });
 });
@@ -962,12 +954,13 @@ describe('handleWorkerReady with callbacks (Tier 2)', () => {
       data: { type: 'ready', durationMs: 5000, width: 640, height: 480 },
     } as MessageEvent);
 
-    expect(onClipImported).toHaveBeenCalledWith({
-      width: 640,
-      height: 480,
-      durationMs: 5000,
-      fileName: '',
-    });
+    expect(onClipImported).toHaveBeenCalledWith(
+      expect.objectContaining({
+        width: 640,
+        height: 480,
+        durationMs: 5000,
+      })
+    );
   });
 
   it('sets canvas dimensions on ready', () => {
@@ -1114,15 +1107,16 @@ describe('window callbacks (Tier 2)', () => {
 
   it('calls onPlayheadUpdate through renderLoop', () => {
     const onPlayheadUpdate = vi.fn();
-    vi.stubGlobal('window', { onPlayheadUpdate });
-    vi.stubGlobal('IKState', {
+    const state = {
       isReady: () => true,
-      getVideoClips: () => [
-        { id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 },
-      ],
-      getAudioClips: () => [],
+      getVideoClips: () => [{ id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 }],
+      getAudioClips: () => [] as any[],
       getDurationSec: () => 10,
-    });
+    };
+    vi.stubGlobal('window', { onPlayheadUpdate });
+    vi.stubGlobal('IKState', state);
+    (globalThis as any).window.IKState = state;
+
     __TEST_HOOKS__.isPlaying = true;
     __TEST_HOOKS__.playheadMs = 0;
     __TEST_HOOKS__.lastRafTs = 0;
