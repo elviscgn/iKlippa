@@ -64,6 +64,50 @@ export interface WorkerProjectJsonMsg {
   json: string;
 }
 
+// ── Error protocol ──────────────────────────────────────────────────────
+// Every failure in either thread is reported as an EngineError. The rule:
+// an error must terminate in a recovery routine or a visible toast — never
+// the console.
+
+export type EngineErrorCode =
+  | 'WASM_INIT_FAILED'
+  | 'WASM_PANIC'
+  | 'LOAD_FAILED'
+  | 'DECODER_VIDEO_FATAL'
+  | 'DECODER_AUDIO_FATAL'
+  | 'DECODER_UNSUPPORTED'
+  | 'DEMUX_FAILED'
+  | 'DEMUX_STALLED'
+  | 'LOAD_TIMEOUT'
+  | 'SEEK_TIMEOUT'
+  | 'PLAYBACK_STARVATION'
+  | 'WORKER_UNCAUGHT'
+  | 'WORKER_UNHANDLED_REJECTION'
+  | 'WORKER_DIED'
+  | 'WORKER_WEDGED'
+  | 'UNHANDLED_REJECTION'
+  | 'EXPORT_FAILED'
+  | 'PROTOCOL_ERROR';
+
+export interface EngineError {
+  code: EngineErrorCode;
+  /** Technical summary (typically err.message). */
+  message: string;
+  /** Stack trace + recent worker log lines, for diagnostics. */
+  detail?: string;
+  /** true → playback cannot continue without an engine reset/re-import. */
+  fatal: boolean;
+  /** Correlating request id, when the error belongs to a specific call. */
+  opId?: number;
+  /** performance.now() at report time. */
+  at: number;
+}
+
+export interface WorkerErrorMsg {
+  type: 'error';
+  error: EngineError;
+}
+
 export type WorkerIncomingMessage =
   | WorkerStatusMsg
   | WorkerReadyMsg
@@ -71,7 +115,8 @@ export type WorkerIncomingMessage =
   | WorkerFrameMsg
   | WorkerAudioChunkMsg
   | WorkerTimelineSetMsg
-  | WorkerProjectJsonMsg;
+  | WorkerProjectJsonMsg
+  | WorkerErrorMsg;
 
 // ── Messages sent TO the worker ─────────────────────────────────────────
 
