@@ -29,9 +29,15 @@ async def analyze_script(req: ScriptRequest):
     videos = search_stock_videos(first_keyword)
 
     mood_label = script_extraction["mood"]["label"]
-    if mood_label == "neutral":
-        mood_label = "ambient"
-        script_extraction["mood"]["label"] = "ambient"
+    
+    # Jamendo is very picky. Map VADER labels to valid Jamendo tags!
+    jamendo_tag_map = {
+        "dark": "suspense",
+        "neutral": "chill",
+        "uplifting": "upbeat"
+    }
+    mood_label = jamendo_tag_map.get(mood_label, "chill")
+    script_extraction["mood"]["label"] = mood_label
     
     background_music = search_background_music(mood_label)
 
