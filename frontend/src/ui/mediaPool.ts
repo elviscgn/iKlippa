@@ -86,7 +86,6 @@ export async function renderMedia(
               end: 4.0,
             })
           );
-          );
       }
 
       el.ondblclick = () => {

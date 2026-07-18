@@ -357,4 +357,161 @@ describe('Worker Message Integration (Tier 2 - adapter ports)', () => {
     );
     expect(frameCalls.length).toBe(0);
   });
+
+  // ── Error boundary: no failure may stay silent ──────────────────────
+
+  const loadMsg = {
+    type: 'load',
+    file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(100)) }) },
+    codecConfig: { codec: 'avc' },
+    width: 1920,
+    height: 1080,
+    samples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+    durationMs: 1000,
+  };
+
+  function stubVideoDecoderCapturing() {
+    const captured: { output?: (f: any) => void; error?: (e: Error) => void } = {};
+    vi.stubGlobal('VideoDecoder', class {
+      constructor(init: any) {
+        captured.output = init.output;
+        captured.error = init.error;
+      }
+      configure() {}
+      decode() {}
+      flush() { return Promise.resolve(); }
+      close() {}
+      reset() {}
+      state = 'configured';
+      get decodeQueueSize() { return 0; }
+    });
+    return captured;
+  }
+
+  it('posts WASM_INIT_FAILED when WASM init rejects', async () => {
+    const engine = await import('../../src/engine/pkg/iklippa_engine');
+    (engine.default as any).mockRejectedValueOnce(new Error('compile boom'));
+
+    await workerOnMessage({ data: { type: 'init' } });
+
+    const errCalls = postMessageMock.mock.calls.filter((c: any[]) => c[0]?.type === 'error');
+    expect(errCalls.length).toBe(1);
+    expect(errCalls[0][0].error.code).toBe('WASM_INIT_FAILED');
+    expect(errCalls[0][0].error.fatal).toBe(true);
+    expect(errCalls[0][0].error.message).toContain('compile boom');
+  });
+
+  it('posts LOAD_FAILED (and no ready) when sample reads fail during load', async () => {
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        ...loadMsg,
+        file: { slice: () => ({ arrayBuffer: () => Promise.reject(new Error('read boom')) }) },
+      },
+    });
+
+    const types = postMessageMock.mock.calls.map((c: any[]) => c[0]?.type);
+    const errCalls = postMessageMock.mock.calls.filter((c: any[]) => c[0]?.type === 'error');
+    expect(types).not.toContain('ready');
+    expect(errCalls.length).toBe(1);
+    expect(errCalls[0][0].error.code).toBe('LOAD_FAILED');
+  });
+
+  it('posts DECODER_VIDEO_FATAL when the video decoder error callback fires', async () => {
+    const captured = stubVideoDecoderCapturing();
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({ data: loadMsg });
+    postMessageMock.mockClear();
+
+    captured.error!(new Error('decode boom'));
+
+    const errCalls = postMessageMock.mock.calls.filter((c: any[]) => c[0]?.type === 'error');
+    expect(errCalls.length).toBe(1);
+    expect(errCalls[0][0].error.code).toBe('DECODER_VIDEO_FATAL');
+    expect(errCalls[0][0].error.fatal).toBe(true);
+  });
+
+  it('posts DECODER_AUDIO_FATAL when the audio decoder error callback fires', async () => {
+    let audioErrorCb: ((e: Error) => void) | null = null;
+    vi.stubGlobal('AudioDecoder', class {
+      constructor(init: any) { audioErrorCb = init.error; }
+      configure() {}
+      decode() {}
+      flush() { return Promise.resolve(); }
+      close() {}
+      reset() {}
+      state = 'configured';
+      get decodeQueueSize() { return 0; }
+    });
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        ...loadMsg,
+        audioConfig: { codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2 },
+        audioSamples: [{ offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        audioConfigVersion: 1,
+      },
+    });
+    postMessageMock.mockClear();
+
+    audioErrorCb!(new Error('audio boom'));
+
+    const errCalls = postMessageMock.mock.calls.filter((c: any[]) => c[0]?.type === 'error');
+    expect(errCalls.length).toBe(1);
+    expect(errCalls[0][0].error.code).toBe('DECODER_AUDIO_FATAL');
+  });
+
+  it('posts WASM_PANIC when process_frame throws inside the decoder callback', async () => {
+    const captured = stubVideoDecoderCapturing();
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({ data: loadMsg });
+
+    const engine = await import('../../src/engine/pkg/iklippa_engine');
+    const instance = (engine.IklippaEngine as any).mock.results.at(-1).value;
+    instance.process_frame.mockImplementationOnce(() => {
+      throw new Error('rust panic: unreachable');
+    });
+    postMessageMock.mockClear();
+
+    captured.output!({
+      timestamp: 0,
+      format: 'RGBA',
+      copyTo: async () => {},
+      close: vi.fn(),
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const errCalls = postMessageMock.mock.calls.filter((c: any[]) => c[0]?.type === 'error');
+    expect(errCalls.length).toBe(1);
+    expect(errCalls[0][0].error.code).toBe('WASM_PANIC');
+    expect(errCalls[0][0].error.fatal).toBe(true);
+    // Panic must not produce a (poisoned) frame message
+    const frameCalls = postMessageMock.mock.calls.filter((c: any[]) => c[0]?.type === 'frame');
+    expect(frameCalls.length).toBe(0);
+  });
+
+  it('reports unhandled promise rejections via the global net', async () => {
+    const selfStub = (globalThis as any).self;
+    expect(typeof selfStub.onunhandledrejection).toBe('function');
+
+    selfStub.onunhandledrejection({
+      reason: new Error('promise boom'),
+      preventDefault: vi.fn(),
+    });
+
+    const errCalls = postMessageMock.mock.calls.filter((c: any[]) => c[0]?.type === 'error');
+    expect(errCalls.length).toBe(1);
+    expect(errCalls[0][0].error.code).toBe('WORKER_UNHANDLED_REJECTION');
+  });
+
+  it('attaches recent worker log lines to error reports', async () => {
+    const engine = await import('../../src/engine/pkg/iklippa_engine');
+    (engine.default as any).mockRejectedValueOnce(new Error('compile boom'));
+
+    await workerOnMessage({ data: { type: 'init' } });
+
+    const errCalls = postMessageMock.mock.calls.filter((c: any[]) => c[0]?.type === 'error');
+    expect(errCalls[0][0].error.detail).toContain('compile boom');
+    expect(errCalls[0][0].error.detail).toContain('recent worker log');
+  });
 });

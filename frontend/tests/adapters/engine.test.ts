@@ -183,7 +183,7 @@ describe('seekTo (Tier 2 - adapter ports)', () => {
 
   it('posts seek and sync messages', () => {
     seekTo(100);
-    expect(mockWorker.postMessage).toHaveBeenCalledWith({ type: 'seek', ms: 100 });
+    expect(mockWorker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'seek', ms: 100 }));
     expect(mockWorker.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'sync' }),
     );
@@ -933,7 +933,7 @@ describe('seekTo while playing (Tier 2)', () => {
 
   it('posts seek message and resyncs when playing', async () => {
     await seekTo(500);
-    expect(mockWorker.postMessage).toHaveBeenCalledWith({ type: 'seek', ms: 500 });
+    expect(mockWorker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'seek', ms: 500 }));
   });
 });
 

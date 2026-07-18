@@ -4,11 +4,13 @@
  */
 
 import { PerformanceMonitor } from './perf';
+import { errorBus, emitLocal, makeEngineError, wasReported } from './errors';
 import { loadScript } from '../utils/dom';
 import { getPorts } from '../adapters';
 import type { EnginePorts, AudioContextPort } from '../adapters';
 import type {
   WorkerIncomingMessage,
+  EngineError,
   GradeParams,
 
   MP4Sample,
@@ -128,6 +130,7 @@ const MAX_TIMELINE_THUMBNAILS = 60;
 // ── Seek target tracking ────────────────────────────────────────────────
 let seekTargetMs = -1;
 let seekPaintTimeout: ReturnType<typeof setTimeout> | null = null;
+let seekGeneration = 0;
 
 // ── Pending thumbnail capture callback ──────────────────────────────────
 let _pendingThumbCapture: ((frameMs: number) => void) | null = null;
@@ -142,6 +145,14 @@ let _frameCtx: CanvasRenderingContext2D | null = null;
 export const perf = new PerformanceMonitor();
 if (typeof window !== 'undefined') {
   (window as any).iklippaScore = () => perf.report();
+  // Last-resort net: any main-thread rejection we didn't funnel explicitly
+  // still becomes a visible toast (deduped via wasReported).
+  window.addEventListener('unhandledrejection', (ev: PromiseRejectionEvent) => {
+    if (wasReported(ev.reason)) return;
+    errorBus.emit(makeEngineError('UNHANDLED_REJECTION', ev.reason, { fatal: false }));
+  });
+  // Bridge: every engine error reaches the UI layer.
+  errorBus.on((e) => window.onEngineError?.(e));
 }
 
 // ── Thumbnail Capture ───────────────────────────────────────────────────
@@ -220,7 +231,20 @@ export async function initEngine(canvasEl: HTMLCanvasElement): Promise<boolean> 
   ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
   worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = handleWorkerMessage;
-  worker.onerror = (e) => err('engine', 'Worker threw an uncaught error', e.message);
+  worker.onerror = (e) => {
+    err('engine', 'Worker threw an uncaught error', e.message);
+    errorBus.emit(makeEngineError('WORKER_DIED', e.message, { fatal: true }));
+  };
+  worker.onmessageerror = (e) => {
+    // Fires when a worker message fails structured clone (e.g. a broken
+    // Transferable). Was completely invisible before.
+    err('engine', 'Worker posted an unserializable message', e);
+    errorBus.emit(
+      makeEngineError('PROTOCOL_ERROR', new Error('worker message could not be deserialized'), {
+        fatal: true,
+      }),
+    );
+  };
   worker.postMessage({ type: 'init' });
   log('engine', 'Worker created, waiting for WASM init…');
   logStatus('Booting background worker…');
@@ -264,6 +288,10 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
 }
 
 function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }>): void {
+  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+    log('paint', `dropping stale frame from seek ${msg.seekId} (current: ${seekGeneration})`);
+    return;
+  }
   perf.recordFrameArrival(msg.ms, msg.gradeMs);
   const arr = new Uint8ClampedArray(msg.buffer);
   pendingFrames.set(
@@ -295,6 +323,10 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
 }
 
 function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'audio_chunk' }>): void {
+  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+    log('audio', `dropping stale audio chunk from seek ${msg.seekId} (current: ${seekGeneration})`);
+    return;
+  }
   if (!audioCtx) {
     logOnce('audio-ctx-missing', 'audio', 'audio_chunk received but AudioContext not initialised yet');
     return;
@@ -337,7 +369,16 @@ export function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): voi
     case 'project_json':
       if (window.onProjectJsonReceived) window.onProjectJsonReceived(msg.json);
       break;
+    case 'error':
+      handleEngineError(msg.error);
+      break;
   }
+}
+
+/** Every worker-reported failure is logged in full, then emitted to the UI. */
+function handleEngineError(e: EngineError): void {
+  err('engine', `worker reported ${e.code}${e.fatal ? ' (fatal)' : ''}`, e.detail ?? e.message);
+  errorBus.emit(e);
 }
 
 function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
@@ -401,7 +442,12 @@ export async function importFile(file: File): Promise<void> {
   lastRafTs = null;
 
   if (!window.MP4Box) {
-    await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
+    try {
+      await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
+    } catch (e) {
+      emitLocal('DEMUX_FAILED', e, { fatal: true });
+      throw e;
+    }
   }
 
   const payload = await new Promise<{
@@ -501,6 +547,12 @@ export async function importFile(file: File): Promise<void> {
         .catch(reject);
     }
     readNextChunk();
+  }).catch((e) => {
+    // Demux failures used to depend on the caller remembering to catch.
+    // Report with a specific code, then rethrow — the window last-resort
+    // net dedupes via wasReported so this toasts exactly once.
+    emitLocal('DEMUX_FAILED', e, { fatal: true });
+    throw e;
   });
 
   worker!.postMessage({ type: 'load', file, ...payload });
@@ -855,7 +907,7 @@ function pausePlayback(): void {
 
 export function togglePlayback(): boolean {
   if (isPlaying) pausePlayback();
-  else startPlayback().catch(console.error);
+  else startPlayback().catch((e) => emitLocal('UNHANDLED_REJECTION', e, { fatal: false }));
   return isPlaying;
 }
 
@@ -896,7 +948,8 @@ export async function seekTo(ms: number): Promise<void> {
   audioConfigVersion++;
   worker!.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
   const sourceTargetMs = mapTimelineToSourceMs(ms);
-  worker!.postMessage({ type: 'seek', ms: sourceTargetMs });
+  seekGeneration++;
+  worker!.postMessage({ type: 'seek', ms: sourceTargetMs, seekId: seekGeneration });
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
@@ -964,7 +1017,7 @@ export async function exportVideo(
       chunk.copyTo(buf);
       encodedChunks.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
     },
-    (e) => console.error(e),
+    (e) => emitLocal('EXPORT_FAILED', e, { fatal: false }),
   );
   encoder.configure({
     codec: 'avc1.42001f',
