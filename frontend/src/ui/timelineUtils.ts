@@ -1,9 +1,12 @@
 import { $, S, us2s } from './state';
 
 export function getLaneW() {
-  const lane = $('#lane-v1');
-  if (!lane) return 100;
-  return lane.getBoundingClientRect().width * S.zoom;
+  let lane = document.querySelector('.track-lane');
+  if (!lane || typeof (lane as any).getBoundingClientRect !== 'function') {
+    lane = $('#lane-v1');
+  }
+  if (!lane || typeof (lane as any).getBoundingClientRect !== 'function') return 100;
+  return (lane as HTMLElement).getBoundingClientRect().width * S.zoom;
 }
 
 function getSnapPoints(excludeClipId: string | number | null, includePlayhead: boolean) {

@@ -128,6 +128,16 @@ function isReady(): boolean {
 }
 
 // ── Track accessors ─────────────────────────────────────────────────────
+function getTracks(): Track[] {
+  if (!project) return [];
+  return project.tracks;
+}
+
+function getTrackById(trackId: number): Track | null {
+  if (!project) return null;
+  return project.tracks.find((t) => t.id === trackId) ?? null;
+}
+
 function getVideoTrack(): Track | null {
   if (!project) return null;
   return project.tracks.find((t) => t.track_type === 'video') ?? null;
@@ -136,6 +146,33 @@ function getVideoTrack(): Track | null {
 function getAudioTrack(): Track | null {
   if (!project) return null;
   return project.tracks.find((t) => t.track_type === 'audio') ?? null;
+}
+
+function addTrack(trackType: 'video' | 'audio'): Track | null {
+  if (!project) return null;
+  const id = project.next_track_id++;
+  const order = project.tracks.length;
+  const label = trackType === 'video' ? 'Video' : 'Audio';
+  const track: Track = {
+    id, order, track_type: trackType,
+    name: `${label} ${order}`,
+    muted: false, locked: false, visible: true,
+    volume: 1.0, pan: 0.0, clips: [],
+  };
+  project.tracks.push(track);
+  return track;
+}
+
+function removeTrack(trackId: number): boolean {
+  if (!project) return false;
+  const idx = project.tracks.findIndex((t) => t.id === trackId);
+  if (idx < 0) return false;
+  for (const clip of project.tracks[idx]!.clips) {
+    delete clipMeta[clip.id];
+  }
+  project.tracks.splice(idx, 1);
+  computeDuration();
+  return true;
 }
 
 function getAllVideoClips(): ClipWithMeta[] {
@@ -175,16 +212,17 @@ function getAudioClips(): ClipWithMeta[] {
 }
 
 // ── Clip CRUD ───────────────────────────────────────────────────────
-// fallow-ignore-next-line complexity
-function addVideoClip(
+function addClip(
+  trackId: number,
   sourceId: string,
   startUs: number,
   endUs: number,
   meta?: Record<string, unknown>,
   groupId?: string,
 ): ClipWithMeta | null {
-  const track = getVideoTrack();
-  if (!track || !project) return null;
+  if (!project) return null;
+  const track = getTrackById(trackId);
+  if (!track) return null;
   const id = project.next_clip_id++;
   const clip = makeClip(id, sourceId, startUs, endUs);
   clip.group_id = groupId ?? `group_${id}`;
@@ -197,24 +235,31 @@ function addVideoClip(
 }
 
 // fallow-ignore-next-line complexity
+function addVideoClip(
+  sourceId: string,
+  startUs: number,
+  endUs: number,
+  meta?: Record<string, unknown>,
+  groupId?: string,
+  trackId?: number,
+): ClipWithMeta | null {
+  const tid = trackId ?? getVideoTrack()?.id;
+  if (tid === undefined) return null;
+  return addClip(tid, sourceId, startUs, endUs, meta, groupId);
+}
+
+// fallow-ignore-next-line complexity
 function addAudioClip(
   sourceId: string,
   startUs: number,
   endUs: number,
   meta?: Record<string, unknown>,
   groupId?: string,
+  trackId?: number,
 ): ClipWithMeta | null {
-  const track = getAudioTrack();
-  if (!track || !project) return null;
-  const id = project.next_clip_id++;
-  const clip = makeClip(id, sourceId, startUs, endUs);
-  clip.group_id = groupId ?? `group_${id}`;
-  track.clips.push(clip);
-  track.clips.sort((a, b) => a.timeline_start_us - b.timeline_start_us);
-  clipMeta[id] = (meta as ClipMeta) ?? {};
-  const merged = _mergeMeta(clip);
-  computeDuration();
-  return merged;
+  const tid = trackId ?? getAudioTrack()?.id;
+  if (tid === undefined) return null;
+  return addClip(tid, sourceId, startUs, endUs, meta, groupId);
 }
 
 function findClip(clipId: number): ClipWithMeta | null {
@@ -496,9 +541,16 @@ export const IKState = {
   isReady,
   usToSec,
   secToUs: (s: number) => Math.round(s * 1_000_000),
+  getTracks,
+  getTrackById,
+  getVideoTrack,
+  getAudioTrack,
+  addTrack,
+  removeTrack,
   getVideoClips,
   getAudioClips,
   getAllVideoClips,
+  addClip,
   addVideoClip,
   addAudioClip,
   findClip,

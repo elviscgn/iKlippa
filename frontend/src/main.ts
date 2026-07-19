@@ -129,6 +129,9 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
     height,
   });
   window.renderMedia('footage');
+  window.calculateTimelineDuration();
+  window.renderRuler();
+  window.renderClips();
   window.showToast(`Clip loaded (${width}×${height})`, 'film');
 
   // If the project was restored (clips have stale source_ids from a previous

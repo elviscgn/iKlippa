@@ -2,7 +2,7 @@
 // This file declares types for everything hung on `window` so TypeScript
 // doesn't complain when main.ts or state.ts sets/reads these properties.
 
-import type { ClipWithMeta, ThumbnailEntry } from '../state/types';
+import type { ClipWithMeta, ThumbnailEntry, Track } from '../state/types';
 import type { ClipImportedData, EngineError } from '../engine/types';
 /** The IKState module shape exposed on window */
 interface IKStateAPI {
@@ -10,9 +10,23 @@ interface IKStateAPI {
   isReady(): boolean;
   usToSec(us: number): number;
   secToUs(s: number): number;
+  getTracks(): Track[];
+  getTrackById(trackId: number): Track | null;
+  getVideoTrack(): Track | null;
+  getAudioTrack(): Track | null;
+  addTrack(trackType: 'video' | 'audio'): Track | null;
+  removeTrack(trackId: number): boolean;
   getVideoClips(): ClipWithMeta[];
   getAudioClips(): ClipWithMeta[];
   getAllVideoClips(): ClipWithMeta[];
+  addClip(
+    trackId: number,
+    sourceId: string,
+    startUs: number,
+    endUs: number,
+    meta?: Record<string, unknown>,
+    groupId?: string,
+  ): ClipWithMeta | null;
   addVideoClip(
     sourceId: string,
     startUs: number,
