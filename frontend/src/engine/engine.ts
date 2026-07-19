@@ -164,6 +164,7 @@ let _rustCompositeBuffer: ArrayBuffer | null = null;
 let _rustCompositeTsUs = -1;
 let _rustCompositeW = 0;
 let _rustCompositeH = 0;
+let _lastCompositeRequestMs = -1000;
 
 // ── Performance Monitor ─────────────────────────────────────────────────
 export const perf = new PerformanceMonitor();
@@ -920,6 +921,13 @@ function paintFrameAtTime(ms: number): void {
     const imageData = new ImageData(arr, _rustCompositeW, _rustCompositeH);
     ctx.putImageData(imageData, 0, 0);
     return;
+  }
+
+  // Request a Rust composite for the current position (debounced 250ms).
+  // When it arrives, composite_result handler will re-paint with it.
+  if (Math.abs(ms - _lastCompositeRequestMs) > 250) {
+    _lastCompositeRequestMs = ms;
+    requestComposite(ms);
   }
 
   const msUs = Math.round(ms * 1_000);
