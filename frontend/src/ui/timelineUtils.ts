@@ -6,11 +6,13 @@ export function getLaneW() {
   return lane.getBoundingClientRect().width * S.zoom;
 }
 
-function getSnapPoints(excludeClipId: string | number | null) {
+function getSnapPoints(excludeClipId: string | number | null, includePlayhead: boolean) {
   const IKState = (window as any).IKState;
   const points = new Set<number>();
   points.add(0);
-  points.add(Math.round(S.time * 1_000_000));
+  if (includePlayhead) {
+    points.add(Math.round(S.time * 1_000_000));
+  }
   if (IKState) {
     const allClips = [...IKState.getVideoClips(), ...IKState.getAudioClips()];
     for (const c of allClips) {
@@ -22,11 +24,11 @@ function getSnapPoints(excludeClipId: string | number | null) {
   return Array.from(points);
 }
 
-const SNAP_THRESHOLD_PX = 16;
+const SNAP_THRESHOLD_PX = 8;
 
-export function applySnap(rawUs: number, excludeClipId: string | number | null, tw: number) {
+export function applySnap(rawUs: number, excludeClipId: string | number | null, tw: number, includePlayhead = false) {
   const thresholdUs = Math.round((SNAP_THRESHOLD_PX / tw) * S.dur * 1_000_000);
-  const points = getSnapPoints(excludeClipId);
+  const points = getSnapPoints(excludeClipId, includePlayhead);
   let best: number | null = null;
   for (const p of points) {
     if (Math.abs(rawUs - p) <= thresholdUs) {
