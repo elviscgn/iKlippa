@@ -323,7 +323,7 @@
               <div class="ai-tab" data-target="tab-script">Script</div>
               <div class="ai-tab" data-target="tab-brand">Brand</div>
             </div>
-            <div class="copilot-body">
+            <div class="copilot-body" id="copilot-body">
               <div id="tab-chat">
                 <div class="insight-box" id="insight-box">
                   <i
@@ -498,6 +498,64 @@
                   />
                 </div>
               </div>
+            </div>
+
+            <!-- PER-CLIP COLOUR GRADE PANEL -->
+            <div class="grade-panel" id="grade-panel" style="display:none;">
+              <div class="grade-header">
+                <i data-lucide="sparkles" style="color:var(--accent-primary);"></i>
+                <span id="grade-clip-label">Select a clip to grade</span>
+              </div>
+              <div class="grade-sliders">
+                <div class="grade-row">
+                  <label>Exposure</label>
+                  <input type="range" data-grade="exposure" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Contrast</label>
+                  <input type="range" data-grade="contrast" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Saturation</label>
+                  <input type="range" data-grade="saturation" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Temperature</label>
+                  <input type="range" data-grade="temperature" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Tint</label>
+                  <input type="range" data-grade="tint" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Highlights</label>
+                  <input type="range" data-grade="highlights" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Shadows</label>
+                  <input type="range" data-grade="shadows" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Vignette</label>
+                  <input type="range" data-grade="vignette" min="0" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Grain</label>
+                  <input type="range" data-grade="grain" min="0" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+              </div>
+              <button class="grade-reset-btn" id="grade-reset-btn">
+                <i data-lucide="sliders-horizontal"></i> Reset Grade
+              </button>
             </div>
           </aside>
         </div>

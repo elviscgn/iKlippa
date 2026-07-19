@@ -1680,3 +1680,70 @@ textarea {
     opacity: 0;
   }
 }
+
+/* ── Per-Clip Colour Grade Panel ─────────────────── */
+.grade-panel {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.grade-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+.grade-header span { color: var(--text-primary); }
+.grade-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.grade-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+.grade-row:hover { background: var(--bg-hover); }
+.grade-row label {
+  width: 80px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.grade-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent-primary);
+  height: 4px;
+}
+.grade-val {
+  width: 32px;
+  text-align: right;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.grade-reset-btn {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+.grade-reset-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
