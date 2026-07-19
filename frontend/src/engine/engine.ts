@@ -147,6 +147,12 @@ let _compositeCtx: CanvasRenderingContext2D | null = null;
 let _frameCanvas: HTMLCanvasElement | null = null;
 let _frameCtx: CanvasRenderingContext2D | null = null;
 
+// ── Rust composite output cache ─────────────────────────────────────────
+let _rustCompositeBuffer: ArrayBuffer | null = null;
+let _rustCompositeTsUs = -1;
+let _rustCompositeW = 0;
+let _rustCompositeH = 0;
+
 // ── Performance Monitor ─────────────────────────────────────────────────
 export const perf = new PerformanceMonitor();
 if (typeof window !== 'undefined') {
@@ -382,6 +388,12 @@ export function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): voi
       break;
     case 'project_json':
       if (window.onProjectJsonReceived) window.onProjectJsonReceived(msg.json);
+      break;
+    case 'composite_result':
+      _rustCompositeBuffer = msg.buffer;
+      _rustCompositeTsUs = msg.ts_us;
+      _rustCompositeW = msg.width;
+      _rustCompositeH = msg.height;
       break;
     case 'error':
       handleEngineError(msg.error);
@@ -1155,4 +1167,19 @@ function getProjectJson(): Promise<string> {
 function logStatus(msg: string): void {
   console.log(`[iKlippa] ${msg}`);
   if (window.onEngineStatus) window.onEngineStatus(msg);
+}
+
+// ── Rust Composite Path ─────────────────────────────────────────────────
+export function requestComposite(ms: number): void {
+  if (!worker) return;
+  const ts_us = Math.round(ms * 1_000);
+  worker.postMessage({ type: 'composite', ts_us });
+}
+
+function paintRustComposite(width: number, height: number): boolean {
+  if (!_rustCompositeBuffer || _rustCompositeW === 0 || !ctx) return false;
+  const arr = new Uint8ClampedArray(_rustCompositeBuffer);
+  const imageData = new ImageData(arr, _rustCompositeW, _rustCompositeH);
+  ctx.putImageData(imageData, 0, 0);
+  return true;
 }
