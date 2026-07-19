@@ -164,6 +164,7 @@ let _rustCompositeBuffer: ArrayBuffer | null = null;
 let _rustCompositeTsUs = -1;
 let _rustCompositeW = 0;
 let _rustCompositeH = 0;
+let _lastCompositeRequestMs = -1000;
 
 // ── Performance Monitor ─────────────────────────────────────────────────
 export const perf = new PerformanceMonitor();
@@ -414,6 +415,8 @@ export function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): voi
       _rustCompositeTsUs = msg.ts_us;
       _rustCompositeW = msg.width;
       _rustCompositeH = msg.height;
+      // Force a re-paint to show the Rust composite immediately
+      if (!isPlaying) paintFrameAtTime(_rustCompositeTsUs / 1_000);
       break;
     case 'error':
       handleEngineError(msg.error);
@@ -834,9 +837,40 @@ function resolveFramesForClips(activeClips: ClipWithMeta[], ms: number) {
   return resolved;
 }
 
+function colourFilter(clip: ClipWithMeta): string {
+  const cs = clip.colour_settings;
+  if (!cs) return 'none';
+  const exp   = 1 + cs.exposure * 1.5;
+  const con   = 1 + cs.contrast * 1.5;
+  const sat   = 1 + cs.saturation;
+  const temp  = cs.temperature;
+  const tint  = cs.tint;
+  const parts: string[] = [];
+  if (Math.abs(exp - 1) > 0.01) parts.push(`brightness(${exp.toFixed(2)})`);
+  if (Math.abs(con - 1) > 0.01) parts.push(`contrast(${con.toFixed(2)})`);
+  if (Math.abs(sat - 1) > 0.01) parts.push(`saturate(${sat.toFixed(2)})`);
+  if (Math.abs(temp) > 0.01) parts.push(`sepia(${Math.abs(temp).toFixed(2)}) hue-rotate(${temp > 0 ? '' : '-'}${(Math.abs(temp) * 15).toFixed(0)}deg)`);
+  if (Math.abs(tint) > 0.01) parts.push(`hue-rotate(${(tint * 10).toFixed(0)}deg)`);
+  return parts.length > 0 ? parts.join(' ') : 'none';
+}
+
 function drawResolvedFrames(resolved: Array<{ clip: ClipWithMeta; imageData: ImageData }>, width: number, height: number) {
   if (resolved.length === 1) {
-    ctx!.putImageData(resolved[0]!.imageData, 0, 0);
+    const clip = resolved[0]!.clip;
+    const filter = colourFilter(clip);
+    if (filter !== 'none') {
+      const [fc, fctx] = _getFrameCanvas(width, height);
+      fctx.filter = 'none';
+      fctx.putImageData(resolved[0]!.imageData, 0, 0);
+      fctx.filter = filter;
+      // drawImage with filter; copy back to imageData
+      fctx.drawImage(fc, 0, 0);
+      const filtered = fctx.getImageData(0, 0, width, height);
+      fctx.filter = 'none';
+      ctx!.putImageData(filtered, 0, 0);
+    } else {
+      ctx!.putImageData(resolved[0]!.imageData, 0, 0);
+    }
   } else {
     const [cc, cctx] = _getCompositeCanvas(width, height);
     const [fc, fctx] = _getFrameCanvas(width, height);
@@ -848,7 +882,14 @@ function drawResolvedFrames(resolved: Array<{ clip: ClipWithMeta; imageData: Ima
     for (let i = 0; i < resolved.length; i++) {
       const { clip, imageData } = resolved[i]!;
       const opacity = clip.transform ? clip.transform.opacity : 1;
+      const filter = colourFilter(clip);
+      fctx.filter = 'none';
       fctx.putImageData(imageData, 0, 0);
+      if (filter !== 'none') {
+        fctx.filter = filter;
+        fctx.drawImage(fc, 0, 0);
+        fctx.filter = 'none';
+      }
       cctx.globalAlpha = Math.max(0, Math.min(1, opacity));
       cctx.drawImage(fc, 0, 0);
     }
@@ -918,6 +959,14 @@ function paintFrameAtTime(ms: number): void {
     const imageData = new ImageData(arr, _rustCompositeW, _rustCompositeH);
     ctx.putImageData(imageData, 0, 0);
     return;
+  }
+
+  // Request a Rust composite when paused/scrubbing (debounced 250ms).
+  // During playback, JS compositing handles preview at 60fps — the
+  // Rust composite would arrive too late for the current frame.
+  if (!isPlaying && Math.abs(ms - _lastCompositeRequestMs) > 250) {
+    _lastCompositeRequestMs = ms;
+    requestComposite(ms);
   }
 
   const msUs = Math.round(ms * 1_000);
@@ -1202,6 +1251,14 @@ export function syncTimelineToRust(): void {
   setTimeline(json).then(({ ok, error }) => {
     if (!ok) {
       console.warn('[iKlippa:engine] set_timeline rejected:', error);
+    }
+    // Re-seek to repopulate the Rust frame_cache now that the project
+    // has clips. Frames decoded before set_timeline had no clips to
+    // match against in stage_frame_broadcast.
+    const mapRes = mapTimelineToSource(playheadMs);
+    if (mapRes) {
+      seekGeneration++;
+      worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId, seekId: seekGeneration });
     }
   });
 }
