@@ -837,9 +837,40 @@ function resolveFramesForClips(activeClips: ClipWithMeta[], ms: number) {
   return resolved;
 }
 
+function colourFilter(clip: ClipWithMeta): string {
+  const cs = clip.colour_settings;
+  if (!cs) return 'none';
+  const exp   = 1 + cs.exposure * 1.5;
+  const con   = 1 + cs.contrast * 1.5;
+  const sat   = 1 + cs.saturation;
+  const temp  = cs.temperature;
+  const tint  = cs.tint;
+  const parts: string[] = [];
+  if (Math.abs(exp - 1) > 0.01) parts.push(`brightness(${exp.toFixed(2)})`);
+  if (Math.abs(con - 1) > 0.01) parts.push(`contrast(${con.toFixed(2)})`);
+  if (Math.abs(sat - 1) > 0.01) parts.push(`saturate(${sat.toFixed(2)})`);
+  if (Math.abs(temp) > 0.01) parts.push(`sepia(${Math.abs(temp).toFixed(2)}) hue-rotate(${temp > 0 ? '' : '-'}${(Math.abs(temp) * 15).toFixed(0)}deg)`);
+  if (Math.abs(tint) > 0.01) parts.push(`hue-rotate(${(tint * 10).toFixed(0)}deg)`);
+  return parts.length > 0 ? parts.join(' ') : 'none';
+}
+
 function drawResolvedFrames(resolved: Array<{ clip: ClipWithMeta; imageData: ImageData }>, width: number, height: number) {
   if (resolved.length === 1) {
-    ctx!.putImageData(resolved[0]!.imageData, 0, 0);
+    const clip = resolved[0]!.clip;
+    const filter = colourFilter(clip);
+    if (filter !== 'none') {
+      const [fc, fctx] = _getFrameCanvas(width, height);
+      fctx.filter = 'none';
+      fctx.putImageData(resolved[0]!.imageData, 0, 0);
+      fctx.filter = filter;
+      // drawImage with filter; copy back to imageData
+      fctx.drawImage(fc, 0, 0);
+      const filtered = fctx.getImageData(0, 0, width, height);
+      fctx.filter = 'none';
+      ctx!.putImageData(filtered, 0, 0);
+    } else {
+      ctx!.putImageData(resolved[0]!.imageData, 0, 0);
+    }
   } else {
     const [cc, cctx] = _getCompositeCanvas(width, height);
     const [fc, fctx] = _getFrameCanvas(width, height);
@@ -851,7 +882,14 @@ function drawResolvedFrames(resolved: Array<{ clip: ClipWithMeta; imageData: Ima
     for (let i = 0; i < resolved.length; i++) {
       const { clip, imageData } = resolved[i]!;
       const opacity = clip.transform ? clip.transform.opacity : 1;
+      const filter = colourFilter(clip);
+      fctx.filter = 'none';
       fctx.putImageData(imageData, 0, 0);
+      if (filter !== 'none') {
+        fctx.filter = filter;
+        fctx.drawImage(fc, 0, 0);
+        fctx.filter = 'none';
+      }
       cctx.globalAlpha = Math.max(0, Math.min(1, opacity));
       cctx.drawImage(fc, 0, 0);
     }
