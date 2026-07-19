@@ -1,5 +1,9 @@
 import { applySnap, showSnapGuide, hideSnapGuide, getLaneW } from './timelineUtils';
 
+function getTrackLane(trackId: number): HTMLElement | null {
+  return document.querySelector(`[data-track-id="${trackId}"] .track-lane`);
+}
+
 function setClipDimensions(el: HTMLElement, clip: any, dur: number, tw: number) {
   const clipStartSec = us2s(clip.timeline_start_us);
   const clipDurSec = us2s(clip.timeline_end_us) - clipStartSec;
@@ -45,7 +49,7 @@ let _laneRefW = 0;
 function autoFitZoom() {
   if (S.dur <= 0) return;
   if (_laneRefW <= 1) {
-    const lane = $('#lane-v1');
+    const lane = document.querySelector('.track-lane') as HTMLElement;
     if (!lane) return;
     const prevW = lane.style.width;
     lane.style.width = '';
@@ -131,133 +135,100 @@ function seededBarHeight(i: number) {
 export function renderClips() {
   const IKState = (window as any).IKState;
   if (!IKState) return;
-  const laneV1 = $('#lane-v1');
-  const laneA1 = $('#lane-a1');
-  if (!laneV1 || !laneA1) return;
+  const tracks = IKState.getTracks ? IKState.getTracks() : null;
 
-  laneV1.innerHTML = '';
-  laneA1.innerHTML = '';
+  // Backward compat: fall through to old rendering if getTracks isn't available
+  if (!tracks || tracks.length === 0) {
+    renderClipsLegacy(IKState);
+    return;
+  }
+
+  const tlTracks = $('#tl-tracks');
+  if (!tlTracks) return;
   const tw = getLaneW();
   const dur = S.dur;
   if (dur <= 0) return;
 
-  const videoClips = IKState.getVideoClips();
-  const audioClips = IKState.getAudioClips();
+  // Clear existing track DOM (keep AI track)
+  tlTracks.querySelectorAll('.track.video-track, .track.audio-track').forEach((t) => t.remove());
 
-  if (videoClips.length === 0) {
-    laneV1.innerHTML =
-      '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop video here</div>';
-  }
+  for (const track of tracks) {
+    const trackEl = document.createElement('div');
+    trackEl.className = `track ${track.track_type}-track`;
+    trackEl.setAttribute('data-track-id', String(track.id));
 
-  const clipGroups = new Map<string, { video: any; audio: any }>();
+    const gutter = document.createElement('div');
+    gutter.className = 'track-gutter';
+    gutter.innerHTML = `
+      <div class="track-icons">
+        <i data-lucide="${track.locked ? 'lock' : 'unlock'}" class="track-lock${track.locked ? ' active' : ''}"></i>
+        <i data-lucide="${track.visible ? 'eye' : 'eye-off'}" class="track-visibility${!track.visible ? ' active' : ''}"></i>
+        <i data-lucide="${track.muted ? 'volume-x' : 'volume-2'}" class="track-volume-icon${track.muted ? ' active' : ''}"></i>
+      </div>
+      <span style="font-size:9px;color:var(--text-muted);margin-left:4px;">${track.name}</span>
+    `;
 
-  videoClips.forEach((clip: any) => {
-    const groupId = clip.group_id || `group_${clip.id}`;
-    clipGroups.set(groupId, { video: clip, audio: null });
-  });
+    const lane = document.createElement('div');
+    lane.className = 'track-lane';
 
-  audioClips.forEach((clip: any) => {
-    const groupId = clip.group_id || `group_${clip.id}`;
-    if (!clipGroups.has(groupId)) clipGroups.set(groupId, { video: null, audio: null });
-    clipGroups.get(groupId)!.audio = clip;
-  });
+    // Render clips in this track
+    for (const clip of track.clips) {
+      const meta = IKState.getClipMeta ? IKState.getClipMeta(clip.id) : null;
+      const displayName = meta?.name || clip.source_id || `Clip ${clip.id}`;
+      const el = document.createElement('div');
+      el.className = `tl-clip${track.track_type === 'audio' ? ' tl-clip-audio' : ''}`;
+      el.dataset.clipId = String(clip.id);
+      setClipDimensions(el, clip, dur, tw);
 
-  // fallow-ignore-next-line complexity
-  clipGroups.forEach((group) => {
-    const clip = group.video || group.audio;
-    if (!clip) return;
-
-    const el = document.createElement('div');
-    el.className = 'tl-clip';
-    el.dataset.clipId = clip.id;
-    const w = setClipDimensions(el, clip, dur, tw);
-
-    let content = '';
-
-    if (group.video) {
-      const videoClip = group.video;
-      if (videoClip.isReal && videoClip.thumbnails && videoClip.thumbnails.length > 0) {
-        const count = Math.max(1, Math.floor(w / 60));
-        let thumbs = '<div class="tl-clip-thumbs">';
-        for (let j = 0; j < count; j++) {
-          const idx = Math.min(
-            Math.floor((j / count) * videoClip.thumbnails.length),
-            videoClip.thumbnails.length - 1
-          );
-          thumbs += `<img src="${videoClip.thumbnails[idx].dataUrl}" draggable="false">`;
+      if (track.track_type === 'video') {
+        if (meta?.thumbnails && meta.thumbnails.length > 0) {
+          const w = setClipDimensions(el, clip, dur, tw);
+          const count = Math.max(1, Math.floor(w / 60));
+          let thumbs = '<div class="tl-clip-thumbs">';
+          for (let j = 0; j < count; j++) {
+            const idx = Math.min(Math.floor((j / count) * meta.thumbnails.length), meta.thumbnails.length - 1);
+            thumbs += `<img src="${meta.thumbnails[idx].dataUrl}" draggable="false">`;
+          }
+          thumbs += '</div>';
+          el.innerHTML = `${thumbs}<span class="tl-clip-label">${displayName}</span>`;
+        } else {
+          el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${displayName}</span>`;
         }
-        thumbs += '</div>';
-        content += `${thumbs}<span class="tl-clip-label">${videoClip.name}</span>`;
-      } else if (videoClip.isReal) {
-        content += `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${videoClip.name}</span>`;
-      } else if (videoClip.picId) {
-        const count = Math.max(1, Math.floor(w / 60));
-        let thumbs = '<div class="tl-clip-thumbs">';
-        for (let j = 0; j < count; j++)
-          thumbs += `<img src="${picUrl(videoClip.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
-        thumbs += '</div>';
-        content += `${thumbs}<span class="tl-clip-label">${videoClip.name}</span>`;
       } else {
-        content += `<span class="tl-clip-label">${videoClip.name}</span>`;
+        const bars = Array.from({ length: Math.max(1, Math.floor(Math.max(1, parseFloat(el.style.width) || 100) / 4)) }, (_, i) => {
+          const h = seededBarHeight(i);
+          return `<rect x="${i * 4}" y="${20 - h / 2}" width="2.5" height="${Math.min(h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`;
+        }).join('');
+        el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, parseFloat(el.style.width) || 100)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${displayName}</span>`;
       }
+      applyDragLogic(el, clip, track.clips, tw);
+      lane.appendChild(el);
     }
 
-    el.innerHTML = content;
-    applyDragLogic(el, clip, [clip], tw);
-    laneV1.appendChild(el);
-  });
+    if (track.clips.length === 0 && track.track_type === 'video') {
+      lane.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop video here</div>';
+    }
 
-  // Clips whose group_id is null (most audio clips) were never added to
-  // clipGroups, so clipGroups.get(null) returns undefined — guard against that
-  // and treat null-group audio clips as standalone (no linked video).
-  const standaloneAudio = audioClips.filter((clip: any) => {
-    if (!clip.group_id) return true;          // null / empty → standalone
-    const group = clipGroups.get(clip.group_id);
-    return group && !group.video;
-  });
-
-  if (standaloneAudio.length === 0) {
-    laneA1.innerHTML =
-      '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Audio track (MP3 only)</div>';
+    trackEl.appendChild(gutter);
+    trackEl.appendChild(lane);
+    tlTracks.appendChild(trackEl);
   }
 
-  standaloneAudio.forEach((clip: any) => {
-    const el = document.createElement('div');
-    el.className = 'tl-clip tl-clip-audio';
-    el.dataset.clipId = clip.id;
-    const w = setClipDimensions(el, clip, dur, tw);
-    const bars = Array.from({ length: Math.max(1, Math.floor(w / 4)) }, (_, i) => {
-      const h = seededBarHeight(i);
-      return `<rect x="${i * 4}" y="${20 - h / 2}" width="2.5" height="${Math.min(h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`;
-    }).join('');
-    el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, w)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
-    applyDragLogic(el, clip, standaloneAudio, tw);
-    laneA1.appendChild(el);
-  });
-
-  const laneAi = $('#lane-ai');
-  if (laneAi) {
-    laneAi.innerHTML = '';
-    aiNodes.forEach((node) => {
-      const el = document.createElement('div');
-      el.className = 'ai-node';
-      el.style.left = (node.time / dur) * tw + 'px';
-      el.innerHTML = `<i data-lucide="${node.icon}"></i> ${node.label}`;
-      el.onclick = () => showToast('AI Insight: ' + node.label, node.icon);
-      laneAi.appendChild(el);
-    });
+  // Ensure the ai-track is visible but at the top
+  const aiTrack = tlTracks.querySelector('.track.ai-track');
+  if (aiTrack && tlTracks.firstChild !== aiTrack) {
+    tlTracks.insertBefore(aiTrack, tlTracks.firstChild);
   }
 
-  window.lucide.createIcons({ nodes: [$('#lane-ai'), laneV1, laneA1] });
+  window.lucide.createIcons({ nodes: [tlTracks] });
 
-  const spacer = (width: number) => {
-    const s = document.createElement('div');
-    s.style.cssText = `width:${width}px;height:0;pointer-events:none;`;
-    return s;
-  };
-  laneV1.appendChild(spacer(tw));
-  if (laneA1 !== laneV1) laneA1.appendChild(spacer(tw));
-  if (laneAi) laneAi.appendChild(spacer(tw));
+  // Spacer for scroll width
+  const existingSpacer = tlTracks.querySelector('.tl-spacer');
+  if (existingSpacer) existingSpacer.remove();
+  const spacer = document.createElement('div');
+  spacer.className = 'tl-spacer';
+  spacer.style.cssText = `width:${tw}px;height:0;pointer-events:none;`;
+  tlTracks.appendChild(spacer);
 }
 window.renderClips = renderClips;
 
@@ -365,17 +336,14 @@ export function initTimelineUI() {
     };
   });
 
-  // Track icons logic — toggles CSS AND writes to IKState so compositor/audio respect them.
-  // fallow-ignore-next-line complexity
+  // Track icons logic — works with dynamic tracks via data-track-id
   document.addEventListener('click', (e) => {
     const icon = (e.target as Element).closest('.track-icons svg');
     if (!icon) return;
-    const trackEl = icon.closest('.track') as HTMLElement;
+    const trackEl = icon.closest('[data-track-id]') as HTMLElement;
     if (!trackEl) return;
-
-    // Map HTML data-track-id to IKState numeric track id (0 = video, 1 = audio)
-    const trackDataId = trackEl.dataset.trackId;
-    const trackId = trackDataId === 'v1' ? 0 : trackDataId === 'a1' ? 1 : null;
+    const trackId = parseInt(trackEl.dataset.trackId!);
+    if (isNaN(trackId)) return;
     const IKState = (window as any).IKState;
 
     const iconType = icon.getAttribute('data-lucide');
@@ -384,78 +352,96 @@ export function initTimelineUI() {
       const isLocked = icon.classList.contains('active');
       icon.setAttribute('data-lucide', isLocked ? 'lock' : 'unlock');
       window.lucide.createIcons({ nodes: [icon] });
-      if (trackId !== null && IKState) IKState.setTrackProp(trackId, 'locked', isLocked);
+      IKState.setTrackProp(trackId, 'locked', isLocked);
       showToast(isLocked ? 'Track locked' : 'Track unlocked', isLocked ? 'lock' : 'unlock');
     } else if (iconType === 'eye' || iconType === 'eye-off') {
       icon.classList.toggle('active');
       const isVisible = !icon.classList.contains('active');
       icon.setAttribute('data-lucide', isVisible ? 'eye' : 'eye-off');
       window.lucide.createIcons({ nodes: [icon] });
-      if (trackId !== null && IKState) IKState.setTrackProp(trackId, 'visible', isVisible);
-      window.dispatchEvent(new CustomEvent('ikl:reRender'));
+      IKState.setTrackProp(trackId, 'visible', isVisible);
       showToast(isVisible ? 'Track visible' : 'Track hidden', isVisible ? 'eye' : 'eye-off');
     } else if (iconType === 'volume-2' || iconType === 'volume-x') {
       icon.classList.toggle('active');
       const isMuted = icon.classList.contains('active');
       icon.setAttribute('data-lucide', isMuted ? 'volume-x' : 'volume-2');
       window.lucide.createIcons({ nodes: [icon] });
-      if (trackId !== null && IKState) IKState.setTrackProp(trackId, 'muted', isMuted);
-      window.dispatchEvent(new CustomEvent('ikl:reRender'));
+      IKState.setTrackProp(trackId, 'muted', isMuted);
       showToast(isMuted ? 'Track muted' : 'Track unmuted', isMuted ? 'volume-x' : 'volume-2');
     }
+  });
+
+  // Add track buttons
+  $('#add-video-track')?.addEventListener('click', () => {
+    const IKState = (window as any).IKState;
+    if (!IKState || !IKState.isReady()) return;
+    IKState.addTrack('video');
+    window.dispatchEvent(new CustomEvent('ikl:reRender'));
+    showToast('Video track added', 'plus');
+  });
+  $('#add-audio-track')?.addEventListener('click', () => {
+    const IKState = (window as any).IKState;
+    if (!IKState || !IKState.isReady()) return;
+    IKState.addTrack('audio');
+    window.dispatchEvent(new CustomEvent('ikl:reRender'));
+    showToast('Audio track added', 'plus');
   });
 
   initTimelineDrop();
 }
 
 function initTimelineDrop() {
-  const laneV1 = $('#lane-v1');
-  if (!laneV1) return;
-  laneV1.ondragover = (e) => {
-    e.preventDefault();
+  const tlTracks = $('#tl-tracks');
+  if (!tlTracks) return;
+
+  tlTracks.addEventListener('dragover', (e: Event) => {
+    const ev = e as DragEvent;
+    ev.preventDefault();
+    const lane = (ev.target as HTMLElement).closest('.track-lane');
+    if (!lane) return;
     const tw = getLaneW();
-    const rect = laneV1.getBoundingClientRect();
-    const cursorPx = e.clientX - rect.left + $('#tl-tracks')!.scrollLeft;
+    const rect = lane.getBoundingClientRect();
+    const cursorPx = ev.clientX - rect.left + tlTracks.scrollLeft;
     const rawUs = Math.round((cursorPx / tw) * S.dur * 1_000_000);
     const snapped = cursorPx <= 24 ? 0 : applySnap(rawUs, null, tw);
     if (snapped !== null) showSnapGuide(snapped, tw);
     else hideSnapGuide();
-  };
-  laneV1.ondragleave = () => hideSnapGuide();
-  laneV1.ondrop = (e) => {
-    e.preventDefault();
+  });
+
+  tlTracks.addEventListener('dragleave', () => hideSnapGuide());
+
+  tlTracks.addEventListener('drop', (e: Event) => {
+    const ev = e as DragEvent;
+    ev.preventDefault();
     hideSnapGuide();
     const IKState = (window as any).IKState;
     if (!IKState) return;
-    const data = JSON.parse(e.dataTransfer!.getData('text/plain'));
+    const lane = (ev.target as HTMLElement).closest('.track-lane');
+    if (!lane) return;
+    const trackEl = lane.closest('[data-track-id]') as HTMLElement;
+    if (!trackEl) return;
+    const trackId = parseInt(trackEl.dataset.trackId!);
+    if (isNaN(trackId)) return;
     const tw = getLaneW();
-    const rect = laneV1.getBoundingClientRect();
-    const cursorPx = e.clientX - rect.left + $('#tl-tracks')!.scrollLeft;
+    const rect = lane.getBoundingClientRect();
+    const cursorPx = ev.clientX - rect.left + tlTracks.scrollLeft;
     const rawUs = Math.round((cursorPx / tw) * S.dur * 1_000_000);
     const snapped = cursorPx <= 24 ? 0 : applySnap(rawUs, null, tw);
     const startUs = Math.max(0, snapped !== null ? snapped : rawUs);
+    const data = JSON.parse(ev.dataTransfer!.getData('text/plain'));
     saveSnapshot();
     if (data.isReal && data.sourceId) {
       const durSec = parseFloat(data.dur) || 4.0;
-      const neededDurSec = startUs / 1_000_000 + durSec;
-      if (neededDurSec > S.dur) S.dur = neededDurSec + 10;
       const endUs = Math.round(startUs + durSec * 1_000_000);
-      IKState.addVideoClip(data.sourceId, startUs, endUs, {
-        name: data.name,
-        isReal: true,
-      }, `group_${Date.now()}`);
+      IKState.addClip(trackId, data.sourceId, startUs, endUs, { name: data.name, isReal: true }, `group_${Date.now()}`);
       showToast('Clip added to timeline', 'film');
     } else {
       const endUs = startUs + 4_000_000;
-      IKState.addVideoClip('stock_' + data.id, startUs, endUs, {
-        name: data.name,
-        isReal: false,
-        picId: data.picId || 0,
-      });
+      IKState.addClip(trackId, 'stock_' + data.id, startUs, endUs, { name: data.name, isReal: false, picId: data.picId || 0 });
       showToast('Stock Inserted', 'film');
     }
     reRender();
-  };
+  });
 }
 
 // ── AI Actions ──────────────────────────────────────────────────────────
@@ -525,3 +511,104 @@ export function applyAiAction(type: 'silence' | 'captions' | 'sync') {
   reRender();
 }
 window.applyAiAction = applyAiAction;
+
+// ── Legacy renderClips (backward compat for tests using old API) ──────
+function renderClipsLegacy(IKState: any) {
+  const laneV1 = $('#lane-v1');
+  const laneA1 = $('#lane-a1');
+  if (!laneV1 || !laneA1) return;
+
+  laneV1.innerHTML = '';
+  laneA1.innerHTML = '';
+  const tw = getLaneW();
+  const dur = S.dur;
+  if (dur <= 0) return;
+
+  const videoClips = IKState.getVideoClips();
+  const audioClips = IKState.getAudioClips();
+
+  if (videoClips.length === 0) {
+    laneV1.innerHTML =
+      '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop video here</div>';
+  }
+
+  const clipGroups = new Map<string, { video: any; audio: any }>();
+  videoClips.forEach((clip: any) => {
+    clipGroups.set(clip.group_id || `group_${clip.id}`, { video: clip, audio: null });
+  });
+  audioClips.forEach((clip: any) => {
+    const gid = clip.group_id || `group_${clip.id}`;
+    if (!clipGroups.has(gid)) clipGroups.set(gid, { video: null, audio: null });
+    clipGroups.get(gid)!.audio = clip;
+  });
+
+  clipGroups.forEach((group) => {
+    const clip = group.video || group.audio;
+    if (!clip) return;
+    const el = document.createElement('div');
+    el.className = 'tl-clip';
+    el.dataset.clipId = clip.id;
+    const w = setClipDimensions(el, clip, dur, tw);
+    let content = '';
+    if (group.video) {
+      if (group.video.isReal && group.video.thumbnails?.length > 0) {
+        const count = Math.max(1, Math.floor(w / 60));
+        let thumbs = '<div class="tl-clip-thumbs">';
+        for (let j = 0; j < count; j++) {
+          const idx = Math.min(Math.floor((j / count) * group.video.thumbnails.length), group.video.thumbnails.length - 1);
+          thumbs += `<img src="${group.video.thumbnails[idx].dataUrl}" draggable="false">`;
+        }
+        thumbs += '</div>';
+        content += `${thumbs}<span class="tl-clip-label">${group.video.name}</span>`;
+      } else if (group.video.isReal) {
+        content += `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${group.video.name}</span>`;
+      } else if (group.video.picId) {
+        const count = Math.max(1, Math.floor(w / 60));
+        let thumbs = '<div class="tl-clip-thumbs">';
+        for (let j = 0; j < count; j++)
+          thumbs += `<img src="https://picsum.photos/id/${group.video.picId}/100/60" crossorigin="anonymous" draggable="false">`;
+        thumbs += '</div>';
+        content += `${thumbs}<span class="tl-clip-label">${group.video.name}</span>`;
+      } else {
+        content += `<span class="tl-clip-label">${group.video.name}</span>`;
+      }
+    }
+    el.innerHTML = content;
+    applyDragLogic(el, clip, [clip], tw);
+    laneV1.appendChild(el);
+  });
+
+  const standaloneAudio = audioClips.filter((clip: any) => !clip.group_id || !clipGroups.get(clip.group_id)?.video);
+  if (standaloneAudio.length === 0) {
+    laneA1.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Audio track (MP3 only)</div>';
+  }
+  standaloneAudio.forEach((clip: any) => {
+    const el = document.createElement('div');
+    el.className = 'tl-clip tl-clip-audio';
+    el.dataset.clipId = clip.id;
+    const w = setClipDimensions(el, clip, dur, tw);
+    const bars = Array.from({ length: Math.max(1, Math.floor(w / 4)) }, (_, i) => ({
+      h: (() => { let x = ((i * 2654435761) >>> 0) & 0xff; return 10 + (x % 28); })(),
+    }));
+    const svgContent = bars.map((b, i) => `<rect x="${i * 4}" y="${20 - b.h / 2}" width="2.5" height="${Math.min(b.h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`).join('');
+    el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, w)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${svgContent}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
+    applyDragLogic(el, clip, standaloneAudio, tw);
+    laneA1.appendChild(el);
+  });
+
+  const laneAi = $('#lane-ai');
+  if (laneAi) {
+    laneAi.innerHTML = '';
+    aiNodes.forEach((node: any) => {
+      const el = document.createElement('div');
+      el.className = 'ai-node';
+      el.style.left = (node.time / dur) * tw + 'px';
+      el.innerHTML = `<i data-lucide="${node.icon}"></i> ${node.label}`;
+      laneAi.appendChild(el);
+    });
+  }
+
+  laneV1.appendChild((() => { const s = document.createElement('div'); s.style.cssText = `width:${tw}px;height:0;pointer-events:none;`; return s; })());
+  laneA1.appendChild((() => { const s = document.createElement('div'); s.style.cssText = `width:${tw}px;height:0;pointer-events:none;`; return s; })());
+  if (laneAi) laneAi.appendChild((() => { const s = document.createElement('div'); s.style.cssText = `width:${tw}px;height:0;pointer-events:none;`; return s; })());
+}

@@ -89,18 +89,14 @@ function remapStaleSources(newSourceId: string): void {
   const project = IKState.getProject();
   if (!project) return;
   let remapped = 0;
-  const totalBefore = project.tracks.reduce((s, t) => s + t.clips.length, 0);
-  console.log(`[iKlippa:app] remapStaleSources: ${totalBefore} clips across ${project.tracks.length} tracks, new source="${newSourceId}"`);
   for (const track of project.tracks) {
     for (const clip of track.clips) {
-      console.log(`[iKlippa:app]   clip ${clip.id} source_id="${clip.source_id}"`);
       if (clip.source_id && clip.source_id.startsWith('imported_') && clip.source_id !== newSourceId) {
         clip.source_id = newSourceId;
         remapped++;
       }
     }
   }
-  console.log(`[iKlippa:app] remapStaleSources: remapped ${remapped} clips`);
   if (remapped > 0) {
     console.log(`[iKlippa:app] Remapped ${remapped} clips to new source "${newSourceId}"`);
     window.showToast(`Project restored — ${remapped} clip(s) linked to imported media`, 'link');
@@ -133,6 +129,9 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
     height,
   });
   window.renderMedia('footage');
+  window.calculateTimelineDuration();
+  window.renderRuler();
+  window.renderClips();
   window.showToast(`Clip loaded (${width}×${height})`, 'film');
 
   // If the project was restored (clips have stale source_ids from a previous
