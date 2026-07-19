@@ -216,6 +216,7 @@ export function applyDragLogic(el: HTMLElement, clip: any, clipArray: any[], tw:
         selectedClipIds.add(clip.id);
       }
       syncActiveClasses();
+      if (window.reflectClipGrade) window.reflectClipGrade(clip.id);
       const dur = S.dur;
       if (dur <= 0) return;
 

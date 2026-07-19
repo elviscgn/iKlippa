@@ -910,6 +910,16 @@ export const __TEST_HOOKS__ = {
 function paintFrameAtTime(ms: number): void {
   if (!ctx || !canvas) return;
 
+  // Prefer the Rust composite when available (it respects per-clip grades).
+  // Accept composites within 100ms of the target time.
+  const tsUs = Math.round(ms * 1_000);
+  if (_rustCompositeBuffer && Math.abs(_rustCompositeTsUs - tsUs) < 100_000) {
+    const arr = new Uint8ClampedArray(_rustCompositeBuffer);
+    const imageData = new ImageData(arr, _rustCompositeW, _rustCompositeH);
+    ctx.putImageData(imageData, 0, 0);
+    return;
+  }
+
   const msUs = Math.round(ms * 1_000);
   const activeClips = getActiveClipsAtTime(msUs);
 
@@ -1041,6 +1051,7 @@ export async function seekTo(ms: number): Promise<void> {
   const sourceId = mapRes ? mapRes.sourceId : undefined;
   seekGeneration++;
   worker!.postMessage({ type: 'seek', ms: sourceTargetMs, sourceId, seekId: seekGeneration });
+  requestComposite(ms);
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
@@ -1084,6 +1095,9 @@ export function setPerClipGrade(clipId: number, grade: Record<string, number>): 
     clipId,
     grade,
   });
+  // Trigger a Rust composite at the current playhead so the preview
+  // reflects the grade change immediately.
+  requestComposite(playheadMs);
 }
 
 // ── Export ───────────────────────────────────────────────────────────────
