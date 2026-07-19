@@ -474,9 +474,8 @@ initEngine(canvasEl)
     statusBadge.innerHTML = '<i data-lucide="cloud-lightning"></i> Engine ready';
     window.lucide.createIcons({ nodes: [statusBadge] });
 
-    // Sync restored project to Rust now that the worker is ready
+    // Render restored project UI (no sync — wait for import to remap + sync)
     if (_restoredFromStorage) {
-      syncTimelineToRust();
       window.calculateTimelineDuration();
       window.renderRuler();
       window.renderClips();
