@@ -414,6 +414,8 @@ export function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): voi
       _rustCompositeTsUs = msg.ts_us;
       _rustCompositeW = msg.width;
       _rustCompositeH = msg.height;
+      // Force a re-paint to show the Rust composite immediately
+      if (!isPlaying) paintFrameAtTime(_rustCompositeTsUs / 1_000);
       break;
     case 'error':
       handleEngineError(msg.error);
@@ -1202,6 +1204,14 @@ export function syncTimelineToRust(): void {
   setTimeline(json).then(({ ok, error }) => {
     if (!ok) {
       console.warn('[iKlippa:engine] set_timeline rejected:', error);
+    }
+    // Re-seek to repopulate the Rust frame_cache now that the project
+    // has clips. Frames decoded before set_timeline had no clips to
+    // match against in stage_frame_broadcast.
+    const mapRes = mapTimelineToSource(playheadMs);
+    if (mapRes) {
+      seekGeneration++;
+      worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId, seekId: seekGeneration });
     }
   });
 }

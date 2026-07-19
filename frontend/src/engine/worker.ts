@@ -293,6 +293,7 @@ function handleSetTimeline(msg: WorkerSetTimelineCmd) {
   try {
     wasmModule.set_timeline(msg.json);
     wlog('worker', 'set_timeline OK');
+    try { wasmModule.reset_frame_cache(); } catch { /* ignore */ }
     postMessage({ type: 'timeline_set', ok: true });
   } catch (e) {
     werr('worker', 'set_timeline failed', String(e));
