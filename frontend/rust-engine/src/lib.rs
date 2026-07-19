@@ -532,6 +532,37 @@ impl IklippaEngine {
         self.frame_cache.insert(clip_id, (width, height, data));
     }
 
+    /// Stage the current pool buffer for every video-track clip whose source
+    /// window covers `source_ts_us`. One copy → N clip_ids.
+    #[wasm_bindgen]
+    pub fn stage_frame_broadcast(&mut self, source_ts_us: i64, width: u32, height: u32) -> u32 {
+        let mut count: u32 = 0;
+        // Collect matching clip ids first so we only allocate if there's a match.
+        let mut matches: Vec<u32> = Vec::new();
+        for track in &self.project.tracks {
+            if track.track_type != timeline_state::TrackType::Video {
+                continue;
+            }
+            for clip in &track.clips {
+                if source_ts_us >= clip.source_start_us && source_ts_us < clip.source_end_us {
+                    matches.push(clip.id);
+                }
+            }
+        }
+        if matches.is_empty() {
+            return 0;
+        }
+        let size = (width * height * 4) as usize;
+        let mut data = vec![0u8; size];
+        let copy_len = size.min(self.pool.len());
+        data[..copy_len].copy_from_slice(&self.pool.buf()[..copy_len]);
+        for id in matches {
+            self.frame_cache.insert(id, (width, height, data.clone()));
+            count += 1;
+        }
+        count
+    }
+
     /// Composite all active clips at `ts_us` into the composite pool.
     /// Reads from the frame cache, applies per-clip colour grades, and
     /// alpha-blends layers bottom → top by track order.

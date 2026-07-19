@@ -27,6 +27,7 @@ export interface WorkerReadyMsg {
   durationMs: number;
   width: number;
   height: number;
+  fileName: string;
 }
 
 export interface WorkerDecodeSubmitMsg {
@@ -103,6 +104,14 @@ export interface EngineError {
   at: number;
 }
 
+export interface WorkerCompositeResult {
+  type: 'composite_result';
+  buffer: ArrayBuffer;
+  ts_us: number;
+  width: number;
+  height: number;
+}
+
 export interface WorkerErrorMsg {
   type: 'error';
   error: EngineError;
@@ -116,6 +125,7 @@ export type WorkerIncomingMessage =
   | WorkerAudioChunkMsg
   | WorkerTimelineSetMsg
   | WorkerProjectJsonMsg
+  | WorkerCompositeResult
   | WorkerErrorMsg;
 
 // ── Messages sent TO the worker ─────────────────────────────────────────
@@ -135,6 +145,7 @@ export interface WorkerLoadCmd {
   audioConfig?: AudioDecoderConfig;
   audioSamples?: MP4Sample[];
   audioConfigVersion: number;
+  fileName: string;
 }
 
 export interface WorkerSeekCmd {
@@ -178,6 +189,11 @@ export interface WorkerSetAudioVersionCmd {
   version: number;
 }
 
+export interface WorkerCompositeCmd {
+  type: 'composite';
+  ts_us: number;
+}
+
 type WorkerOutgoingMessage =
   | WorkerInitCmd
   | WorkerLoadCmd
@@ -187,7 +203,8 @@ type WorkerOutgoingMessage =
   | WorkerSetGradeCmd
   | WorkerSetTimelineCmd
   | WorkerGetProjectJsonCmd
-  | WorkerSetAudioVersionCmd;
+  | WorkerSetAudioVersionCmd
+  | WorkerCompositeCmd;
 
 // ── Grade parameters ────────────────────────────────────────────────────
 
