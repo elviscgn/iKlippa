@@ -136,6 +136,15 @@ const MAX_READS_PER_PUMP = 8;
 // means a pause discards audio the worker will never re-send.
 const AUDIO_LOOKAHEAD_MS = 1000;
 
+function refreshFrameView() {
+  if (!wasmModule || !wasmMemory) return;
+  frameView = new Uint8ClampedArray(
+    wasmMemory.buffer,
+    wasmModule.frame_ptr(),
+    wasmModule.frame_len(),
+  );
+}
+
 async function handleInit() {
   const wasmExports = await init();
   wasmMemory = wasmExports.memory;
@@ -464,6 +473,11 @@ export async function setupDecoder(codecConfig: VideoDecoderConfig, width: numbe
         return;
       }
 
+      // Refresh the WASM pool view — any previous operation (set_timeline,
+      // stage_frame_broadcast, process_frame) may have grown the heap and
+      // detached the buffer.
+      refreshFrameView();
+
       if (videoFrame.format === null) {
         offscreenCtx!.drawImage(videoFrame, 0, 0);
         videoFrame.close();
@@ -477,17 +491,8 @@ export async function setupDecoder(codecConfig: VideoDecoderConfig, width: numbe
       // Stage the raw frame for each matching timeline clip so compose_at
       // can find it by clip_id later.
       try {
-        const staged = wasmModule!.stage_frame_broadcast(BigInt(Math.round(normalizedTsUs)), width, height);
-        if (staged > 0) {
-          // stage_frame_broadcast can grow the WASM heap (it allocates in
-          // frame_cache), which replaces wasmMemory.buffer and detaches
-          // frameView. Refresh the view so the next copyTo doesn't crash.
-          frameView = new Uint8ClampedArray(
-            wasmMemory!.buffer,
-            wasmModule!.frame_ptr(),
-            wasmModule!.frame_len(),
-          );
-        }
+        wasmModule!.stage_frame_broadcast(BigInt(Math.round(normalizedTsUs)), width, height);
+        refreshFrameView();
       } catch (e) {
         // Non-fatal: the compositor will just skip this frame.
         wwarn('worker', `stage_frame_broadcast failed @ ${normalizedTsUs}us`, String(e));
