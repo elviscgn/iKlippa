@@ -318,11 +318,11 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
     }
   }
 
-  if (!isPlaying) {
-    if (seekTargetMs >= 0 && msg.ms >= seekTargetMs - 33) {
-      log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
-      if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
-      seekTargetMs = -1;
+  if (seekTargetMs >= 0 && msg.ms >= seekTargetMs - 33) {
+    log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
+    if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
+    seekTargetMs = -1;
+    if (!isPlaying) {
       paintFrameAtTime(playheadMs);
     }
   }

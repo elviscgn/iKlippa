@@ -222,6 +222,10 @@ async function handleSync(msg: WorkerSyncCmd) {
   isWorkerPlaying = msg.isPlaying;
 
   if (isWorkerPlaying) {
+    // Skip decodeNextSamples if a newer seek has been queued — this sync
+    // is for an aborted seek and the decoded frames would be at the wrong
+    // position, wasting time before the next seek can start.
+    if (latestSeekId !== currentSeekId) return;
     await decodeNextSamples();
   }
 }
