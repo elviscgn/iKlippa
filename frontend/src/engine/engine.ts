@@ -1256,6 +1256,7 @@ export function syncTimelineToRust(): void {
     // has clips. Frames decoded before set_timeline had no clips to
     // match against in stage_frame_broadcast.
     const mapRes = mapTimelineToSource(playheadMs);
+    console.log(`[iKlippa:engine] syncTimelineToRust: mapTimelineToSource(${playheadMs}) → sourceId="${mapRes?.sourceId}", sourceMs=${mapRes?.sourceMs}`);
     if (mapRes) {
       seekGeneration++;
       worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId, seekId: seekGeneration });
