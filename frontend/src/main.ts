@@ -81,6 +81,30 @@ window.onThumbnailsUpdated = (thumbnails): void => {
 };
 
 // ── Import complete: build project model + sync to Rust ─────────────────
+let _restoredFromStorage = false;
+
+function remapStaleSources(newSourceId: string): void {
+  const IKState = window.IKState;
+  if (!IKState || !IKState.isReady()) return;
+  const allClips = IKState.getAllVideoClips ? IKState.getAllVideoClips() : IKState.getVideoClips();
+  let remapped = 0;
+  for (const clip of allClips) {
+    // If the clip's source_id isn't a valid source (starts with 'imported_' but
+    // looks like a restored stale ref), remap it.
+    if (clip.source_id && clip.source_id.startsWith('imported_') && clip.source_id !== newSourceId) {
+      clip.source_id = newSourceId;
+      remapped++;
+    }
+  }
+  if (remapped > 0) {
+    console.log(`[iKlippa:app] Remapped ${remapped} clips to new source "${newSourceId}"`);
+    window.showToast(`Project restored — ${remapped} clip(s) linked to imported media`, 'link');
+    window.calculateTimelineDuration();
+    window.renderRuler();
+    window.renderClips();
+  }
+}
+
 window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }): Promise<void> => {
   hasRealVideo = true;
   const durationSec = durationMs / 1000;
@@ -105,6 +129,11 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
   });
   window.renderMedia('footage');
   window.showToast(`Clip loaded (${width}×${height})`, 'film');
+
+  // If the project was restored (clips have stale source_ids from a previous
+  // session), remap them to the newly imported source.
+  remapStaleSources(sourceId);
+
   syncTimelineToRust();
 
   // fallow-ignore-next-line complexity
@@ -419,26 +448,22 @@ window.addEventListener('ikl:reRender', () => {
     }
   }
   if (drafts.length === 0) return;
-  // Pick the most recent draft (longest duration as heuristic)
   drafts.sort((a, b) => b.ts - a.ts);
   const latest = drafts[0]!;
-  if (window.IKState && window.IKState.isReady()) return;
-  // Defer restore until IKState is ready
-  const tryRestore = () => {
+  try {
+    // Force-init IKState if not ready (no import has happened yet).
     if (!window.IKState || !window.IKState.isReady()) {
-      setTimeout(tryRestore, 100);
-      return;
+      const w = latest.state.project?.width || 1920;
+      const h = latest.state.project?.height || 1080;
+      window.IKState.init(w, h);
     }
-    try {
-      window.IKState.loadState(latest.state);
-      window.IKState.computeDuration();
-      syncTimelineToRust();
-      console.log('[iKlippa] Auto-restored project from localStorage');
-    } catch (e) {
-      console.warn('[iKlippa] Auto-restore failed:', e);
-    }
-  };
-  setTimeout(tryRestore, 500);
+    window.IKState.loadState(latest.state);
+    window.IKState.computeDuration();
+    _restoredFromStorage = true;
+    console.log('[iKlippa] Auto-restored project from localStorage');
+  } catch (e) {
+    console.warn('[iKlippa] Auto-restore failed:', e);
+  }
 })();
 
 // ── Engine Initialization ───────────────────────────────────────────────
@@ -447,6 +472,16 @@ initEngine(canvasEl)
     console.log('[iKlippa] Engine ready. Drop a video file to begin.');
     statusBadge.innerHTML = '<i data-lucide="cloud-lightning"></i> Engine ready';
     window.lucide.createIcons({ nodes: [statusBadge] });
+
+    // Sync restored project to Rust now that the worker is ready
+    if (_restoredFromStorage) {
+      syncTimelineToRust();
+      window.calculateTimelineDuration();
+      window.renderRuler();
+      window.renderClips();
+      window.updatePlayhead();
+      window.showToast('Project restored — import a video to continue', 'folder-open');
+    }
 
     // Dev auto-load helper
     if (import.meta.env.DEV) {
