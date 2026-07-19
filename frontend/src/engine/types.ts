@@ -27,6 +27,7 @@ export interface WorkerReadyMsg {
   durationMs: number;
   width: number;
   height: number;
+  fileName: string;
 }
 
 export interface WorkerDecodeSubmitMsg {
@@ -144,6 +145,7 @@ export interface WorkerLoadCmd {
   audioConfig?: AudioDecoderConfig;
   audioSamples?: MP4Sample[];
   audioConfigVersion: number;
+  fileName: string;
 }
 
 export interface WorkerSeekCmd {

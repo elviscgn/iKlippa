@@ -82,7 +82,7 @@ function handleTrim(e: MouseEvent, el: HTMLElement, clip: any, tw: number, dur: 
     const mx = e2.clientX - laneRect.left + scrollLeft;
     const mouseSec = (mx / tw) * dur;
     const rawUs = Math.round(mouseSec * 1_000_000);
-    const snapped = applySnap(rawUs, clip.id, tw);
+    const snapped = applySnap(rawUs, clip.id, tw, true);
 
     if (isLeftTrim) {
       const newStartUs = Math.round(
@@ -153,7 +153,7 @@ function handleMove(e: MouseEvent, el: HTMLElement, clip: any, tw: number, dur: 
     for (const id of moveIds) {
       const startUs = initialPositions[id as string]!;
       const rawUs = Math.round((startUs / 1_000_000 + dtSec) * 1_000_000);
-      const snapped = applySnap(rawUs, clip.id, tw);
+      const snapped = applySnap(rawUs, clip.id, tw, true);
       const newStartUs = Math.max(0, snapped !== null ? snapped : rawUs);
       const newPx = (us2s(newStartUs) / dur) * tw;
       const el2 = moveEls[id as string];
@@ -161,7 +161,7 @@ function handleMove(e: MouseEvent, el: HTMLElement, clip: any, tw: number, dur: 
     }
     if (moveIds.length === 1) {
       const rawUs = Math.round((initialPositions[moveIds[0] as string]! / 1_000_000 + dtSec) * 1_000_000);
-      const snapped = applySnap(rawUs, clip.id, tw);
+      const snapped = applySnap(rawUs, clip.id, tw, true);
       if (snapped !== null) showSnapGuide(snapped, tw);
       else hideSnapGuide();
     } else {

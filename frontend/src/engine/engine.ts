@@ -294,7 +294,7 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
       width: sourceVideoWidth,
       height: sourceVideoHeight,
       durationMs: videoDurationMs,
-      fileName: currentFileName,
+      fileName: msg.fileName,
     });
   }
 }
@@ -587,7 +587,7 @@ export async function importFile(file: File): Promise<void> {
     throw e;
   });
 
-  worker!.postMessage({ type: 'load', file, ...payload });
+  worker!.postMessage({ type: 'load', file, fileName: file.name, ...payload });
 }
 
 function getDecoderDescription(

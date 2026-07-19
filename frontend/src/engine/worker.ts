@@ -186,7 +186,7 @@ async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfi
 
   await seekAndDecodeFrame(0);
   wlog('worker', `ready posted — pendingFrames now sending to main thread`);
-  postMessage({ type: 'ready', durationMs, width, height });
+  postMessage({ type: 'ready', durationMs, width, height, fileName: msg.fileName });
 }
 
 async function handleSeek(msg: WorkerSeekCmd) {
