@@ -164,7 +164,7 @@ Update this section as tasks complete. Mark `[x]` when a task's acceptance crite
 - [x] Task 3 — Per-clip colour grading
 - [ ] Task 4 — Caption editor
 - [x] Task 5 — Project persistence
-- [ ] Task 6 — Multi-track timeline UI rework
+- [x] Task 6 — Multi-track timeline UI rework
 - [ ] Task 7 — Web Audio mixer
 - [ ] Task 8 — Export: audio + watermark + resolution gating
 - [ ] Task 9 — LUT `.cube` import
