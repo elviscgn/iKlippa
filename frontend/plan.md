@@ -161,7 +161,7 @@ Update this section as tasks complete. Mark `[x]` when a task's acceptance crite
 
 - [~] Task 1 — Rust data model refactor (1.1 Rust model ✓, 1.2 JS migration ✓, pending user QA)
 - [x] Task 2 — Multi-track compositing in Rust
-- [ ] Task 3 — Per-clip colour grading
+- [x] Task 3 — Per-clip colour grading
 - [ ] Task 4 — Caption editor
 - [ ] Task 5 — Project persistence
 - [ ] Task 6 — Multi-track timeline UI rework
