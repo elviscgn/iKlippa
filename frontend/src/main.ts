@@ -18,6 +18,7 @@ import {
   perf,
   captureThumbnailFromBuffer,
   setPendingThumbCapture,
+  syncTimelineToRust,
 } from './engine/engine';
 
 import type { EngineError, GradeParams } from './engine/types';
@@ -105,6 +106,7 @@ window.onClipImported = async ({ width, height, durationMs, fileName }): Promise
   });
   window.renderMedia('footage');
   window.showToast(`Clip loaded (${width}×${height})`, 'film');
+  syncTimelineToRust();
 
   // fallow-ignore-next-line complexity
   setPendingThumbCapture((frameMs: number) => {
@@ -134,6 +136,11 @@ window.onClipImported = async ({ width, height, durationMs, fileName }): Promise
     }
   });
 };
+
+// ── Sync Rust project on any state mutation ──────────────────────────────
+window.addEventListener('ikl:reRender', () => {
+  syncTimelineToRust();
+});
 
 // ── Trim applied: update duration ───────────────────────────────────────
 window.onTrimApplied = ({ durationMs }): void => {

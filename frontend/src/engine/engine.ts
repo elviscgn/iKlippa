@@ -759,8 +759,11 @@ function getActiveClipsAtTime(msUs: number): ClipWithMeta[] {
 function resolveFramesForClips(activeClips: ClipWithMeta[], ms: number) {
   const resolved: Array<{ clip: ClipWithMeta; imageData: ImageData }> = [];
   for (const clip of activeClips) {
-    const timelineOffsetMs = ms - clip.timeline_start_us / 1000;
-    const sourceMs = clip.source_start_us / 1000 + timelineOffsetMs;
+    // ms is in milliseconds; clip timestamps are in microseconds — divide by 1000
+    const clipStartMs = clip.timeline_start_us / 1000;
+    const sourceStartMs = clip.source_start_us / 1000;
+    const timelineOffsetMs = ms - clipStartMs;
+    const sourceMs = sourceStartMs + timelineOffsetMs;
     let bestMs = -1;
     for (const [frameMs] of pendingFrames) {
       if (frameMs <= sourceMs && frameMs > bestMs) bestMs = frameMs;
@@ -1110,6 +1113,19 @@ export async function exportVideo(
 }
 
 // ── Rust Project Sync ───────────────────────────────────────────────────
+/** Push the current JS project state into the Rust engine. Call after any
+ *  mutation that the compositor needs to know about (import, trim, split,
+ *  move, remove, track toggle). */
+export function syncTimelineToRust(): void {
+  if (typeof window.IKState === 'undefined' || !window.IKState.isReady()) return;
+  const json = window.IKState.toRustJson();
+  setTimeline(json).then(({ ok, error }) => {
+    if (!ok) {
+      console.warn('[iKlippa:engine] set_timeline rejected:', error);
+    }
+  });
+}
+
 function setTimeline(json: string): Promise<{ ok: boolean; error?: string }> {
   return new Promise((resolve) => {
     const handler = (e: MessageEvent) => {
