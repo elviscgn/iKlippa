@@ -801,3 +801,17 @@ impl IklippaEngine {
         self.project.alloc_effect_id()
     }
 }
+
+/// Shallow merge `patch` into `base`. For each key in `patch`, the value
+/// from `patch` overwrites the value in `base`. Nested objects are cloned
+/// whole (not deep-merged). Used by `set_clip_colour` for partial updates.
+fn merge_json(mut base: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
+    if let (serde_json::Value::Object(ref mut base_map), serde_json::Value::Object(patch_map)) =
+        (&mut base, patch)
+    {
+        for (k, v) in patch_map {
+            base_map.insert(k, v);
+        }
+    }
+    base
+}
