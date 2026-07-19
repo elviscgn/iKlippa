@@ -150,7 +150,8 @@ async function handleInit() {
 }
 
 async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfig, audioSamples?: MP4Sample[], audioConfigVersion?: number }) {
-  const { file, codecConfig, width, height, samples, durationMs, sourceId } = msg;
+  const { file, codecConfig, width, height, samples, durationMs } = msg;
+  const sourceId: string = msg.sourceId || 'default';
   currentWidth = width;
   currentHeight = height;
   primarySourceId = sourceId;

@@ -24,7 +24,7 @@ function getSnapPoints(excludeClipId: string | number | null, includePlayhead: b
   return Array.from(points);
 }
 
-const SNAP_THRESHOLD_PX = 8;
+const SNAP_THRESHOLD_PX = 12;
 
 export function applySnap(rawUs: number, excludeClipId: string | number | null, tw: number, includePlayhead = false) {
   const thresholdUs = Math.round((SNAP_THRESHOLD_PX / tw) * S.dur * 1_000_000);
