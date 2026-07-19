@@ -160,7 +160,7 @@ Each task lists dependencies. Order is a recommendation — some tasks can run i
 Update this section as tasks complete. Mark `[x]` when a task's acceptance criteria are met.
 
 - [~] Task 1 — Rust data model refactor (1.1 Rust model ✓, 1.2 JS migration ✓, pending user QA)
-- [ ] Task 2 — Multi-track compositing in Rust
+- [x] Task 2 — Multi-track compositing in Rust
 - [ ] Task 3 — Per-clip colour grading
 - [ ] Task 4 — Caption editor
 - [ ] Task 5 — Project persistence
