@@ -923,9 +923,10 @@ function paintFrameAtTime(ms: number): void {
     return;
   }
 
-  // Request a Rust composite for the current position (debounced 250ms).
-  // When it arrives, composite_result handler will re-paint with it.
-  if (Math.abs(ms - _lastCompositeRequestMs) > 250) {
+  // Request a Rust composite when paused/scrubbing (debounced 250ms).
+  // During playback, JS compositing handles preview at 60fps — the
+  // Rust composite would arrive too late for the current frame.
+  if (!isPlaying && Math.abs(ms - _lastCompositeRequestMs) > 250) {
     _lastCompositeRequestMs = ms;
     requestComposite(ms);
   }
