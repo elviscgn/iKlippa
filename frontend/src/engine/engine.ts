@@ -318,11 +318,11 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
     }
   }
 
-  if (!isPlaying) {
-    if (seekTargetMs >= 0 && msg.ms >= seekTargetMs - 33) {
-      log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
-      if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
-      seekTargetMs = -1;
+  if (seekTargetMs >= 0 && msg.ms >= seekTargetMs - 33) {
+    log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
+    if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
+    seekTargetMs = -1;
+    if (!isPlaying) {
       paintFrameAtTime(playheadMs);
     }
   }
@@ -338,6 +338,14 @@ function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'aud
     return;
   }
   if (msg.configVersion !== audioConfigVersion) return;
+  // Anchor the audio clock to the moment the first chunk actually arrives,
+  // not the moment seekTo/startPlayback fired.  The video decode loop
+  // (seekAndDecodeFrame) can take 100-300ms; if we already set
+  // audioPlayStartCtxTime back then, every chunk arrives "stale" and gets
+  // dropped.  Setting it here means the first chunk always lands on time.
+  if (nextAudioStartTime === 0) {
+    audioPlayStartCtxTime = audioCtx.currentTime;
+  }
   const audioBuffer = audioCtx.createBuffer(msg.channels, msg.length, msg.sampleRate);
   for (let c = 0; c < msg.channels; c++) {
     audioBuffer.copyToChannel(new Float32Array(msg.buffers[c]!), c);
@@ -878,7 +886,7 @@ function paintFrameAtTime(ms: number): void {
 }
 
 // ── Playback control ────────────────────────────────────────────────────
-async function startPlayback(): Promise<void> {
+async function startPlayback(opts?: { fromSeek?: boolean }): Promise<void> {
   if (isPlaying) return;
   log(
     'play',
@@ -893,12 +901,21 @@ async function startPlayback(): Promise<void> {
   // Never schedule leftover chunks from before a pause: the worker re-sends
   // everything from the playhead (resync_audio below), so scheduling the
   // leftovers as well would double-stack them — the "screech" class of bug.
-  pendingAudio.clear();
+  // Skip when called from seekTo: seekTo already cleared pendingAudio, and
+  // the seek handler's audio chunks must survive to be scheduled.
+  if (!opts?.fromSeek) {
+    pendingAudio.clear();
+  }
   // Rewind the worker's audio decode front to the playhead. Pause stops and
   // discards all scheduled audio; without this the worker resumes decoding
   // from wherever it had pre-decoded to (possibly EOF), and the audio at the
   // playhead is never re-sent — the pause→play silence bug.
-  worker?.postMessage({ type: 'resync_audio', ms: mapTimelineToSourceMs(playheadMs) });
+  // Skip when called from seekTo: the seek handler already decoded audio from
+  // the correct position; a resync_audio here would reset the decoder and
+  // discard those chunks, wasting time and arriving stale.
+  if (!opts?.fromSeek) {
+    worker?.postMessage({ type: 'resync_audio', ms: mapTimelineToSourceMs(playheadMs) });
+  }
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
@@ -968,7 +985,7 @@ export async function seekTo(ms: number): Promise<void> {
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
-  if (wasPlaying) startPlayback();
+  if (wasPlaying) startPlayback({ fromSeek: true });
 }
 
 function syncWorkerState(): void {

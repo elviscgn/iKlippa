@@ -175,7 +175,6 @@ async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfi
   if (audioConfig) setupAudioDecoder(audioConfig);
 
   await seekAndDecodeFrame(0);
-  await primeAudioDecode();
   wlog('worker', `ready posted — pendingFrames now sending to main thread`);
   postMessage({ type: 'ready', durationMs, width, height });
 }
@@ -190,7 +189,6 @@ async function handleSeek(msg: WorkerSeekCmd) {
   }
   wlog('worker', `seek → ${msg.ms}ms`);
   await seekAndDecodeFrame(msg.ms);
-  await primeAudioDecode();
 }
 
 async function handleResyncAudio(msg: WorkerResyncAudioCmd) {
@@ -224,6 +222,10 @@ async function handleSync(msg: WorkerSyncCmd) {
   isWorkerPlaying = msg.isPlaying;
 
   if (isWorkerPlaying) {
+    // Skip decodeNextSamples if a newer seek has been queued — this sync
+    // is for an aborted seek and the decoded frames would be at the wrong
+    // position, wasting time before the next seek can start.
+    if (latestSeekId !== currentSeekId) return;
     await decodeNextSamples();
   }
 }
@@ -532,33 +534,8 @@ export async function seekAndDecodeFrame(targetMs: number) {
       decoder!.configure(clips[0]!.codecConfig);
     }
 
-    for (let i = vKeyIdx; i < samples.length; i++) {
-      if (latestSeekId !== currentSeekId) {
-        wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
-        try { decoder!.close(); } catch {}
-        break;
-      }
-
-      const s = samples[i]!;
-      const sMs = Math.round((s.cts * 1000) / s.timescale);
-      const data = await readSampleData(file, s);
-
-      postMessage({ type: 'decode_submit', ms: sMs });
-      decoder!.decode(
-        new EncodedVideoChunk({
-          type: s.is_sync ? 'key' : 'delta',
-          timestamp: (s.cts * 1_000_000) / s.timescale,
-          duration: (s.duration * 1_000_000) / s.timescale,
-          data,
-        })
-      );
-
-      if (sMs >= targetMs) {
-        lastDecodedSampleIdx = i;
-        break;
-      }
-    }
-
+    // Set up audio decoder BEFORE the video loop so audio chunks start
+    // arriving during video decode instead of after it.
     if (audioDecoder && audioSamples.length > 0) {
       if (audioDecoder.state === 'closed') {
         setupAudioDecoder(audioConfig!);
@@ -576,6 +553,61 @@ export async function seekAndDecodeFrame(targetMs: number) {
         }
       }
       lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
+
+      // Fire-and-forget: audio chunks start arriving during the video
+      // decode loop (each await readSampleData yields to microtasks).
+      primeAudioDecode().catch((e: unknown) =>
+        reportError('DECODER_AUDIO_FATAL', e)
+      );
+    }
+
+    // Batch file reads: pre-fetch up to MAX_READS_PER_PUMP samples in parallel,
+    // then decode them sequentially.  This avoids waiting for one file read
+    // before starting the next — the I/O is the bottleneck, not the decode.
+    let i = vKeyIdx;
+    while (i < samples.length) {
+      if (latestSeekId !== currentSeekId) {
+        wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
+        lastDecodedSampleIdx = vKeyIdx - 1;
+        break;
+      }
+
+      const batchEnd = Math.min(i + MAX_READS_PER_PUMP, samples.length);
+      const batch = samples.slice(i, batchEnd);
+
+      const dataPromises = batch.map((s) => readSampleData(file, s));
+      const dataArray = await Promise.all(dataPromises);
+
+      let hitTarget = false;
+      for (let j = 0; j < batch.length; j++) {
+        if (latestSeekId !== currentSeekId) {
+          wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
+          lastDecodedSampleIdx = vKeyIdx - 1;
+          hitTarget = true;
+          break;
+        }
+
+        const s = batch[j]!;
+        const sMs = Math.round((s.cts * 1000) / s.timescale);
+
+        postMessage({ type: 'decode_submit', ms: sMs });
+        decoder!.decode(
+          new EncodedVideoChunk({
+            type: s.is_sync ? 'key' : 'delta',
+            timestamp: (s.cts * 1_000_000) / s.timescale,
+            duration: (s.duration * 1_000_000) / s.timescale,
+            data: dataArray[j]!,
+          })
+        );
+
+        if (sMs >= targetMs) {
+          lastDecodedSampleIdx = i + j;
+          hitTarget = true;
+          break;
+        }
+      }
+      if (hitTarget) break;
+      i = batchEnd;
     }
 
     decoderSeeded = true;
