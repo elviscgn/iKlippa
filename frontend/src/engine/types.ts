@@ -28,6 +28,7 @@ export interface WorkerReadyMsg {
   width: number;
   height: number;
   fileName: string;
+  sourceId: string;
 }
 
 export interface WorkerDecodeSubmitMsg {
@@ -40,6 +41,7 @@ export interface WorkerFrameMsg {
   ms: number;
   gradeMs: number;
   buffer: ArrayBuffer;
+  sourceId: string;
   seekId?: number;
 }
 
@@ -51,6 +53,7 @@ export interface WorkerAudioChunkMsg {
   length: number;
   buffers: ArrayBuffer[];
   configVersion: number;
+  sourceId: string;
   seekId?: number;
 }
 
@@ -146,11 +149,13 @@ export interface WorkerLoadCmd {
   audioSamples?: MP4Sample[];
   audioConfigVersion: number;
   fileName: string;
+  sourceId: string;
 }
 
 export interface WorkerSeekCmd {
   type: 'seek';
   ms: number;
+  sourceId?: string;
   seekId?: number;
 }
 
@@ -160,6 +165,7 @@ export interface WorkerSeekCmd {
 export interface WorkerResyncAudioCmd {
   type: 'resync_audio';
   ms: number;
+  sourceId?: string;
 }
 
 export interface WorkerSyncCmd {
@@ -167,6 +173,7 @@ export interface WorkerSyncCmd {
   playheadMs: number;
   isPlaying: boolean;
   framesAhead: number;
+  sourceId?: string;
 }
 
 export interface WorkerSetGradeCmd {

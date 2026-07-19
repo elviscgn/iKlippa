@@ -80,20 +80,18 @@ window.onThumbnailsUpdated = (thumbnails): void => {
 };
 
 // ── Import complete: build project model + sync to Rust ─────────────────
-window.onClipImported = async ({ width, height, durationMs, fileName }): Promise<void> => {
+window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }): Promise<void> => {
   hasRealVideo = true;
   const durationSec = durationMs / 1000;
   const displayName = fileName || 'Imported Video';
   console.log(
-    `[iKlippa:app] onClipImported: "${displayName}" ${width}×${height} ${durationSec.toFixed(2)}s`,
+    `[iKlippa:app] onClipImported: "${displayName}" ${width}×${height} ${durationSec.toFixed(2)}s [${sourceId}]`,
   );
 
   if (!window.IKState.isReady()) {
     window.IKState.init(width, height);
     console.log('[iKlippa:app] IKState initialised');
   }
-
-  const sourceId = 'imported_' + Date.now();
 
   window.mediaPool.footage.push({
     id: sourceId,
