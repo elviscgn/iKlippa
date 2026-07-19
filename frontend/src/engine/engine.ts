@@ -1176,10 +1176,21 @@ export function requestComposite(ms: number): void {
   worker.postMessage({ type: 'composite', ts_us });
 }
 
-function paintRustComposite(width: number, height: number): boolean {
+/** Paint the cached Rust composite onto the canvas. Returns true on success. */
+export function paintRustComposite(): boolean {
   if (!_rustCompositeBuffer || _rustCompositeW === 0 || !ctx) return false;
   const arr = new Uint8ClampedArray(_rustCompositeBuffer);
   const imageData = new ImageData(arr, _rustCompositeW, _rustCompositeH);
   ctx.putImageData(imageData, 0, 0);
   return true;
+}
+
+// Expose for devtools testing
+if (typeof window !== 'undefined') {
+  (window as any).iklippaComposite = {
+    request: (ms: number) => requestComposite(ms),
+    paint: () => paintRustComposite(),
+    lastTs: () => _rustCompositeTsUs,
+    lastSize: () => `${_rustCompositeW}x${_rustCompositeH}`,
+  };
 }
