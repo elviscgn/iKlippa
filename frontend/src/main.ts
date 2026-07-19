@@ -86,14 +86,15 @@ let _restoredFromStorage = false;
 function remapStaleSources(newSourceId: string): void {
   const IKState = window.IKState;
   if (!IKState || !IKState.isReady()) return;
-  const allClips = IKState.getAllVideoClips ? IKState.getAllVideoClips() : IKState.getVideoClips();
+  const project = IKState.getProject();
+  if (!project) return;
   let remapped = 0;
-  for (const clip of allClips) {
-    // If the clip's source_id isn't a valid source (starts with 'imported_' but
-    // looks like a restored stale ref), remap it.
-    if (clip.source_id && clip.source_id.startsWith('imported_') && clip.source_id !== newSourceId) {
-      clip.source_id = newSourceId;
-      remapped++;
+  for (const track of project.tracks) {
+    for (const clip of track.clips) {
+      if (clip.source_id && clip.source_id.startsWith('imported_') && clip.source_id !== newSourceId) {
+        clip.source_id = newSourceId;
+        remapped++;
+      }
     }
   }
   if (remapped > 0) {
