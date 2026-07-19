@@ -207,7 +207,11 @@ export function renderClips() {
     laneV1.appendChild(el);
   });
 
+  // Clips whose group_id is null (most audio clips) were never added to
+  // clipGroups, so clipGroups.get(null) returns undefined — guard against that
+  // and treat null-group audio clips as standalone (no linked video).
   const standaloneAudio = audioClips.filter((clip: any) => {
+    if (!clip.group_id) return true;          // null / empty → standalone
     const group = clipGroups.get(clip.group_id);
     return group && !group.video;
   });
@@ -361,32 +365,42 @@ export function initTimelineUI() {
     };
   });
 
-  // Track icons logic
+  // Track icons logic — toggles CSS AND writes to IKState so compositor/audio respect them.
   // fallow-ignore-next-line complexity
   document.addEventListener('click', (e) => {
     const icon = (e.target as Element).closest('.track-icons svg');
     if (!icon) return;
-    const track = icon.closest('.track') as HTMLElement;
-    if (!track) return;
-    
+    const trackEl = icon.closest('.track') as HTMLElement;
+    if (!trackEl) return;
+
+    // Map HTML data-track-id to IKState numeric track id (0 = video, 1 = audio)
+    const trackDataId = trackEl.dataset.trackId;
+    const trackId = trackDataId === 'v1' ? 0 : trackDataId === 'a1' ? 1 : null;
+    const IKState = (window as any).IKState;
+
     const iconType = icon.getAttribute('data-lucide');
-    if (iconType === 'lock') {
+    if (iconType === 'lock' || iconType === 'unlock') {
       icon.classList.toggle('active');
       const isLocked = icon.classList.contains('active');
       icon.setAttribute('data-lucide', isLocked ? 'lock' : 'unlock');
       window.lucide.createIcons({ nodes: [icon] });
+      if (trackId !== null && IKState) IKState.setTrackProp(trackId, 'locked', isLocked);
       showToast(isLocked ? 'Track locked' : 'Track unlocked', isLocked ? 'lock' : 'unlock');
     } else if (iconType === 'eye' || iconType === 'eye-off') {
       icon.classList.toggle('active');
       const isVisible = !icon.classList.contains('active');
       icon.setAttribute('data-lucide', isVisible ? 'eye' : 'eye-off');
       window.lucide.createIcons({ nodes: [icon] });
+      if (trackId !== null && IKState) IKState.setTrackProp(trackId, 'visible', isVisible);
+      window.dispatchEvent(new CustomEvent('ikl:reRender'));
       showToast(isVisible ? 'Track visible' : 'Track hidden', isVisible ? 'eye' : 'eye-off');
     } else if (iconType === 'volume-2' || iconType === 'volume-x') {
       icon.classList.toggle('active');
       const isMuted = icon.classList.contains('active');
       icon.setAttribute('data-lucide', isMuted ? 'volume-x' : 'volume-2');
       window.lucide.createIcons({ nodes: [icon] });
+      if (trackId !== null && IKState) IKState.setTrackProp(trackId, 'muted', isMuted);
+      window.dispatchEvent(new CustomEvent('ikl:reRender'));
       showToast(isMuted ? 'Track muted' : 'Track unmuted', isMuted ? 'volume-x' : 'volume-2');
     }
   });
