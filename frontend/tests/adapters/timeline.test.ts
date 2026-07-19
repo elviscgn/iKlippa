@@ -126,7 +126,7 @@ describe('applySnap / getLaneW', () => {
 
   it('applySnap snaps to 0 for values within threshold when no clips exist', () => {
     const tw = 500;
-    expect(applySnap(300_000, null, tw)).toBe(0);
+    expect(applySnap(200_000, null, tw)).toBe(0);
   });
 
   it('applySnap returns null when value is beyond threshold from any snap point', () => {

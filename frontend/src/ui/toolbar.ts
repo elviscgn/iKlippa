@@ -21,13 +21,13 @@ export function initToolbar() {
     btnEffects.onclick = () => {
       isEffectActive = !isEffectActive;
       btnEffects.classList.toggle('active');
-      const frame = $('#canvas-frame');
-      if (frame) {
-        frame.style.filter = isEffectActive
-          ? 'contrast(1.1) saturate(1.2) sepia(0.1) hue-rotate(-10deg)'
-          : 'none';
+      const gradePanel = $('#grade-panel');
+      const copilotBody = $('#copilot-body');
+      if (gradePanel && copilotBody) {
+        gradePanel.style.display = isEffectActive ? 'flex' : 'none';
+        copilotBody.style.display = isEffectActive ? 'none' : 'flex';
       }
-      showToast(isEffectActive ? 'Cinematic Grade Applied' : 'Grade Removed', 'sparkles');
+      showToast(isEffectActive ? 'Colour Grade Panel Open' : 'AI Director Restored', 'sparkles');
     };
   }
 

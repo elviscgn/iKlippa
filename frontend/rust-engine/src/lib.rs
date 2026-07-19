@@ -532,6 +532,37 @@ impl IklippaEngine {
         self.frame_cache.insert(clip_id, (width, height, data));
     }
 
+    /// Stage the current pool buffer for every video-track clip whose source
+    /// window covers `source_ts_us`. One copy → N clip_ids.
+    #[wasm_bindgen]
+    pub fn stage_frame_broadcast(&mut self, source_ts_us: i64, width: u32, height: u32) -> u32 {
+        let mut count: u32 = 0;
+        // Collect matching clip ids first so we only allocate if there's a match.
+        let mut matches: Vec<u32> = Vec::new();
+        for track in &self.project.tracks {
+            if track.track_type != timeline_state::TrackType::Video {
+                continue;
+            }
+            for clip in &track.clips {
+                if source_ts_us >= clip.source_start_us && source_ts_us < clip.source_end_us {
+                    matches.push(clip.id);
+                }
+            }
+        }
+        if matches.is_empty() {
+            return 0;
+        }
+        let size = (width * height * 4) as usize;
+        let mut data = vec![0u8; size];
+        let copy_len = size.min(self.pool.len());
+        data[..copy_len].copy_from_slice(&self.pool.buf()[..copy_len]);
+        for id in matches {
+            self.frame_cache.insert(id, (width, height, data.clone()));
+            count += 1;
+        }
+        count
+    }
+
     /// Composite all active clips at `ts_us` into the composite pool.
     /// Reads from the frame cache, applies per-clip colour grades, and
     /// alpha-blends layers bottom → top by track order.
@@ -703,16 +734,23 @@ impl IklippaEngine {
     }
 
     /// Update a clip's `ColourSettings` from JSON. Used by the per-clip colour
-    /// panel (Task 3).
+    /// panel (Task 3). The JSON may contain a partial `ColourSettings` — only
+    /// the fields present are overridden; others keep their current value.
     #[wasm_bindgen]
     pub fn set_clip_colour(&mut self, clip_id: u32, json: &str) -> Result<(), String> {
-        let cs: timeline_state::ColourSettings =
+        let patch: serde_json::Value =
             serde_json::from_str(json).map_err(|e| format!("set_clip_colour: {e}"))?;
         let clip = self
             .project
             .find_clip_mut(clip_id)
             .ok_or_else(|| format!("set_clip_colour: clip {clip_id} not found"))?;
-        clip.colour_settings = cs;
+        // Deserialise the patch onto the existing ColourSettings so partial
+        // updates (e.g. just `{"saturation":0.5}`) don't wipe other fields.
+        let current = serde_json::to_value(&clip.colour_settings)
+            .map_err(|e| format!("set_clip_colour: {e}"))?;
+        let merged = merge_json(current, patch);
+        clip.colour_settings = serde_json::from_value(merged)
+            .map_err(|e| format!("set_clip_colour: {e}"))?;
         Ok(())
     }
 
@@ -762,4 +800,18 @@ impl IklippaEngine {
     pub fn alloc_effect_id(&mut self) -> u32 {
         self.project.alloc_effect_id()
     }
+}
+
+/// Shallow merge `patch` into `base`. For each key in `patch`, the value
+/// from `patch` overwrites the value in `base`. Nested objects are cloned
+/// whole (not deep-merged). Used by `set_clip_colour` for partial updates.
+fn merge_json(mut base: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
+    if let (serde_json::Value::Object(ref mut base_map), serde_json::Value::Object(patch_map)) =
+        (&mut base, patch)
+    {
+        for (k, v) in patch_map {
+            base_map.insert(k, v);
+        }
+    }
+    base
 }
