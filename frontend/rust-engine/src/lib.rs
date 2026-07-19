@@ -734,16 +734,23 @@ impl IklippaEngine {
     }
 
     /// Update a clip's `ColourSettings` from JSON. Used by the per-clip colour
-    /// panel (Task 3).
+    /// panel (Task 3). The JSON may contain a partial `ColourSettings` — only
+    /// the fields present are overridden; others keep their current value.
     #[wasm_bindgen]
     pub fn set_clip_colour(&mut self, clip_id: u32, json: &str) -> Result<(), String> {
-        let cs: timeline_state::ColourSettings =
+        let patch: serde_json::Value =
             serde_json::from_str(json).map_err(|e| format!("set_clip_colour: {e}"))?;
         let clip = self
             .project
             .find_clip_mut(clip_id)
             .ok_or_else(|| format!("set_clip_colour: clip {clip_id} not found"))?;
-        clip.colour_settings = cs;
+        // Deserialise the patch onto the existing ColourSettings so partial
+        // updates (e.g. just `{"saturation":0.5}`) don't wipe other fields.
+        let current = serde_json::to_value(&clip.colour_settings)
+            .map_err(|e| format!("set_clip_colour: {e}"))?;
+        let merged = merge_json(current, patch);
+        clip.colour_settings = serde_json::from_value(merged)
+            .map_err(|e| format!("set_clip_colour: {e}"))?;
         Ok(())
     }
 

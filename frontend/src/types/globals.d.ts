@@ -135,6 +135,7 @@ declare global {
     resizeCanvas: () => void;
     handleExport: () => Promise<void>;
     resetGrade: () => void;
+    reflectClipGrade: (clipId: number) => void;
     skipTime: (delta: number) => void;
     submitCmd: () => void;
     applyAiAction: (type: string) => void;

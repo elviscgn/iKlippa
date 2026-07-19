@@ -1076,6 +1076,16 @@ export function setColorGrade(params: Partial<GradeParams>): void {
   });
 }
 
+export function setPerClipGrade(clipId: number, grade: Record<string, number>): void {
+  seekTargetMs = -1;
+  if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
+  worker!.postMessage({
+    type: 'set_clip_grade',
+    clipId,
+    grade,
+  });
+}
+
 // ── Export ───────────────────────────────────────────────────────────────
 export async function exportVideo(
   onProgress?: (progress: number) => void,

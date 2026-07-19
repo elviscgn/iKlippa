@@ -182,6 +182,12 @@ export interface WorkerSetGradeCmd {
   forceRenderMs?: number;
 }
 
+export interface WorkerSetClipGradeCmd {
+  type: 'set_clip_grade';
+  clipId: number;
+  grade: Record<string, number>;
+}
+
 export interface WorkerSetTimelineCmd {
   type: 'set_timeline';
   json: string;
@@ -208,6 +214,7 @@ type WorkerOutgoingMessage =
   | WorkerResyncAudioCmd
   | WorkerSyncCmd
   | WorkerSetGradeCmd
+  | WorkerSetClipGradeCmd
   | WorkerSetTimelineCmd
   | WorkerGetProjectJsonCmd
   | WorkerSetAudioVersionCmd
@@ -240,9 +247,10 @@ export interface MP4Sample {
 
 // ── Clip imported callback data ─────────────────────────────────────────
 
-interface ClipImportedData {
+export interface ClipImportedData {
   width: number;
   height: number;
   durationMs: number;
   fileName: string;
+  sourceId: string;
 }

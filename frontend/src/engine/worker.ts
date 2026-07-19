@@ -275,6 +275,16 @@ async function handleSetGrade(msg: WorkerSetGradeCmd) {
   }
 }
 
+function handleSetClipGrade(msg: { clipId: number; grade: Record<string, number> }) {
+  if (!wasmModule) return;
+  try {
+    wasmModule.set_clip_colour(msg.clipId, JSON.stringify(msg.grade));
+    wlog('grade', `set_clip_colour clip ${msg.clipId} — ${JSON.stringify(msg.grade)}`);
+  } catch (e) {
+    wwarn('grade', `set_clip_colour failed for clip ${msg.clipId}`, String(e));
+  }
+}
+
 function handleSetTimeline(msg: WorkerSetTimelineCmd) {
   if (!wasmModule) {
     wwarn('worker', 'set_timeline received but WASM not ready');
@@ -367,6 +377,7 @@ async function routeMessage(msg: any): Promise<void> {
   else if (msg.type === 'sync') await handleSync(msg);
   else if (msg.type === 'set_audio_version') handleSetAudioVersion(msg);
   else if (msg.type === 'set_grade') await handleSetGrade(msg);
+  else if (msg.type === 'set_clip_grade') handleSetClipGrade(msg);
   else if (msg.type === 'set_timeline') handleSetTimeline(msg);
   else if (msg.type === 'get_project_json') handleGetProjectJson();
   else if (msg.type === 'composite') handleComposite(msg);

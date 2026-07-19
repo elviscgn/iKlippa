@@ -14,6 +14,7 @@ import {
   togglePlayback,
   seekTo,
   setColorGrade,
+  setPerClipGrade,
   exportVideo,
   perf,
   captureThumbnailFromBuffer,
@@ -193,40 +194,73 @@ window.handleExport = async function (): Promise<void> {
   });
 };
 
-// ── Color grading sliders ───────────────────────────────────────────────
+// ── Per-clip color grading ─────────────────────────────────────────────
+let _gradingClipId: number | null = null;
+
 document.addEventListener('input', (e: Event) => {
   const slider = (e.target as HTMLElement).closest('[data-grade]') as HTMLInputElement | null;
   if (!slider) return;
 
   const valSpan = slider.parentElement?.querySelector('.grade-val');
+  const v = parseFloat(slider.value) / 100;
   if (valSpan) {
-    const v = parseFloat(slider.value);
     valSpan.textContent = v === 0 ? '0' : v.toFixed(2);
   }
 
-  setColorGrade({ [slider.dataset.grade!]: parseFloat(slider.value) } as Partial<GradeParams>);
+  if (_gradingClipId !== null) {
+    setPerClipGrade(_gradingClipId, { [slider.dataset.grade!]: v });
+  } else {
+    // Fallback: global grade (legacy)
+    setColorGrade({ [slider.dataset.grade!]: parseFloat(slider.value) / 100 } as Partial<GradeParams>);
+  }
 });
 
-// ── Reset grade ─────────────────────────────────────────────────────────
+// ── Reset grade (per-clip aware) ────────────────────────────────────────
 window.resetGrade = function (): void {
   document.querySelectorAll('[data-grade]').forEach((el) => {
-    const htmlEl = el as HTMLInputElement | HTMLSelectElement;
-    if (htmlEl.tagName === 'SELECT') {
-      htmlEl.value = '0';
-    } else {
-      (htmlEl as HTMLInputElement).value = '0';
-    }
+    const htmlEl = el as HTMLInputElement;
+    htmlEl.value = '0';
     const valSpan = htmlEl.parentElement?.querySelector('.grade-val');
     if (valSpan) valSpan.textContent = '0';
-    const grade = htmlEl.dataset.grade!;
-    if (grade === 'lut') {
-      setColorGrade({ lut: 0 });
-    } else {
-      setColorGrade({ [grade]: 0 } as Partial<GradeParams>);
-    }
   });
+  if (_gradingClipId !== null) {
+    setPerClipGrade(_gradingClipId, {
+      exposure: 0, contrast: 0, saturation: 0, temperature: 0,
+      tint: 0, highlights: 0, shadows: 0,
+    });
+  }
   window.showToast('Grade reset', 'sliders-horizontal');
 };
+
+// ── Reflect selected clip's grade in panel ──────────────────────────────
+function reflectClipGrade(clipId: number) {
+  const clip = window.IKState.findClip(clipId);
+  if (!clip || !clip.colour_settings) {
+    _gradingClipId = null;
+    const label = document.getElementById('grade-clip-label');
+    if (label) label.textContent = 'Select a clip to grade';
+    return;
+  }
+  _gradingClipId = clipId;
+  const cs = clip.colour_settings;
+  const map: Record<string, number> = {
+    exposure: cs.exposure, contrast: cs.contrast, saturation: cs.saturation,
+    temperature: cs.temperature, tint: cs.tint, highlights: cs.highlights,
+    shadows: cs.shadows,
+  };
+  document.querySelectorAll('[data-grade]').forEach((el) => {
+    const htmlEl = el as HTMLInputElement;
+    const key = htmlEl.dataset.grade!;
+    const val = map[key] ?? 0;
+    htmlEl.value = String(Math.round(val * 100));
+    const valSpan = htmlEl.parentElement?.querySelector('.grade-val');
+    if (valSpan) valSpan.textContent = val === 0 ? '0' : val.toFixed(2);
+  });
+  const label = document.getElementById('grade-clip-label');
+  if (label) label.textContent = `${clip.name || 'Clip ' + clipId} — Grade`;
+}
+
+window.reflectClipGrade = reflectClipGrade;
 
 // ── Score Badge Performance Loop ────────────────────────────────────────
 // fallow-ignore-next-line complexity
