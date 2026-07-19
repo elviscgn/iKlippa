@@ -171,8 +171,8 @@ async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfi
   if (!audioConfig) wwarn('worker', 'no audio track found in this file');
 
   setupOffscreenCanvas(width, height);
-  setupDecoder(codecConfig, width, height);
-  if (audioConfig) setupAudioDecoder(audioConfig);
+  await setupDecoder(codecConfig, width, height);
+  if (audioConfig) await setupAudioDecoder(audioConfig);
 
   await seekAndDecodeFrame(0);
   wlog('worker', `ready posted — pendingFrames now sending to main thread`);
@@ -195,10 +195,10 @@ async function handleResyncAudio(msg: WorkerResyncAudioCmd) {
   if (!audioConfig) return;
   if (!audioSamples.length || !clips.length) return;
   if (!audioDecoder || audioDecoder.state === 'closed') {
-    setupAudioDecoder(audioConfig);
+    await setupAudioDecoder(audioConfig);
   } else {
     audioDecoder.reset();
-    audioDecoder.configure(audioConfig);
+    await audioDecoder.configure(audioConfig);
   }
 
   // The main thread dropped all scheduled/cached audio on pause. Rewind the
@@ -347,7 +347,7 @@ function setupOffscreenCanvas(width: number, height: number) {
   offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
 }
 
-export function setupAudioDecoder(config: AudioDecoderConfig) {
+export async function setupAudioDecoder(config: AudioDecoderConfig) {
   if (audioDecoder && audioDecoder.state !== 'closed') audioDecoder.close();
 
   audioDecoder = getPorts().audioDecoderFactory.create(
@@ -415,10 +415,10 @@ export function setupAudioDecoder(config: AudioDecoderConfig) {
     (e) => reportError('DECODER_AUDIO_FATAL', e),
   );
 
-  audioDecoder.configure(config);
+  await audioDecoder.configure(config);
 }
 
-export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, height: number) {
+export async function setupDecoder(codecConfig: VideoDecoderConfig, width: number, height: number) {
   if (decoder && decoder.state !== 'closed') decoder.close();
 
   decoder = getPorts().videoDecoderFactory.create(
@@ -483,7 +483,7 @@ export function setupDecoder(codecConfig: VideoDecoderConfig, width: number, hei
     (e) => reportError('DECODER_VIDEO_FATAL', e),
   );
 
-  decoder.configure({
+  await decoder.configure({
     codec: codecConfig.codec,
     codedWidth: width,
     codedHeight: height,
@@ -528,20 +528,20 @@ export async function seekAndDecodeFrame(targetMs: number) {
     wlog('seek', `seekAndDecodeFrame ${targetMs}ms — keyframe at sample[${vKeyIdx}] = ${keyframeMs}ms`);
 
     if (decoder && decoder.state === 'closed') {
-      setupDecoder(clips[0]!.codecConfig, currentWidth, currentHeight);
+      await setupDecoder(clips[0]!.codecConfig, currentWidth, currentHeight);
     } else {
       decoder!.reset();
-      decoder!.configure(clips[0]!.codecConfig);
+      await decoder!.configure(clips[0]!.codecConfig);
     }
 
     // Set up audio decoder BEFORE the video loop so audio chunks start
     // arriving during video decode instead of after it.
     if (audioDecoder && audioSamples.length > 0) {
       if (audioDecoder.state === 'closed') {
-        setupAudioDecoder(audioConfig!);
+        await setupAudioDecoder(audioConfig!);
       } else {
         audioDecoder.reset();
-        audioDecoder.configure(audioConfig!);
+        await audioDecoder.configure(audioConfig!);
       }
 
       let targetIdx = 0;
@@ -648,7 +648,7 @@ export async function primeAudioDecode() {
 export async function decodeNextSamples() {
   if (!clips.length || !decoder) return;
   if (decoder.state === 'closed') {
-    setupDecoder(clips[0]!.codecConfig, currentWidth, currentHeight);
+    await setupDecoder(clips[0]!.codecConfig, currentWidth, currentHeight);
   }
   if (decoder.state !== 'configured') return;
   if (!decoderSeeded || isSeeking || isDecodingNext) return;
@@ -659,7 +659,7 @@ export async function decodeNextSamples() {
 
   // ── Audio first (cheaper, more urgent for A/V sync) ──────────────
   if (audioDecoder && audioDecoder.state === 'closed' && audioConfig) {
-    setupAudioDecoder(audioConfig);
+    await setupAudioDecoder(audioConfig);
   }
   if (audioDecoder && audioDecoder.state === 'configured' && audioSamples.length > 0) {
     let audioReads = 0;

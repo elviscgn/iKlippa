@@ -397,6 +397,19 @@ function getLinkedClipIds(clipId: number): number[] {
   return linkedIds;
 }
 
+/** Update a boolean or numeric property on a track (muted/locked/visible/volume/pan). */
+function setTrackProp(
+  trackId: number,
+  prop: 'muted' | 'locked' | 'visible' | 'volume' | 'pan',
+  value: boolean | number,
+): boolean {
+  if (!project) return false;
+  const track = project.tracks.find((t) => t.id === trackId);
+  if (!track) return false;
+  (track as any)[prop] = value;
+  return true;
+}
+
 function setClipMeta(
   clipId: number,
   metaPatch: Record<string, unknown>,
@@ -496,6 +509,7 @@ export const IKState = {
   trimClip,
   setClipMeta,
   getClipMeta,
+  setTrackProp,
   computeDuration,
   getDurationSec,
   toRustJson,
