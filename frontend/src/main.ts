@@ -208,7 +208,13 @@ document.addEventListener('input', (e: Event) => {
   }
 
   if (_gradingClipId !== null) {
-    setPerClipGrade(_gradingClipId, { [slider.dataset.grade!]: v });
+    const key = slider.dataset.grade!;
+    // Update IKState so the JS compositing path picks up the grade
+    const clip = window.IKState.findClip(_gradingClipId);
+    if (clip && clip.colour_settings) {
+      (clip.colour_settings as any)[key] = v;
+    }
+    setPerClipGrade(_gradingClipId, { [key]: v });
   } else {
     // Fallback: global grade (legacy)
     setColorGrade({ [slider.dataset.grade!]: parseFloat(slider.value) / 100 } as Partial<GradeParams>);
@@ -224,6 +230,13 @@ window.resetGrade = function (): void {
     if (valSpan) valSpan.textContent = '0';
   });
   if (_gradingClipId !== null) {
+    // Reset IKState so JS compositing picks up the reset
+    const clip = window.IKState.findClip(_gradingClipId);
+    if (clip && clip.colour_settings) {
+      const cs = clip.colour_settings;
+      cs.exposure = 0; cs.contrast = 0; cs.saturation = 0;
+      cs.temperature = 0; cs.tint = 0; cs.highlights = 0; cs.shadows = 0;
+    }
     setPerClipGrade(_gradingClipId, {
       exposure: 0, contrast: 0, saturation: 0, temperature: 0,
       tint: 0, highlights: 0, shadows: 0,
