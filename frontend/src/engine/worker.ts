@@ -11,6 +11,7 @@ import type {
   WorkerSetAudioVersionCmd,
   WorkerSeekCmd,
   WorkerResyncAudioCmd,
+  WorkerCompositeCmd,
 } from './types';
 
 // ── Worker-side diagnostic logger ─────────────────────────────────────────────
@@ -135,6 +136,15 @@ const MAX_READS_PER_PUMP = 8;
 // means a pause discards audio the worker will never re-send.
 const AUDIO_LOOKAHEAD_MS = 1000;
 
+function refreshFrameView() {
+  if (!wasmModule || !wasmMemory) return;
+  frameView = new Uint8ClampedArray(
+    wasmMemory.buffer,
+    wasmModule.frame_ptr(),
+    wasmModule.frame_len(),
+  );
+}
+
 async function handleInit() {
   const wasmExports = await init();
   wasmMemory = wasmExports.memory;
@@ -176,7 +186,7 @@ async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfi
 
   await seekAndDecodeFrame(0);
   wlog('worker', `ready posted — pendingFrames now sending to main thread`);
-  postMessage({ type: 'ready', durationMs, width, height });
+  postMessage({ type: 'ready', durationMs, width, height, fileName: msg.fileName });
 }
 
 async function handleSeek(msg: WorkerSeekCmd) {
@@ -274,6 +284,33 @@ function handleGetProjectJson() {
   postMessage({ type: 'project_json', json });
 }
 
+function handleComposite(msg: WorkerCompositeCmd) {
+  if (!wasmModule || !wasmMemory) {
+    wwarn('worker', 'composite requested but WASM not ready');
+    return;
+  }
+  try {
+    wasmModule.compose_at(BigInt(msg.ts_us));
+    const len = wasmModule.composite_len();
+    const outW = wasmModule.project_width();
+    const outH = wasmModule.project_height();
+    const ownedPixels = new Uint8ClampedArray(len);
+    ownedPixels.set(new Uint8ClampedArray(wasmMemory.buffer, wasmModule.composite_ptr(), len));
+    postMessage(
+      {
+        type: 'composite_result',
+        buffer: ownedPixels.buffer,
+        ts_us: msg.ts_us,
+        width: outW,
+        height: outH,
+      },
+      [ownedPixels.buffer],
+    );
+  } catch (e) {
+    wwarn('worker', 'compose_at failed', String(e));
+  }
+}
+
 // ── Message scheduler ─────────────────────────────────────────────────────────
 // The queue is strictly serial (preserves init → load ordering), but 'sync'
 // messages coalesce latest-wins: a sync only carries "where is the playhead
@@ -328,6 +365,7 @@ async function routeMessage(msg: any): Promise<void> {
   else if (msg.type === 'set_grade') await handleSetGrade(msg);
   else if (msg.type === 'set_timeline') handleSetTimeline(msg);
   else if (msg.type === 'get_project_json') handleGetProjectJson();
+  else if (msg.type === 'composite') handleComposite(msg);
 }
 
 self.onmessage = (e: MessageEvent<any>) => {
@@ -435,6 +473,11 @@ export async function setupDecoder(codecConfig: VideoDecoderConfig, width: numbe
         return;
       }
 
+      // Refresh the WASM pool view — any previous operation (set_timeline,
+      // stage_frame_broadcast, process_frame) may have grown the heap and
+      // detached the buffer.
+      refreshFrameView();
+
       if (videoFrame.format === null) {
         offscreenCtx!.drawImage(videoFrame, 0, 0);
         videoFrame.close();
@@ -443,6 +486,16 @@ export async function setupDecoder(codecConfig: VideoDecoderConfig, width: numbe
       } else {
         await videoFrame.copyTo(frameView!, { format: 'RGBA' });
         videoFrame.close();
+      }
+
+      // Stage the raw frame for each matching timeline clip so compose_at
+      // can find it by clip_id later.
+      try {
+        wasmModule!.stage_frame_broadcast(BigInt(Math.round(normalizedTsUs)), width, height);
+        refreshFrameView();
+      } catch (e) {
+        // Non-fatal: the compositor will just skip this frame.
+        wwarn('worker', `stage_frame_broadcast failed @ ${normalizedTsUs}us`, String(e));
       }
 
       let gradeMs = 0;
@@ -501,6 +554,10 @@ export async function seekAndDecodeFrame(targetMs: number) {
   isSeeking = true;
   decodeSessionId++;
   decoderSeeded = false;
+
+  if (wasmModule) {
+    try { wasmModule.reset_frame_cache(); } catch { /* ignore */ }
+  }
 
   try {
     const { samples, file } = clips[0]!;
