@@ -67,6 +67,12 @@
           <span class="status-badge"
             ><i data-lucide="cloud-lightning"></i> All changes saved</span
           >
+          <button class="nav-btn" onclick="saveProject()" title="Save Project (.iklippa)">
+            <i data-lucide="save"></i>
+          </button>
+          <button class="nav-btn" onclick="openProject()" title="Open Project">
+            <i data-lucide="folder-open"></i>
+          </button>
           <button class="btn-export" onclick="handleExport()">
             <i data-lucide="download"></i> Export
           </button>
@@ -198,6 +204,12 @@
                   type="file"
                   id="file-input"
                   accept="video/*"
+                  style="display: none"
+                />
+                <input
+                  type="file"
+                  id="project-file-input"
+                  accept=".iklippa,.json"
                   style="display: none"
                 />
                 <div class="canvas-timecode" id="timecode">00:00:00:00</div>

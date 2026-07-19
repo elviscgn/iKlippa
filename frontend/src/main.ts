@@ -337,6 +337,110 @@ fileInput.addEventListener('change', async () => {
   if (file) await importFile(file);
 });
 
+// ── Project persistence (save/load .iklippa) ────────────────────────────
+const LS_KEY_PREFIX = 'iklippa:draft:';
+
+window.saveProject = function (): void {
+  if (!window.IKState || !window.IKState.isReady()) {
+    window.showToast('Nothing to save', 'alert-triangle');
+    return;
+  }
+  const state = window.IKState.saveState();
+  const json = JSON.stringify(state, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'project.iklippa';
+  a.click();
+  URL.revokeObjectURL(url);
+  window.showToast('Project saved', 'save');
+  statusBadge.innerHTML = '<i data-lucide="check-circle"></i> Saved to disk';
+};
+
+window.openProject = function (): void {
+  const input = document.getElementById('project-file-input') as HTMLInputElement;
+  if (!input) return;
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const state = JSON.parse(text);
+      if (!state.project || !state.project.tracks) throw new Error('Invalid project file');
+      window.IKState.loadState(state);
+      window.IKState.computeDuration();
+      syncTimelineToRust();
+      window.calculateTimelineDuration();
+      window.renderRuler();
+      window.renderClips();
+      window.updatePlayhead();
+      window.showToast('Project loaded', 'folder-open');
+      statusBadge.innerHTML = '<i data-lucide="check-circle"></i> Project loaded';
+      autoSave();
+    } catch (e) {
+      console.error('[iKlippa] Failed to load project:', e);
+      window.showToast('Invalid project file', 'alert-triangle');
+    }
+    input.value = '';
+  };
+  input.click();
+};
+
+let _autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+function autoSave(): void {
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => {
+    if (!window.IKState || !window.IKState.isReady()) return;
+    const state = window.IKState.saveState();
+    const projectId = state.project?.id || 'default';
+    localStorage.setItem(LS_KEY_PREFIX + projectId, JSON.stringify(state));
+  }, 2000);
+}
+
+// Auto-save on every mutation
+window.addEventListener('ikl:reRender', () => {
+  autoSave();
+});
+
+// Auto-restore: check localStorage for drafts on page load
+(function checkAutoRestore() {
+  const drafts: Array<{ key: string; state: any; ts: number }> = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(LS_KEY_PREFIX)) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const state = JSON.parse(raw);
+          drafts.push({ key, state, ts: state.project?.duration_us || 0 });
+        }
+      } catch { /* ignore */ }
+    }
+  }
+  if (drafts.length === 0) return;
+  // Pick the most recent draft (longest duration as heuristic)
+  drafts.sort((a, b) => b.ts - a.ts);
+  const latest = drafts[0]!;
+  if (window.IKState && window.IKState.isReady()) return;
+  // Defer restore until IKState is ready
+  const tryRestore = () => {
+    if (!window.IKState || !window.IKState.isReady()) {
+      setTimeout(tryRestore, 100);
+      return;
+    }
+    try {
+      window.IKState.loadState(latest.state);
+      window.IKState.computeDuration();
+      syncTimelineToRust();
+      console.log('[iKlippa] Auto-restored project from localStorage');
+    } catch (e) {
+      console.warn('[iKlippa] Auto-restore failed:', e);
+    }
+  };
+  setTimeout(tryRestore, 500);
+})();
+
 // ── Engine Initialization ───────────────────────────────────────────────
 initEngine(canvasEl)
   .then(async () => {
