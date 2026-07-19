@@ -13,10 +13,9 @@ import type {
   WorkerResyncAudioCmd,
   WorkerCompositeCmd,
 } from './types';
+import type { VideoDecoderPort, AudioDecoderPort } from '../adapters';
 
 // ── Worker-side diagnostic logger ─────────────────────────────────────────────
-// Every log line is also kept in a ring buffer that is attached to error
-// reports, so a crash can be diagnosed without reproducing it.
 const DIAG_RING_SIZE = 200;
 const diagRing: string[] = [];
 function recordDiag(line: string) {
@@ -44,9 +43,6 @@ function werr(tag: string, msg: string, data?: unknown) {
 }
 
 // ── Error funnel ──────────────────────────────────────────────────────────────
-// THE rule: every failure in this worker leaves through reportError() and
-// becomes a visible toast on the main thread. Never console-error-and-
-// continue — that is how silent bugs are born.
 function reportError(
   code: EngineErrorCode,
   err: unknown,
@@ -70,7 +66,6 @@ function reportError(
   });
 }
 
-// Last-resort nets: anything we forgot to catch still reaches the UI.
 self.onerror = (event, _source, _lineno, _colno, error) => {
   reportError('WORKER_UNCAUGHT', error ?? event);
   return true;
@@ -88,29 +83,33 @@ function codeForFailedMessage(type: string): EngineErrorCode {
   return 'PROTOCOL_ERROR';
 }
 
+// ── Multi-source state ────────────────────────────────────────────────────────
+
+interface SourceState {
+  file: File;
+  codecConfig: VideoDecoderConfig;
+  samples: MP4Sample[];
+  width: number;
+  height: number;
+  durationMs: number;
+  decoder: VideoDecoderPort | null;
+  audioDecoder: AudioDecoderPort | null;
+  audioConfig: AudioDecoderConfig | null;
+  audioSamples: MP4Sample[];
+  lastDecodedSampleIdx: number;
+  lastDecodedAudioIdx: number;
+  decoderSeeded: boolean;
+  globalStartOffsetUs: number;
+  isSeeking: boolean;
+}
+
+const sourceStates = new Map<string, SourceState>();
+
 let wasmModule: IklippaEngine | null = null;
 let wasmMemory: WebAssembly.Memory | null = null;
 let frameView: Uint8ClampedArray | null = null;
-import type { VideoDecoderPort, AudioDecoderPort } from '../adapters';
 
-let decoder: VideoDecoderPort | null = null;
-let audioDecoder: AudioDecoderPort | null = null;
-
-let clips: { file: File; codecConfig: VideoDecoderConfig; samples: MP4Sample[] }[] = [];
-let audioConfig: AudioDecoderConfig | null = null;
-let audioSamples: MP4Sample[] = [];
-
-let isSeeking = false;
-let isDecodingNext = false;
-
-let lastDecodedSampleIdx = -1;
-let lastDecodedAudioIdx = -1;
-let decoderSeeded = false;
-let decodeSessionId = 0;
 let audioConfigVersion = 0;
-
-// --- THE DISCOVERY FIX ---
-let globalStartOffsetUs = -1;
 
 // Sync State from Main Thread
 let currentPlayheadMs = 0;
@@ -126,15 +125,13 @@ let currentWidth = 0;
 let currentHeight = 0;
 
 const MAX_DECODE_QUEUE = 8;
-// Max file reads per decodeNextSamples() call. Each read is an awaited slice
-// of the file; an unbounded pump can hold the serial queue for 100ms+ and
-// starve every message behind it.
 const MAX_READS_PER_PUMP = 8;
-// Never decode audio further than this past the playhead. Without a cap the
-// audio front runs arbitrarily far ahead (decoding the whole file during
-// playback), which both explodes the main thread's scheduled-node list and
-// means a pause discards audio the worker will never re-send.
 const AUDIO_LOOKAHEAD_MS = 1000;
+
+// The primary source being decoded. Updated on seek/load.
+let primarySourceId: string | null = null;
+
+let isDecodingNext = false;
 
 function refreshFrameView() {
   if (!wasmModule || !wasmMemory) return;
@@ -153,90 +150,105 @@ async function handleInit() {
 }
 
 async function handleLoad(msg: WorkerLoadCmd & { audioConfig?: AudioDecoderConfig, audioSamples?: MP4Sample[], audioConfigVersion?: number }) {
-  globalStartOffsetUs = -1;
   const { file, codecConfig, width, height, samples, durationMs } = msg;
+  const sourceId: string = msg.sourceId || 'default';
   currentWidth = width;
   currentHeight = height;
+  primarySourceId = sourceId;
+  audioConfigVersion = msg.audioConfigVersion || 0;
+
   wlog(
     'worker',
-    `load: ${width}×${height} · ${(durationMs / 1000).toFixed(2)}s · ${samples.length} video samples · ${(msg.audioSamples || []).length} audio samples · codec: ${codecConfig.codec}`
+    `load [${sourceId}]: ${width}×${height} · ${(durationMs / 1000).toFixed(2)}s · ${samples.length} video samples · ${(msg.audioSamples || []).length} audio samples · codec: ${codecConfig.codec}`
   );
+
   if (!wasmModule) {
     wasmModule = new IklippaEngine(width, height);
   } else {
     wasmModule.resize(width, height);
   }
 
-  frameView = new Uint8ClampedArray(
-    wasmMemory!.buffer,
-    wasmModule.frame_ptr(),
-    wasmModule.frame_len()
-  );
-  clips = [{ file, codecConfig, samples }];
-
-  audioConfig = msg.audioConfig || null;
-  audioSamples = msg.audioSamples || [];
-  audioConfigVersion = msg.audioConfigVersion || 0;
-
-  if (!audioConfig) wwarn('worker', 'no audio track found in this file');
-
+  refreshFrameView();
   setupOffscreenCanvas(width, height);
-  await setupDecoder(codecConfig, width, height);
-  if (audioConfig) await setupAudioDecoder(audioConfig);
 
-  await seekAndDecodeFrame(0);
-  wlog('worker', `ready posted — pendingFrames now sending to main thread`);
-  postMessage({ type: 'ready', durationMs, width, height, fileName: msg.fileName });
+  const state: SourceState = {
+    file,
+    codecConfig,
+    samples,
+    width,
+    height,
+    durationMs,
+    decoder: null,
+    audioDecoder: null,
+    audioConfig: msg.audioConfig || null,
+    audioSamples: msg.audioSamples || [],
+    lastDecodedSampleIdx: -1,
+    lastDecodedAudioIdx: -1,
+    decoderSeeded: false,
+    globalStartOffsetUs: -1,
+    isSeeking: false,
+  };
+
+  sourceStates.set(sourceId, state);
+
+  await setupDecoder(sourceId, state);
+  if (state.audioConfig) {
+    await setupAudioDecoder(sourceId, state);
+  }
+
+  await seekAndDecodeFrame(sourceId, 0);
+  wlog('worker', `ready [${sourceId}] posted`);
+  postMessage({ type: 'ready', durationMs, width, height, fileName: msg.fileName, sourceId });
 }
 
 async function handleSeek(msg: WorkerSeekCmd) {
   if (msg.seekId !== undefined) {
     currentSeekId = msg.seekId;
   }
-  if (clips.length === 0) {
-    wwarn('worker', 'seek received but no clips loaded yet');
+  const sid = msg.sourceId || primarySourceId;
+  if (!sid || !sourceStates.has(sid)) {
+    wwarn('worker', `seek received but no source "${sid}" loaded`);
     return;
   }
-  wlog('worker', `seek → ${msg.ms}ms`);
-  await seekAndDecodeFrame(msg.ms);
+  wlog('worker', `seek → ${msg.ms}ms [${sid}]`);
+  await seekAndDecodeFrame(sid, msg.ms);
 }
 
 async function handleResyncAudio(msg: WorkerResyncAudioCmd) {
-  if (!audioConfig) return;
-  if (!audioSamples.length || !clips.length) return;
-  if (!audioDecoder || audioDecoder.state === 'closed') {
-    await setupAudioDecoder(audioConfig);
+  const sid = msg.sourceId || primarySourceId;
+  if (!sid) return;
+  const state = sourceStates.get(sid);
+  if (!state || !state.audioConfig || !state.audioSamples.length) return;
+
+  const ad = state.audioDecoder;
+  if (!ad || ad.state === 'closed') {
+    await setupAudioDecoder(sid, state);
   } else {
-    audioDecoder.reset();
-    await audioDecoder.configure(audioConfig);
+    ad.reset();
+    await ad.configure(state.audioConfig);
   }
 
-  // The main thread dropped all scheduled/cached audio on pause. Rewind the
-  // decode front to the playhead so those chunks are re-sent exactly once.
-  wlog('audio', `resync_audio → rewinding decode front to ${msg.ms}ms`);
+  wlog('audio', `resync_audio [${sid}] → rewinding decode front to ${msg.ms}ms`);
 
-  let targetIdx = audioSamples.length;
-  for (let i = 0; i < audioSamples.length; i++) {
-    const sMs = Math.round((audioSamples[i]!.cts * 1000) / audioSamples[i]!.timescale);
-    if (sMs >= msg.ms) {
-      targetIdx = i;
-      break;
-    }
+  let targetIdx = state.audioSamples.length;
+  for (let i = 0; i < state.audioSamples.length; i++) {
+    const sMs = Math.round((state.audioSamples[i]!.cts * 1000) / state.audioSamples[i]!.timescale);
+    if (sMs >= msg.ms) { targetIdx = i; break; }
   }
-  lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
-  await primeAudioDecode();
+  state.lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
+  await primeAudioDecode(sid);
 }
 
 async function handleSync(msg: WorkerSyncCmd) {
   currentPlayheadMs = msg.playheadMs;
   isWorkerPlaying = msg.isPlaying;
 
+  const sid = msg.sourceId || primarySourceId;
+  if (!sid) return;
+
   if (isWorkerPlaying) {
-    // Skip decodeNextSamples if a newer seek has been queued — this sync
-    // is for an aborted seek and the decoded frames would be at the wrong
-    // position, wasting time before the next seek can start.
     if (latestSeekId !== currentSeekId) return;
-    await decodeNextSamples();
+    await decodeNextSamples(sid);
   }
 }
 
@@ -244,7 +256,6 @@ function handleSetAudioVersion(msg: WorkerSetAudioVersionCmd) {
   audioConfigVersion = msg.version;
 }
 
-// fallow-ignore-next-line complexity
 async function handleSetGrade(msg: WorkerSetGradeCmd) {
   if (!wasmModule) return;
   const p = msg.params;
@@ -259,7 +270,18 @@ async function handleSetGrade(msg: WorkerSetGradeCmd) {
   if (p.lut !== undefined) wasmModule.set_lut(p.lut);
 
   if (msg.forceRenderMs !== undefined) {
-    await seekAndDecodeFrame(msg.forceRenderMs);
+    const sid = primarySourceId;
+    if (sid) await seekAndDecodeFrame(sid, msg.forceRenderMs);
+  }
+}
+
+function handleSetClipGrade(msg: { clipId: number; grade: Record<string, number> }) {
+  if (!wasmModule) return;
+  try {
+    wasmModule.set_clip_colour(msg.clipId, JSON.stringify(msg.grade));
+    wlog('grade', `set_clip_colour clip ${msg.clipId} — ${JSON.stringify(msg.grade)}`);
+  } catch (e) {
+    wwarn('grade', `set_clip_colour failed for clip ${msg.clipId}`, String(e));
   }
 }
 
@@ -271,6 +293,7 @@ function handleSetTimeline(msg: WorkerSetTimelineCmd) {
   try {
     wasmModule.set_timeline(msg.json);
     wlog('worker', 'set_timeline OK');
+    try { wasmModule.reset_frame_cache(); } catch { /* ignore */ }
     postMessage({ type: 'timeline_set', ok: true });
   } catch (e) {
     werr('worker', 'set_timeline failed', String(e));
@@ -312,14 +335,6 @@ function handleComposite(msg: WorkerCompositeCmd) {
 }
 
 // ── Message scheduler ─────────────────────────────────────────────────────────
-// The queue is strictly serial (preserves init → load ordering), but 'sync'
-// messages coalesce latest-wins: a sync only carries "where is the playhead
-// now", so a stale one is worthless. The main thread fires syncs up to 60×/s
-// and each sync handler awaits file reads — without coalescing the queue went
-// seconds into debt during playback, and decoded audio/frames arrived so late
-// the main thread dropped them as stale (the "audio dies after a few seconds"
-// bug). Each message still runs in its own try/catch so one failure can never
-// corrupt or block the next.
 const pendingMsgs: any[] = [];
 let drainRunning = false;
 let drainPromise: Promise<void> = Promise.resolve();
@@ -328,7 +343,7 @@ function enqueueMessage(msg: any): Promise<void> {
   if (msg.type === 'sync') {
     const i = pendingMsgs.findIndex((q) => q.type === 'sync');
     if (i >= 0) {
-      pendingMsgs[i] = msg; // latest-wins, keeps queue position
+      pendingMsgs[i] = msg;
       return drainPromise;
     }
   }
@@ -363,6 +378,7 @@ async function routeMessage(msg: any): Promise<void> {
   else if (msg.type === 'sync') await handleSync(msg);
   else if (msg.type === 'set_audio_version') handleSetAudioVersion(msg);
   else if (msg.type === 'set_grade') await handleSetGrade(msg);
+  else if (msg.type === 'set_clip_grade') handleSetClipGrade(msg);
   else if (msg.type === 'set_timeline') handleSetTimeline(msg);
   else if (msg.type === 'get_project_json') handleGetProjectJson();
   else if (msg.type === 'composite') handleComposite(msg);
@@ -385,17 +401,18 @@ function setupOffscreenCanvas(width: number, height: number) {
   offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
 }
 
-export async function setupAudioDecoder(config: AudioDecoderConfig) {
-  if (audioDecoder && audioDecoder.state !== 'closed') audioDecoder.close();
+// ── Decoder setup (per-source) ────────────────────────────────────────────────
 
-  audioDecoder = getPorts().audioDecoderFactory.create(
-    // fallow-ignore-next-line complexity
+async function setupAudioDecoder(sourceId: string, state: SourceState) {
+  if (state.audioDecoder && state.audioDecoder.state !== 'closed') state.audioDecoder.close();
+
+  state.audioDecoder = getPorts().audioDecoderFactory.create(
     (audioData: AudioData) => {
-      if (globalStartOffsetUs === -1) {
-        globalStartOffsetUs = audioData.timestamp;
+      if (state.globalStartOffsetUs === -1) {
+        state.globalStartOffsetUs = audioData.timestamp;
       }
 
-      const normalizedTsUs = audioData.timestamp - globalStartOffsetUs;
+      const normalizedTsUs = audioData.timestamp - state.globalStartOffsetUs;
       const tsMs = Math.round(normalizedTsUs / 1000);
 
       if (isWorkerPlaying && tsMs < currentPlayheadMs - 200) {
@@ -445,6 +462,7 @@ export async function setupAudioDecoder(config: AudioDecoderConfig) {
           length,
           buffers,
           configVersion: audioConfigVersion,
+          sourceId,
           seekId: currentSeekId,
         },
         buffers
@@ -453,19 +471,21 @@ export async function setupAudioDecoder(config: AudioDecoderConfig) {
     (e) => reportError('DECODER_AUDIO_FATAL', e),
   );
 
-  await audioDecoder.configure(config);
+  await state.audioDecoder.configure(state.audioConfig!);
 }
 
-export async function setupDecoder(codecConfig: VideoDecoderConfig, width: number, height: number) {
-  if (decoder && decoder.state !== 'closed') decoder.close();
+async function setupDecoder(sourceId: string, state: SourceState) {
+  if (state.decoder && state.decoder.state !== 'closed') state.decoder.close();
 
-  decoder = getPorts().videoDecoderFactory.create(
+  const { width, height } = state;
+
+  state.decoder = getPorts().videoDecoderFactory.create(
     async (videoFrame: VideoFrame) => {
-      if (globalStartOffsetUs === -1) {
-        globalStartOffsetUs = videoFrame.timestamp;
+      if (state.globalStartOffsetUs === -1) {
+        state.globalStartOffsetUs = videoFrame.timestamp;
       }
 
-      const normalizedTsUs = videoFrame.timestamp - globalStartOffsetUs;
+      const normalizedTsUs = videoFrame.timestamp - state.globalStartOffsetUs;
       const tsMs = Math.round(normalizedTsUs / 1000);
 
       if (isWorkerPlaying && tsMs < currentPlayheadMs - 66) {
@@ -473,9 +493,6 @@ export async function setupDecoder(codecConfig: VideoDecoderConfig, width: numbe
         return;
       }
 
-      // Refresh the WASM pool view — any previous operation (set_timeline,
-      // stage_frame_broadcast, process_frame) may have grown the heap and
-      // detached the buffer.
       refreshFrameView();
 
       if (videoFrame.format === null) {
@@ -488,13 +505,10 @@ export async function setupDecoder(codecConfig: VideoDecoderConfig, width: numbe
         videoFrame.close();
       }
 
-      // Stage the raw frame for each matching timeline clip so compose_at
-      // can find it by clip_id later.
       try {
         wasmModule!.stage_frame_broadcast(BigInt(Math.round(normalizedTsUs)), width, height);
         refreshFrameView();
       } catch (e) {
-        // Non-fatal: the compositor will just skip this frame.
         wwarn('worker', `stage_frame_broadcast failed @ ${normalizedTsUs}us`, String(e));
       }
 
@@ -504,15 +518,8 @@ export async function setupDecoder(codecConfig: VideoDecoderConfig, width: numbe
         try {
           wasmModule!.process_frame();
         } catch (e) {
-          // A Rust panic poisons the WASM module (panic=abort): every later
-          // call throws. Report fatal and kill the decoder — the main thread
-          // surfaces a toast and resets instead of starving silently.
           reportError('WASM_PANIC', e, { fatal: true });
-          try {
-            decoder?.close();
-          } catch {
-            // already closed
-          }
+          try { state.decoder?.close(); } catch { /* already closed */ }
           return;
         }
         gradeMs = performance.now() - gradeStart;
@@ -528,6 +535,7 @@ export async function setupDecoder(codecConfig: VideoDecoderConfig, width: numbe
           ms: tsMs,
           gradeMs,
           buffer: ownedPixels.buffer,
+          sourceId,
           seekId: currentSeekId,
         },
         [ownedPixels.buffer]
@@ -536,31 +544,32 @@ export async function setupDecoder(codecConfig: VideoDecoderConfig, width: numbe
     (e) => reportError('DECODER_VIDEO_FATAL', e),
   );
 
-  await decoder.configure({
-    codec: codecConfig.codec,
+  await state.decoder.configure({
+    codec: state.codecConfig.codec,
     codedWidth: width,
     codedHeight: height,
-    description: codecConfig.description,
+    description: state.codecConfig.description,
     hardwareAcceleration: 'prefer-hardware',
     optimizeForLatency: true,
   } as VideoDecoderConfig);
 }
 
-// fallow-ignore-next-line complexity
-export async function seekAndDecodeFrame(targetMs: number) {
-  if (isSeeking) {
-    return;
-  }
-  isSeeking = true;
-  decodeSessionId++;
-  decoderSeeded = false;
+// ── Seek & Decode (per-source) ────────────────────────────────────────────────
+
+async function seekAndDecodeFrame(sourceId: string, targetMs: number) {
+  const state = sourceStates.get(sourceId);
+  if (!state || !state.decoder) return;
+
+  if (state.isSeeking) return;
+  state.isSeeking = true;
+  state.decoderSeeded = false;
 
   if (wasmModule) {
     try { wasmModule.reset_frame_cache(); } catch { /* ignore */ }
   }
 
   try {
-    const { samples, file } = clips[0]!;
+    const { samples, file } = state;
 
     let vKeyIdx = -1;
     for (let i = 0; i < samples.length; i++) {
@@ -570,62 +579,49 @@ export async function seekAndDecodeFrame(targetMs: number) {
     }
     if (vKeyIdx === -1) {
       for (let i = 0; i < samples.length; i++) {
-        if (samples[i]!.is_sync) {
-          vKeyIdx = i;
-          break;
-        }
+        if (samples[i]!.is_sync) { vKeyIdx = i; break; }
       }
     }
     if (vKeyIdx === -1) {
-      wwarn('seek', `no keyframe found for target ${targetMs}ms`);
+      wwarn('seek', `no keyframe found for target ${targetMs}ms [${sourceId}]`);
       return;
     }
 
     const keyframeMs = Math.round((samples[vKeyIdx]!.cts * 1000) / samples[vKeyIdx]!.timescale);
-    wlog('seek', `seekAndDecodeFrame ${targetMs}ms — keyframe at sample[${vKeyIdx}] = ${keyframeMs}ms`);
+    wlog('seek', `seekAndDecodeFrame ${targetMs}ms [${sourceId}] — keyframe at sample[${vKeyIdx}] = ${keyframeMs}ms`);
 
-    if (decoder && decoder.state === 'closed') {
-      await setupDecoder(clips[0]!.codecConfig, currentWidth, currentHeight);
+    if (state.decoder.state === 'closed') {
+      await setupDecoder(sourceId, state);
     } else {
-      decoder!.reset();
-      await decoder!.configure(clips[0]!.codecConfig);
+      state.decoder.reset();
+      await state.decoder.configure(state.codecConfig);
     }
 
-    // Set up audio decoder BEFORE the video loop so audio chunks start
-    // arriving during video decode instead of after it.
-    if (audioDecoder && audioSamples.length > 0) {
-      if (audioDecoder.state === 'closed') {
-        await setupAudioDecoder(audioConfig!);
+    if (state.audioDecoder && state.audioSamples.length > 0) {
+      if (state.audioDecoder.state === 'closed') {
+        await setupAudioDecoder(sourceId, state);
       } else {
-        audioDecoder.reset();
-        await audioDecoder.configure(audioConfig!);
+        state.audioDecoder.reset();
+        await state.audioDecoder.configure(state.audioConfig!);
       }
 
       let targetIdx = 0;
-      for (let i = 0; i < audioSamples.length; i++) {
-        const sMs = Math.round((audioSamples[i]!.cts * 1000) / audioSamples[i]!.timescale);
-        if (sMs >= targetMs) {
-          targetIdx = i;
-          break;
-        }
+      for (let i = 0; i < state.audioSamples.length; i++) {
+        const sMs = Math.round((state.audioSamples[i]!.cts * 1000) / state.audioSamples[i]!.timescale);
+        if (sMs >= targetMs) { targetIdx = i; break; }
       }
-      lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
+      state.lastDecodedAudioIdx = Math.max(-1, targetIdx - 1);
 
-      // Fire-and-forget: audio chunks start arriving during the video
-      // decode loop (each await readSampleData yields to microtasks).
-      primeAudioDecode().catch((e: unknown) =>
+      primeAudioDecode(sourceId).catch((e: unknown) =>
         reportError('DECODER_AUDIO_FATAL', e)
       );
     }
 
-    // Batch file reads: pre-fetch up to MAX_READS_PER_PUMP samples in parallel,
-    // then decode them sequentially.  This avoids waiting for one file read
-    // before starting the next — the I/O is the bottleneck, not the decode.
     let i = vKeyIdx;
     while (i < samples.length) {
       if (latestSeekId !== currentSeekId) {
         wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
-        lastDecodedSampleIdx = vKeyIdx - 1;
+        state.lastDecodedSampleIdx = vKeyIdx - 1;
         break;
       }
 
@@ -638,8 +634,7 @@ export async function seekAndDecodeFrame(targetMs: number) {
       let hitTarget = false;
       for (let j = 0; j < batch.length; j++) {
         if (latestSeekId !== currentSeekId) {
-          wwarn('seek', `aborting in-flight decode for seek ${currentSeekId} because ${latestSeekId} arrived`);
-          lastDecodedSampleIdx = vKeyIdx - 1;
+          state.lastDecodedSampleIdx = vKeyIdx - 1;
           hitTarget = true;
           break;
         }
@@ -648,7 +643,7 @@ export async function seekAndDecodeFrame(targetMs: number) {
         const sMs = Math.round((s.cts * 1000) / s.timescale);
 
         postMessage({ type: 'decode_submit', ms: sMs });
-        decoder!.decode(
+        state.decoder!.decode(
           new EncodedVideoChunk({
             type: s.is_sync ? 'key' : 'delta',
             timestamp: (s.cts * 1_000_000) / s.timescale,
@@ -658,7 +653,7 @@ export async function seekAndDecodeFrame(targetMs: number) {
         );
 
         if (sMs >= targetMs) {
-          lastDecodedSampleIdx = i + j;
+          state.lastDecodedSampleIdx = i + j;
           hitTarget = true;
           break;
         }
@@ -667,21 +662,24 @@ export async function seekAndDecodeFrame(targetMs: number) {
       i = batchEnd;
     }
 
-    decoderSeeded = true;
+    state.decoderSeeded = true;
   } finally {
-    isSeeking = false;
+    state.isSeeking = false;
   }
 }
 
-export async function primeAudioDecode() {
+async function primeAudioDecode(sourceId: string) {
+  const state = sourceStates.get(sourceId);
+  if (!state) return;
+  const { audioDecoder, audioSamples, file } = state;
   if (!audioDecoder || audioDecoder.state !== 'configured') return;
-  if (!audioSamples.length || !clips.length) return;
-  const { file } = clips[0]!;
-  const startIdx = lastDecodedAudioIdx + 1;
+  if (!audioSamples.length) return;
+
+  const startIdx = state.lastDecodedAudioIdx + 1;
   if (startIdx >= audioSamples.length) return;
 
   const startMs = Math.round((audioSamples[startIdx]!.cts * 1000) / audioSamples[startIdx]!.timescale);
-  const targetMs = startMs + 600; // pre-buffer 600ms
+  const targetMs = startMs + 600;
 
   for (let i = startIdx; i < audioSamples.length; i++) {
     const s = audioSamples[i]!;
@@ -697,43 +695,39 @@ export async function primeAudioDecode() {
         data,
       })
     );
-    lastDecodedAudioIdx = i;
+    state.lastDecodedAudioIdx = i;
   }
 }
 
-// fallow-ignore-next-line complexity
-export async function decodeNextSamples() {
-  if (!clips.length || !decoder) return;
-  if (decoder.state === 'closed') {
-    await setupDecoder(clips[0]!.codecConfig, currentWidth, currentHeight);
+async function decodeNextSamples(sourceId: string) {
+  const state = sourceStates.get(sourceId);
+  if (!state || !state.decoder) return;
+
+  if (state.decoder.state === 'closed') {
+    await setupDecoder(sourceId, state);
   }
-  if (decoder.state !== 'configured') return;
-  if (!decoderSeeded || isSeeking || isDecodingNext) return;
+  if (state.decoder.state !== 'configured') return;
+  if (!state.decoderSeeded || state.isSeeking || isDecodingNext) return;
 
   isDecodingNext = true;
-  const session = decodeSessionId;
-  const { samples, file } = clips[0]!;
 
-  // ── Audio first (cheaper, more urgent for A/V sync) ──────────────
-  if (audioDecoder && audioDecoder.state === 'closed' && audioConfig) {
-    await setupAudioDecoder(audioConfig);
+  const { samples, file } = state;
+
+  if (state.audioDecoder && state.audioDecoder.state === 'closed' && state.audioConfig) {
+    await setupAudioDecoder(sourceId, state);
   }
-  if (audioDecoder && audioDecoder.state === 'configured' && audioSamples.length > 0) {
+  if (state.audioDecoder && state.audioDecoder.state === 'configured' && state.audioSamples.length > 0) {
     let audioReads = 0;
-    while (audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE && audioReads < MAX_READS_PER_PUMP) {
-      const startIdx = lastDecodedAudioIdx + 1;
-      if (startIdx >= audioSamples.length) break;
-      const s = audioSamples[startIdx]!;
+    while (state.audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE && audioReads < MAX_READS_PER_PUMP) {
+      const startIdx = state.lastDecodedAudioIdx + 1;
+      if (startIdx >= state.audioSamples.length) break;
+      const s = state.audioSamples[startIdx]!;
       const sMs = Math.round((s.cts * 1000) / s.timescale);
-      if (sMs > currentPlayheadMs + AUDIO_LOOKAHEAD_MS) break; // stay near the playhead
+      if (sMs > currentPlayheadMs + AUDIO_LOOKAHEAD_MS) break;
       const data = await readSampleData(file, s);
       audioReads++;
-      if (session !== decodeSessionId) {
-        isDecodingNext = false;
-        return;
-      }
-
-      audioDecoder.decode(
+      if (latestSeekId !== currentSeekId) { isDecodingNext = false; return; }
+      state.audioDecoder.decode(
         new EncodedAudioChunk({
           type: s.is_sync ? 'key' : 'delta',
           timestamp: (s.cts * 1_000_000) / s.timescale,
@@ -741,24 +735,20 @@ export async function decodeNextSamples() {
           data,
         })
       );
-      lastDecodedAudioIdx = startIdx;
+      state.lastDecodedAudioIdx = startIdx;
     }
   }
 
-  // ── Video second ──────────────────────────────────────────────────
   let videoReads = 0;
-  while (decoder.decodeQueueSize < MAX_DECODE_QUEUE && videoReads < MAX_READS_PER_PUMP) {
-    const startIdx = lastDecodedSampleIdx + 1;
+  while (state.decoder.decodeQueueSize < MAX_DECODE_QUEUE && videoReads < MAX_READS_PER_PUMP) {
+    const startIdx = state.lastDecodedSampleIdx + 1;
     if (startIdx >= samples.length) break;
     const s = samples[startIdx]!;
     const data = await readSampleData(file, s);
     videoReads++;
-    if (session !== decodeSessionId) {
-      isDecodingNext = false;
-      return;
-    }
+    if (latestSeekId !== currentSeekId) { isDecodingNext = false; return; }
     postMessage({ type: 'decode_submit', ms: Math.round((s.cts * 1000) / s.timescale) });
-    decoder.decode(
+    state.decoder.decode(
       new EncodedVideoChunk({
         type: s.is_sync ? 'key' : 'delta',
         timestamp: (s.cts * 1_000_000) / s.timescale,
@@ -766,7 +756,7 @@ export async function decodeNextSamples() {
         data,
       })
     );
-    lastDecodedSampleIdx = startIdx;
+    state.lastDecodedSampleIdx = startIdx;
   }
 
   isDecodingNext = false;
