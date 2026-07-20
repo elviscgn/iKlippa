@@ -1248,35 +1248,24 @@ export async function exportVideo(
   const totalFrames = Math.ceil(durationSec * 1000 / frameMs);
   console.log(`[export] starting: ${totalFrames} frames, ${exportW}×${exportH}, duration=${durationSec.toFixed(1)}s`);
   logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
+  if (onProgress) onProgress(0);
 
-  // One seek to start, then pump with sync for continuous decode
+  // One message to decode ALL frames in a single pass
   const initMap = mapTimelineToSource(0);
-  const startSourceId = initMap?.sourceId;
-  worker!.postMessage({ type: 'seek', ms: 0, sourceId: startSourceId, seekId: ++seekGeneration });
-  let lastPumpedMs = -1;
-  for (let i = 0; i < totalFrames; i++) {
-    const ms = Math.round(i * frameMs);
-    // Pump the worker by advancing the playhead via sync
-    if (ms - lastPumpedMs > 500) {
-      lastPumpedMs = ms;
-      worker!.postMessage({ type: 'sync', playheadMs: ms, isPlaying: true, framesAhead: 0 });
+  worker!.postMessage({ type: 'decode_all', sourceId: initMap?.sourceId });
+
+  // Wait for all frames to arrive from the worker's continuous decode
+  let waited = 0;
+  while (exportFrames.length < totalFrames * 0.95 && waited < 120000) {
+    await new Promise((r) => setTimeout(r, 100));
+    waited += 100;
+    if (onProgress && waited % 300 === 0) {
+      onProgress(Math.min(0.4, exportFrames.length / totalFrames * 0.4));
     }
-    // Wait for a frame near this timeline position
-    const mapRes = mapTimelineToSource(ms);
-    const targetSourceMs = mapRes ? mapRes.sourceMs : ms;
-    let waited = 0;
-    while (waited < 8000) {
-      let found = false;
-      for (const [fms] of pendingFrames) {
-        if (Math.abs(fms - targetSourceMs) <= 50) { found = true; break; }
-      }
-      if (found) break;
-      await new Promise((r) => setTimeout(r, 10));
-      waited += 10;
-    }
-    if (i === 0) console.log(`[export] frame 0: waited=${waited}ms, pendingFrames.size=${pendingFrames.size}`);
-    if (onProgress && i % 30 === 0) onProgress((i / totalFrames) * 0.4);
   }
+
+  // Add empty frames for any missing positions so we always have totalFrames count
+  console.log(`[export] collected ${exportFrames.length}/${totalFrames} frames in ${(waited / 1000).toFixed(1)}s`);
 
   logStatus('Export: encoding…');
   const ports = getPorts();
