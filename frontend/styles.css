@@ -1839,3 +1839,17 @@ textarea {
   color: var(--text-muted);
   font-family: 'JetBrains Mono', monospace;
 }
+
+.export-modal-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.export-modal-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+.export-modal { position: relative; }
