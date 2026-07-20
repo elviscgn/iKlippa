@@ -163,7 +163,7 @@ Update this section as tasks complete. Mark `[x]` when a task's acceptance crite
 - [x] Task 2 — Multi-track compositing in Rust
 - [x] Task 3 — Per-clip colour grading
 - [ ] Task 4 — Caption editor
-- [ ] Task 5 — Project persistence
+- [x] Task 5 — Project persistence
 - [ ] Task 6 — Multi-track timeline UI rework
 - [ ] Task 7 — Web Audio mixer
 - [ ] Task 8 — Export: audio + watermark + resolution gating
