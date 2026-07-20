@@ -72,7 +72,7 @@ describe('scheduleAudioNode stale path (Tier 2)', () => {
     __TEST_HOOKS__.audioConfigVersion = 0;
     __TEST_HOOKS__.audioPlayStartMs = 0;
     __TEST_HOOKS__.audioPlayStartCtxTime = 0;
-    __TEST_HOOKS__.nextAudioStartTime = 0;
+    __TEST_HOOKS__.nextAudioStartTime = 0.5; // non-zero: simulates mid-playback, not first-chunk-after-seek
     __TEST_HOOKS__.isPlaying = true;
     __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() } as any;
   });

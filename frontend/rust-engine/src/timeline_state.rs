@@ -52,12 +52,14 @@ impl Default for ColourSpace {
 
 /// Porter-Duff / blend modes supported by the compositor (Task 2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum BlendMode {
     Normal,
     Multiply,
     Screen,
     Overlay,
+    SoftLight,
+    HardLight,
 }
 
 impl Default for BlendMode {

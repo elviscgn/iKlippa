@@ -48,6 +48,8 @@ const FIXTURE = `
   <div id="tab-chat" style="display:flex;"></div>
   <div id="tab-script" style="display:none;"></div>
   <div id="tab-brand" style="display:none;"></div>
+  <div id="copilot-body" style="display:flex;"></div>
+  <div id="grade-panel" style="display:none;"></div>
   <button id="ar-btn"></button>
   <div id="ar-menu"></div>
   <div id="ar-label">16:9</div>
@@ -114,13 +116,14 @@ describe('initToolbar – effects button', () => {
     vi.resetModules();
   });
 
-  it('toggles cinematic grade filter on canvas-frame', () => {
+  it('toggles grade panel visibility', () => {
     const btn = document.getElementById('t-effects')!;
-    const frame = document.getElementById('canvas-frame')!;
+    const gradePanel = document.getElementById('grade-panel')!;
+    expect(gradePanel.style.display).toBe('none');
     btn.click();
-    expect(frame.style.filter).not.toBe('none');
+    expect(gradePanel.style.display).toBe('flex');
     btn.click();
-    expect(frame.style.filter).toBe('none');
+    expect(gradePanel.style.display).toBe('none');
   });
 });
 

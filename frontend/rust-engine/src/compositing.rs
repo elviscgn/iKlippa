@@ -170,7 +170,7 @@ pub fn apply_clip_colour_grade(pool: &mut FramePool, settings: &timeline_state::
 
     let tint_r = 1.0 + settings.tint * 0.1;
     let tint_g = 1.0 - settings.tint * 0.1;
-    let tint_b = 1.0 + settings.tint * 0.1;
+    let tint_b = 1.0 - settings.tint * 0.1;
 
     let gamma_r = 1.0 / (1.0 + settings.gamma[0] * 0.5).max(0.01);
     let gamma_g = 1.0 / (1.0 + settings.gamma[1] * 0.5).max(0.01);
