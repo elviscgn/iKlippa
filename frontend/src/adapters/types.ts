@@ -35,6 +35,21 @@ export interface AudioDecoderPort {
   readonly decodeQueueSize: number;
 }
 
+export interface EncodedAudioChunk {
+  byteLength: number;
+  copyTo(destination: ArrayBuffer): void;
+  timestamp: number;
+  type: EncodedAudioChunkType;
+  duration: number | null;
+}
+
+export interface AudioEncoderPort {
+  configure(config: AudioEncoderConfig): void;
+  encode(data: AudioData): void;
+  flush(): Promise<void>;
+  close(): void;
+}
+
 export interface AudioContextPort {
   resume(): Promise<void>;
   readonly currentTime: number;
@@ -71,6 +86,10 @@ export interface VideoEncoderFactory {
   create(output: (chunk: EncodedVideoChunkOutput) => void, error: (err: Error) => void): VideoEncoderPort;
 }
 
+export interface AudioEncoderFactory {
+  create(output: (chunk: EncodedAudioChunk) => void, error: (err: Error) => void): AudioEncoderPort;
+}
+
 export interface AudioContextFactory {
   create(): AudioContextPort;
 }
@@ -104,6 +123,7 @@ export interface RafScheduler {
 export interface EnginePorts {
   videoEncoderFactory: VideoEncoderFactory;
   videoDecoderFactory: VideoDecoderFactory;
+  audioEncoderFactory: AudioEncoderFactory;
   audioDecoderFactory: AudioDecoderFactory;
   audioContextFactory: AudioContextFactory;
   canvasFactory: CanvasFactory;

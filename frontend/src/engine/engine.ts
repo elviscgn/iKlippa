@@ -17,6 +17,8 @@ import type {
 } from './types';
 import type { ClipWithMeta } from '../state/types';
 
+import { currentTier, getTierConfig } from './tier';
+
 const DECODE_LOOKAHEAD = 12;
 
 // ── Diagnostic logger ───────────────────────────────────────────────────
@@ -1226,79 +1228,193 @@ export async function exportVideo(
   pausePlayback();
   isExporting = true;
   exportFrames = [];
+  pendingAudio.clear();
   seekTargetMs = -1;
   if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
 
+  const tier = getTierConfig();
+  const durationSec = videoDurationMs / 1000;
+  if (durationSec > tier.maxDurationSec) {
+    alert(`Free tier limited to ${tier.maxDurationSec}s. Your video is ${durationSec.toFixed(0)}s. Upgrade to export longer videos.`);
+    isExporting = false;
+    return;
+  }
+  const exportW = Math.min(sourceVideoWidth, tier.maxWidth);
+  const exportH = Math.min(sourceVideoHeight, tier.maxHeight);
+  const needsResize = exportW !== sourceVideoWidth || exportH !== sourceVideoHeight;
+
   const frameMs = 1000 / 30;
-  const totalFrames = Math.ceil(videoDurationMs / frameMs);
-  logStatus('Export: collecting frames…');
+  const totalFrames = Math.ceil(durationSec * 1000 / frameMs);
+  logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
   for (let i = 0; i < totalFrames; i++) {
     const ms = Math.round(i * frameMs);
-    const sourceMs = mapTimelineToSourceMs(ms);
-    worker!.postMessage({ type: 'seek', ms: sourceMs });
+    const mapRes = mapTimelineToSource(ms);
+    const sourceMs = mapRes ? mapRes.sourceMs : ms;
+    const sourceId = mapRes ? mapRes.sourceId : undefined;
+    seekGeneration++;
+    worker!.postMessage({ type: 'seek', ms: sourceMs, sourceId, seekId: seekGeneration });
     while (!pendingFrames.has(sourceMs)) {
       await new Promise((r) => setTimeout(r, 10));
     }
-    if (onProgress) onProgress((i / totalFrames) * 0.5);
+    if (onProgress) onProgress((i / totalFrames) * 0.4);
   }
 
   logStatus('Export: encoding…');
   const ports = getPorts();
-  const encodedChunks: Array<{
-    buf: ArrayBuffer;
-    timestamp: number;
-    type: string;
-  }> = [];
+  const encodedVideo: Array<{ buf: ArrayBuffer; timestamp: number; type: string }> = [];
   const encoder = ports.videoEncoderFactory.create(
     (chunk) => {
       const buf = new ArrayBuffer(chunk.byteLength);
       chunk.copyTo(buf);
-      encodedChunks.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
+      encodedVideo.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
     },
     (e) => emitLocal('EXPORT_FAILED', e, { fatal: false }),
   );
   encoder.configure({
     codec: 'avc1.42001f',
-    width: sourceVideoWidth,
-    height: sourceVideoHeight,
+    width: exportW,
+    height: exportH,
     bitrate: 8_000_000,
     framerate: 30,
     hardwareAcceleration: 'prefer-hardware',
     latencyMode: 'quality',
   });
 
+  // Reusable canvas for watermark + resize
+  const expCanvas = ports.canvasFactory.createCanvas() as unknown as HTMLCanvasElement;
+  expCanvas.width = exportW;
+  expCanvas.height = exportH;
+  const expCtx = expCanvas.getContext('2d')!;
+
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i]!;
-    const frame = new VideoFrame(imageData.data.buffer, {
+    expCtx.putImageData(imageData, 0, 0, 0, 0, sourceVideoWidth, sourceVideoHeight);
+
+    // Resize if needed
+    if (needsResize) {
+      expCtx.drawImage(expCanvas, 0, 0, sourceVideoWidth, sourceVideoHeight, 0, 0, exportW, exportH);
+    }
+
+    // Watermark for free tier
+    if (tier.watermark) {
+      const wmW = exportW * 0.2;
+      const wmH = wmW * 0.25;
+      const wmX = exportW - wmW - exportW * 0.05;
+      const wmY = exportH - wmH - exportH * 0.05;
+      expCtx.fillStyle = 'rgba(255,255,255,0.35)';
+      expCtx.fillRect(wmX, wmY, wmW, wmH);
+      expCtx.fillStyle = 'rgba(0,0,0,0.5)';
+      expCtx.font = `${Math.round(wmH * 0.5)}px sans-serif`;
+      expCtx.textAlign = 'center';
+      expCtx.fillText('iKlippa', wmX + wmW / 2, wmY + wmH * 0.65);
+    }
+
+    const frameImg = expCtx.getImageData(0, 0, exportW, exportH);
+    const frame = new VideoFrame(frameImg.data.buffer, {
       format: 'RGBA',
-      codedWidth: sourceVideoWidth,
-      codedHeight: sourceVideoHeight,
+      codedWidth: exportW,
+      codedHeight: exportH,
       timestamp: ms * 1000,
       duration: frameMs * 1000,
     });
     encoder.encode(frame, { keyFrame: i % 60 === 0 });
     frame.close();
-    if (onProgress) onProgress(0.5 + (i / sortedFrames.length) * 0.4);
+    if (onProgress) onProgress(0.4 + (i / sortedFrames.length) * 0.3);
   }
   await encoder.flush();
   encoder.close();
 
-  logStatus('Export: muxing…');
-  if (!window.Mp4Muxer)
-    await loadScript(
-      'https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js',
+  // ── Audio render & encode ─────────────────────────────────────────
+  let encodedAudio: Array<{ buf: ArrayBuffer; timestamp: number; type: string }> = [];
+  if (pendingAudio.size > 0) {
+    logStatus('Export: encoding audio…');
+    const sortedAudio = [...pendingAudio.entries()].sort(([a], [b]) => a - b);
+    let sampleRate = 48000;
+    if (sortedAudio.length > 0) sampleRate = sortedAudio[0]![1].sampleRate;
+
+    const offlineCtx = new OfflineAudioContext(
+      Math.min(sortedAudio[0]![1].numberOfChannels, 2),
+      Math.ceil((durationSec + 0.5) * sampleRate),
+      sampleRate,
     );
 
-  const muxer = new window.Mp4Muxer.Muxer({
+    for (const [srcMs, buf] of sortedAudio) {
+      const timelineMs = mapSourceToTimelineMs(srcMs);
+      if (timelineMs === null) continue;
+      const src = offlineCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(offlineCtx.destination);
+      src.start(timelineMs / 1000);
+    }
+
+    const rendered = await offlineCtx.startRendering();
+
+    // Encode to AAC
+    const audioEncoder = getPorts().audioEncoderFactory.create(
+      (chunk) => {
+        const buf = new ArrayBuffer(chunk.byteLength);
+        chunk.copyTo(buf);
+        encodedAudio.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
+      },
+      (e) => emitLocal('EXPORT_FAILED', e, { fatal: false }),
+    );
+    audioEncoder.configure({
+      codec: 'mp4a.40.2',
+      numberOfChannels: rendered.numberOfChannels,
+      sampleRate: rendered.sampleRate,
+      bitrate: 128_000,
+    });
+    const audioData = new AudioData({
+      format: 'f32-planar',
+      sampleRate: rendered.sampleRate,
+      numberOfFrames: rendered.length,
+      numberOfChannels: rendered.numberOfChannels,
+      timestamp: 0,
+      data: (() => {
+        const bufs: Float32Array[] = [];
+        for (let c = 0; c < rendered.numberOfChannels; c++) {
+          bufs.push(rendered.getChannelData(c));
+        }
+        const total = bufs.reduce((s, b) => s + b.byteLength, 0);
+        const packed = new ArrayBuffer(total);
+        let off = 0;
+        for (const b of bufs) {
+          new Uint8Array(packed).set(new Uint8Array(b.buffer, b.byteOffset, b.byteLength), off);
+          off += b.byteLength;
+        }
+        return packed;
+      })(),
+    });
+    audioEncoder.encode(audioData);
+    await audioEncoder.flush();
+    audioEncoder.close();
+    audioData.close();
+  }
+
+  // ── Mux ──────────────────────────────────────────────────────────
+  logStatus('Export: muxing…');
+  if (!window.Mp4Muxer)
+    await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js');
+
+  const muxerConfig: any = {
     target: new window.Mp4Muxer.ArrayBufferTarget(),
-    video: { codec: 'avc', width: sourceVideoWidth, height: sourceVideoHeight },
+    video: { codec: 'avc', width: exportW, height: exportH },
     fastStart: 'in-memory',
-  });
-  for (const { buf, timestamp, type } of encodedChunks) {
+  };
+  if (encodedAudio.length > 0) {
+    muxerConfig.audio = { codec: 'aac', numberOfChannels: 2, sampleRate: 48000 };
+  }
+
+  const muxer = new window.Mp4Muxer.Muxer(muxerConfig);
+  for (const { buf, timestamp, type } of encodedVideo) {
     muxer.addVideoChunkRaw(buf, type, timestamp, frameMs * 1000);
   }
+  for (const { buf, timestamp, type } of encodedAudio) {
+    muxer.addAudioChunkRaw(buf, type, timestamp, 1024);
+  }
   if (onProgress) onProgress(0.95);
+
   const { buffer } = muxer.finalize();
   const a = ports.canvasFactory.createElement('a') as HTMLAnchorElement;
   a.href = ports.urlFactory.createObjectURL(ports.blobFactory.create([buffer], { type: 'video/mp4' }));
