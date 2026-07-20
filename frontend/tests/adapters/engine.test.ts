@@ -138,16 +138,19 @@ describe('exportVideo (Tier 2 - adapter ports)', () => {
   });
 
   it('triggers export flow with fake encoder and muxer', async () => {
-    // Pre-populate pendingFrames with frames at all expected positions for the export loop
     const frameMs = 1000 / 30;
-    for (let i = 0; i < 120; i++) {
-      const ms = Math.round(i * frameMs);
-      const fakeImage = { data: { buffer: new ArrayBuffer(0) } } as any;
-      __TEST_HOOKS__.pendingFrames.set(ms, fakeImage);
-    }
+    __TEST_HOOKS__.videoDurationMs = 4000;
+    let frameCount = 0;
     mockWorker.postMessage.mockImplementation((msg: any) => {
       if (msg.type === 'seek' || msg.type === 'sync') {
-        // Already have frames — nothing to simulate
+        // Generate batch of frames per sync to fill export quickly
+        for (let j = 0; j < 10; j++) {
+          const ms = frameCount * frameMs;
+          const fakeImage = { data: { buffer: new ArrayBuffer(0) } } as any;
+          __TEST_HOOKS__.pendingFrames.set(ms, fakeImage);
+          __TEST_HOOKS__.exportFrames.push({ ms, imageData: fakeImage });
+          frameCount++;
+        }
       }
     });
 
