@@ -149,10 +149,16 @@ export function renderClips() {
   const dur = S.dur;
   if (dur <= 0) return;
 
+  // Sort tracks: video first, then audio; within each group by order
+  const sortedTracks = [...tracks].sort((a, b) => {
+    if (a.track_type !== b.track_type) return a.track_type === 'video' ? -1 : 1;
+    return a.order - b.order;
+  });
+
   // Clear existing track DOM (keep AI track)
   tlTracks.querySelectorAll('.track.video-track, .track.audio-track').forEach((t) => t.remove());
 
-  for (const track of tracks) {
+  for (const track of sortedTracks) {
     const trackEl = document.createElement('div');
     trackEl.className = `track ${track.track_type}-track`;
     trackEl.setAttribute('data-track-id', String(track.id));
@@ -160,12 +166,12 @@ export function renderClips() {
     const gutter = document.createElement('div');
     gutter.className = 'track-gutter';
     gutter.innerHTML = `
+      <div style="font-size:11px;font-weight:600;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;margin-bottom:2px;" title="${track.name}">${track.name}</div>
       <div class="track-icons">
         <i data-lucide="${track.locked ? 'lock' : 'unlock'}" class="track-lock${track.locked ? ' active' : ''}"></i>
         <i data-lucide="${track.visible ? 'eye' : 'eye-off'}" class="track-visibility${!track.visible ? ' active' : ''}"></i>
         <i data-lucide="${track.muted ? 'volume-x' : 'volume-2'}" class="track-volume-icon${track.muted ? ' active' : ''}"></i>
       </div>
-      <span style="font-size:9px;color:var(--text-muted);margin-left:4px;">${track.name}</span>
     `;
 
     const lane = document.createElement('div');
@@ -176,19 +182,26 @@ export function renderClips() {
       const meta = IKState.getClipMeta ? IKState.getClipMeta(clip.id) : null;
       const displayName = meta?.name || clip.source_id || `Clip ${clip.id}`;
       const el = document.createElement('div');
-      el.className = `tl-clip${track.track_type === 'audio' ? ' tl-clip-audio' : ''}`;
+      el.className = `tl-clip${track.track_type === 'audio' ? ' tl-clip-audio' : ' tl-clip-video'}`;
       el.dataset.clipId = String(clip.id);
       setClipDimensions(el, clip, dur, tw);
 
       if (track.track_type === 'video') {
-        if (meta?.thumbnails && meta.thumbnails.length > 0) {
-          const w = setClipDimensions(el, clip, dur, tw);
-          const count = Math.max(1, Math.floor(w / 60));
+        if (meta?.isReal && meta?.thumbnails && meta.thumbnails.length > 0) {
+          const w = parseFloat(el.style.left || '0') + ((clip.timeline_end_us - clip.timeline_start_us) / 1_000_000 / dur) * tw;
+          const count = Math.max(1, Math.floor(Math.max(1, parseFloat(el.style.width) || tw) / 60));
           let thumbs = '<div class="tl-clip-thumbs">';
           for (let j = 0; j < count; j++) {
             const idx = Math.min(Math.floor((j / count) * meta.thumbnails.length), meta.thumbnails.length - 1);
             thumbs += `<img src="${meta.thumbnails[idx].dataUrl}" draggable="false">`;
           }
+          thumbs += '</div>';
+          el.innerHTML = `${thumbs}<span class="tl-clip-label">${displayName}</span>`;
+        } else if (meta?.picId) {
+          const count = Math.max(1, Math.floor(Math.max(1, parseFloat(el.style.width) || tw) / 60));
+          let thumbs = '<div class="tl-clip-thumbs">';
+          for (let j = 0; j < count; j++)
+            thumbs += `<img src="https://picsum.photos/id/${meta.picId}/100/60" crossorigin="anonymous" draggable="false">`;
           thumbs += '</div>';
           el.innerHTML = `${thumbs}<span class="tl-clip-label">${displayName}</span>`;
         } else {
