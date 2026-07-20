@@ -70,10 +70,14 @@ let thumbnailRenderDebounce: ReturnType<typeof setTimeout> | null = null;
 // fallow-ignore-next-line complexity
 window.onThumbnailsUpdated = (thumbnails): void => {
   if (!hasRealVideo) return;
-  const clips = window.IKState.getVideoClips();
-  if (clips.length > 0 && clips[0]!.isReal) {
-    window.IKState.setClipMeta(clips[0]!.id, { thumbnails });
+  // Don't re-render DOM during playback — it causes flicker
+  const allClips = window.IKState.getAllVideoClips ? window.IKState.getAllVideoClips() : window.IKState.getVideoClips();
+  for (const clip of allClips) {
+    if (clip.isReal) {
+      window.IKState.setClipMeta(clip.id, { thumbnails });
+    }
   }
+  if (window.S && window.S.playing) return;
   if (thumbnailRenderDebounce) clearTimeout(thumbnailRenderDebounce);
   thumbnailRenderDebounce = setTimeout(() => {
     window.renderClips();
