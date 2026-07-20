@@ -624,5 +624,21 @@
     </div>
 
     <div class="toast-container" id="toast-box"></div>
+
+    <!-- Export Modal -->
+    <div class="export-modal-overlay" id="export-modal" style="display:none;">
+      <div class="export-modal">
+        <i data-lucide="film" style="color:var(--accent-primary);width:28px;height:28px;margin-bottom:8px;"></i>
+        <h3>Exporting Video</h3>
+        <div class="export-bar-bg">
+          <div class="export-bar-fill" id="export-bar-fill" style="width:0%;"></div>
+        </div>
+        <div class="export-bar-info">
+          <span id="export-pct">0%</span>
+          <span id="export-stage">Preparing…</span>
+        </div>
+        <span class="export-eta" id="export-eta">Estimating…</span>
+      </div>
+    </div>
   </body>
 </html>

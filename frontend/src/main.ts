@@ -227,26 +227,39 @@ window.onPlayheadScrub = (timeSec: number, force?: boolean): void => {
 
 // ── Video Export Trigger ────────────────────────────────────────────────
 window.handleExport = async function (): Promise<void> {
-  const progressBar = document.getElementById('export-progress') as HTMLElement;
-  const progressFill = document.getElementById('export-progress-bar') as HTMLElement;
-  const progressLabel = document.getElementById('export-progress-label') as HTMLElement;
-  if (progressBar) progressBar.style.display = 'block';
-  if (progressFill) progressFill.style.width = '0%';
+  const modal = document.getElementById('export-modal') as HTMLElement;
+  const barFill = document.getElementById('export-bar-fill') as HTMLElement;
+  const pctEl = document.getElementById('export-pct') as HTMLElement;
+  const stageEl = document.getElementById('export-stage') as HTMLElement;
+  const etaEl = document.getElementById('export-eta') as HTMLElement;
+  if (modal) modal.style.display = 'flex';
 
+  const t0 = performance.now();
   await exportVideo((progress: number) => {
     const pct = Math.round(progress * 100);
-    statusBadge.innerHTML = `<i data-lucide="loader"></i> Export: ${pct}%`;
-    window.lucide.createIcons({ nodes: [statusBadge] });
-    if (progressFill) progressFill.style.width = pct + '%';
-    if (progressLabel) {
-      if (pct < 40) progressLabel.textContent = 'Collecting frames…';
-      else if (pct < 70) progressLabel.textContent = 'Encoding video…';
-      else if (pct < 95) progressLabel.textContent = 'Encoding audio…';
-      else progressLabel.textContent = 'Muxing…';
+    const elapsed = (performance.now() - t0) / 1000;
+    const eta = progress > 0.01 ? (elapsed / progress - elapsed) : 0;
+
+    if (barFill) barFill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+    if (stageEl) {
+      if (pct < 40) stageEl.textContent = 'Collecting frames';
+      else if (pct < 70) stageEl.textContent = 'Encoding video';
+      else if (pct < 95) stageEl.textContent = 'Encoding audio';
+      else stageEl.textContent = 'Muxing';
+    }
+    if (etaEl) {
+      if (eta > 0) {
+        const m = Math.floor(eta / 60);
+        const s = Math.round(eta % 60);
+        etaEl.textContent = m > 0 ? `~${m}m ${s}s remaining` : `~${s}s remaining`;
+      } else {
+        etaEl.textContent = 'Estimating…';
+      }
     }
   });
 
-  if (progressBar) progressBar.style.display = 'none';
+  if (modal) modal.style.display = 'none';
   statusBadge.innerHTML = '<i data-lucide="check-circle"></i> Export complete';
   window.lucide.createIcons({ nodes: [statusBadge] });
 };
