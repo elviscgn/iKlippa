@@ -42,6 +42,9 @@ export interface AudioContextPort {
   readonly state: string;
   createBuffer(channels: number, length: number, sampleRate: number): AudioBuffer;
   createBufferSource(): AudioBufferSourceNode;
+  createGain(): GainNode;
+  createStereoPanner(): StereoPannerNode;
+  createDynamicsCompressor(): DynamicsCompressorNode;
   readonly destination: AudioDestinationNode;
   close(): Promise<void>;
 }

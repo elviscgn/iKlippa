@@ -132,6 +132,57 @@ let audioConfigVersion = 0;
 let audioPlayStartCtxTime = 0;
 let audioPlayStartMs = 0;
 
+// ── Audio Mixer ──────────────────────────────────────────────────────────
+let masterCompressor: DynamicsCompressorNode | null = null;
+let trackAudioNodes = new Map<number, { gain: GainNode; pan: StereoPannerNode }>();
+
+function getTrackGainPan(trackId: number): { gain: GainNode; pan: StereoPannerNode } {
+  if (!audioCtx) throw new Error('AudioContext not ready');
+  let nodes = trackAudioNodes.get(trackId);
+  if (!nodes) {
+    const gain = audioCtx.createGain();
+    const pan = audioCtx.createStereoPanner();
+    gain.connect(pan);
+    pan.connect(masterCompressor || audioCtx.destination);
+    nodes = { gain, pan };
+    trackAudioNodes.set(trackId, nodes);
+    syncTrackAudioSettings(trackId, nodes);
+  }
+  return nodes;
+}
+
+function syncTrackAudioSettings(trackId: number, nodes?: { gain: GainNode; pan: StereoPannerNode }): void {
+  const n = nodes || trackAudioNodes.get(trackId);
+  if (!n || !audioCtx) return;
+  const IKState = (window as any).IKState;
+  if (!IKState || !IKState.isReady()) return;
+  const track = IKState.getTrackById ? IKState.getTrackById(trackId) : null;
+  if (!track) return;
+  const now = audioCtx.currentTime;
+  n.gain.gain.setTargetAtTime(track.muted ? 0 : track.volume, now, 0.02);
+  n.pan.pan.setTargetAtTime(track.pan, now, 0.02);
+}
+
+/** Update all track audio nodes from IKState. Call on re-render. */
+export function syncAllTrackAudio(): void {
+  trackAudioNodes.forEach((nodes, trackId) => syncTrackAudioSettings(trackId, nodes));
+}
+
+function findActiveAudioTrack(sourceMs: number): number | null {
+  const IKState = (window as any).IKState;
+  if (!IKState || !IKState.isReady()) return null;
+  const tracks = IKState.getTracks ? IKState.getTracks() : [];
+  for (const track of tracks) {
+    if (track.track_type !== 'audio') continue;
+    for (const clip of track.clips) {
+      const sStart = clip.source_start_us / 1000;
+      const sEnd = clip.source_end_us / 1000;
+      if (sourceMs >= sStart && sourceMs < sEnd) return track.id;
+    }
+  }
+  return null;
+}
+
 // ── Thumbnail Capture State ─────────────────────────────────────────────
 let currentFileName = '';
 let timelineThumbnails: Array<{ ms: number; dataUrl: string }> = [];
@@ -280,6 +331,13 @@ async function initAudio(): Promise<void> {
   if (!audioCtx) {
     audioCtx = getPorts().audioContextFactory.create();
     log('audio', `AudioContext created (sampleRate: ${audioCtx.sampleRate}Hz)`);
+    masterCompressor = audioCtx.createDynamicsCompressor();
+    masterCompressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+    masterCompressor.knee.setValueAtTime(30, audioCtx.currentTime);
+    masterCompressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+    masterCompressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+    masterCompressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+    masterCompressor.connect(audioCtx.destination);
   }
   if (audioCtx.state !== 'running') {
     await audioCtx.resume();
@@ -431,9 +489,9 @@ function handleEngineError(e: EngineError): void {
 }
 
 function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
-  if (!audioCtx) return;
+  if (!audioCtx || !masterCompressor) return;
   const timelineMs = mapSourceToTimelineMs(chunkMs);
-  if (timelineMs === null) return; // Drop audio outside active clip bounds
+  if (timelineMs === null) return;
 
   const idealCtxTime = audioPlayStartCtxTime + (timelineMs - audioPlayStartMs) / 1000;
   if (nextAudioStartTime === 0 || nextAudioStartTime < audioCtx.currentTime) {
@@ -450,9 +508,20 @@ function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
   if (idealCtxTime > nextAudioStartTime + 0.05) nextAudioStartTime = idealCtxTime;
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
-  source.connect(audioCtx.destination);
-  // Keep scheduledAudioNodes bounded: without removal, thousands of finished
-  // nodes accumulate over a playback session (GC pressure + stop-all cost).
+
+  // Route through the correct audio track's gain/pan nodes
+  const trackId = findActiveAudioTrack(chunkMs);
+  if (trackId !== null) {
+    try {
+      const { gain, pan } = getTrackGainPan(trackId);
+      source.connect(gain);
+    } catch {
+      source.connect(masterCompressor);
+    }
+  } else {
+    source.connect(masterCompressor);
+  }
+
   source.onended = () => {
     const i = scheduledAudioNodes.indexOf(source);
     if (i >= 0) scheduledAudioNodes.splice(i, 1);
