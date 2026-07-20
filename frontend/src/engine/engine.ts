@@ -1250,31 +1250,19 @@ export async function exportVideo(
   logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
   if (onProgress) onProgress(0);
 
-  // One seek to start, then pump with sync messages to pull frames through
+  // One message to decode ALL frames in a single pass
   const initMap = mapTimelineToSource(0);
-  const startSourceId = initMap?.sourceId;
-  worker!.postMessage({ type: 'seek', ms: 0, sourceId: startSourceId, seekId: ++seekGeneration });
-  await new Promise((r) => setTimeout(r, 200)); // Let decoder seed
+  worker!.postMessage({ type: 'decode_all', sourceId: initMap?.sourceId });
 
-  const pump = () => {
-    if (!isExporting) return;
-    const lastFrame = exportFrames.length > 0 ? exportFrames[exportFrames.length - 1]!.ms : 0;
-    // Advance playhead just past the last received frame so the worker
-    // decodes the next chunk without skipping frames.
-    worker!.postMessage({ type: 'sync', playheadMs: lastFrame + 1000, isPlaying: true, framesAhead: 0, sourceId: startSourceId });
-  };
-  const pumpTimer = setInterval(pump, 800);
-
-  // Poll until we have enough frames (or timeout)
+  // Wait for all frames to arrive from the worker's continuous decode
   let waited = 0;
   while (exportFrames.length < totalFrames * 0.95 && waited < 120000) {
     await new Promise((r) => setTimeout(r, 100));
     waited += 100;
-    if (onProgress && waited % 500 === 0) {
+    if (onProgress && waited % 300 === 0) {
       onProgress(Math.min(0.4, exportFrames.length / totalFrames * 0.4));
     }
   }
-  clearInterval(pumpTimer);
 
   // Add empty frames for any missing positions so we always have totalFrames count
   console.log(`[export] collected ${exportFrames.length}/${totalFrames} frames in ${(waited / 1000).toFixed(1)}s`);

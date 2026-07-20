@@ -334,6 +334,58 @@ function handleComposite(msg: WorkerCompositeCmd) {
   }
 }
 
+// ── Decode all frames (for export) ──────────────────────────────────────
+function handleDecodeAll(msg: { sourceId: string }) {
+  const sid = msg.sourceId || primarySourceId || '';
+  const state = sourceStates.get(sid);
+  if (!state || !state.decoder) { wwarn('worker', `decode_all: no source "${sid}"`); return; }
+  wlog('worker', `decode_all [${sid}] — decoding all remaining frames`);
+  decodeAllFrames(sid).catch((e) => wwarn('worker', 'decode_all failed', String(e)));
+}
+
+async function decodeAllFrames(sourceId: string) {
+  const state = sourceStates.get(sourceId);
+  if (!state || !state.decoder) return;
+  if (state.decoder.state === 'closed') { await setupDecoder(sourceId, state); }
+  if (state.decoder.state !== 'configured') return;
+  if (!state.decoderSeeded) {
+    state.decoder.reset();
+    await state.decoder.configure(state.codecConfig);
+    state.globalStartOffsetUs = -1;
+    state.lastDecodedSampleIdx = -1;
+  }
+  const { samples, file } = state;
+  let startIdx = state.lastDecodedSampleIdx + 1;
+  if (startIdx <= 0) {
+    for (let i = 0; i < samples.length; i++) {
+      if (samples[i]!.is_sync) { startIdx = i; break; }
+    }
+  }
+  let i = startIdx;
+  while (i < samples.length) {
+    if (latestSeekId !== currentSeekId) { wwarn('worker', 'decode_all interrupted by seek'); break; }
+    const batchEnd = Math.min(i + MAX_READS_PER_PUMP, samples.length);
+    const batch = samples.slice(i, batchEnd);
+    const dataArray = await Promise.all(batch.map((s) => readSampleData(file, s)));
+    for (let j = 0; j < batch.length; j++) {
+      const s = batch[j]!;
+      postMessage({ type: 'decode_submit', ms: Math.round((s.cts * 1000) / s.timescale) });
+      state.decoder.decode(
+        new EncodedVideoChunk({
+          type: s.is_sync ? 'key' : 'delta',
+          timestamp: (s.cts * 1_000_000) / s.timescale,
+          duration: (s.duration * 1_000_000) / s.timescale,
+          data: dataArray[j]!,
+        })
+      );
+    }
+    state.lastDecodedSampleIdx = batchEnd - 1;
+    i = batchEnd;
+  }
+  state.decoderSeeded = true;
+  wlog('worker', `decode_all [${sourceId}] — done, ${samples.length} samples decoded`);
+}
+
 // ── Message scheduler ─────────────────────────────────────────────────────────
 const pendingMsgs: any[] = [];
 let drainRunning = false;
@@ -382,6 +434,7 @@ async function routeMessage(msg: any): Promise<void> {
   else if (msg.type === 'set_timeline') handleSetTimeline(msg);
   else if (msg.type === 'get_project_json') handleGetProjectJson();
   else if (msg.type === 'composite') handleComposite(msg);
+  else if (msg.type === 'decode_all') handleDecodeAll(msg);
 }
 
 self.onmessage = (e: MessageEvent<any>) => {
