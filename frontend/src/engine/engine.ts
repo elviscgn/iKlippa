@@ -47,8 +47,13 @@ function logOnce(key: string, tag: string, msg: string, data?: unknown): void {
 }
 
 // ── Time Mapping Helpers ────────────────────────────────────────────────
-function mapTimelineToSourceMs(timelineMs: number): number {
-  if (typeof window.IKState === 'undefined' || !window.IKState.isReady()) return timelineMs;
+interface TimelineSource {
+  sourceMs: number;
+  sourceId: string;
+}
+
+function mapTimelineToSource(timelineMs: number): TimelineSource | null {
+  if (typeof window.IKState === 'undefined' || !window.IKState.isReady()) return null;
   const clips = window.IKState.getAllVideoClips
     ? window.IKState.getAllVideoClips()
     : window.IKState.getVideoClips();
@@ -56,10 +61,18 @@ function mapTimelineToSourceMs(timelineMs: number): number {
     const tStart = clip.timeline_start_us / 1000;
     const tEnd = clip.timeline_end_us / 1000;
     if (timelineMs >= tStart && timelineMs < tEnd) {
-      return (clip.source_start_us / 1000) + (timelineMs - tStart) * clip.speed;
+      return {
+        sourceMs: (clip.source_start_us / 1000) + (timelineMs - tStart) * clip.speed,
+        sourceId: clip.source_id,
+      };
     }
   }
-  return timelineMs;
+  return null;
+}
+
+function mapTimelineToSourceMs(timelineMs: number): number {
+  const r = mapTimelineToSource(timelineMs);
+  return r ? r.sourceMs : timelineMs;
 }
 
 function mapSourceToTimelineMs(sourceMs: number): number | null {
@@ -68,7 +81,6 @@ function mapSourceToTimelineMs(sourceMs: number): number | null {
     ? window.IKState.getAllVideoClips()
     : window.IKState.getVideoClips();
 
-  // 1. Prioritize mapping through the currently active clip if it matches
   if (currentActiveClipId !== null) {
     const activeClip = clips.find((c) => c.id === currentActiveClipId);
     if (activeClip) {
@@ -80,7 +92,6 @@ function mapSourceToTimelineMs(sourceMs: number): number | null {
     }
   }
 
-  // 2. Fallback to searching all clips
   for (const clip of clips) {
     const sStart = clip.source_start_us / 1000;
     const sEnd = clip.source_end_us / 1000;
@@ -103,6 +114,7 @@ let lastRafTs: number | null = null;
 let rafHandle: number | null = null;
 
 let pendingFrames = new Map<number, ImageData>();
+let pendingFramesBySource = new Map<string, Map<number, ImageData>>();
 let sourceVideoWidth = 0;
 let sourceVideoHeight = 0;
 let videoDurationMs = 0;
@@ -152,6 +164,7 @@ let _rustCompositeBuffer: ArrayBuffer | null = null;
 let _rustCompositeTsUs = -1;
 let _rustCompositeW = 0;
 let _rustCompositeH = 0;
+let _lastCompositeRequestMs = -1000;
 
 // ── Performance Monitor ─────────────────────────────────────────────────
 export const perf = new PerformanceMonitor();
@@ -284,7 +297,7 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
   }
   log(
     'engine',
-    `ready — ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s · pendingFrames: ${pendingFrames.size}`,
+    `ready [${msg.sourceId}] — ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s`,
   );
   logStatus(
     `Ready: ${sourceVideoWidth}×${sourceVideoHeight} · ${(videoDurationMs / 1000).toFixed(2)}s`,
@@ -295,6 +308,7 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
       height: sourceVideoHeight,
       durationMs: videoDurationMs,
       fileName: msg.fileName,
+      sourceId: msg.sourceId,
     });
   }
 }
@@ -306,12 +320,19 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
   }
   perf.recordFrameArrival(msg.ms, msg.gradeMs);
   const arr = new Uint8ClampedArray(msg.buffer);
-  pendingFrames.set(
-    msg.ms,
-    new ImageData(arr, sourceVideoWidth, sourceVideoHeight),
-  );
+  const img = new ImageData(arr, sourceVideoWidth, sourceVideoHeight);
+
+  // Store in both caches for backward compat during transition
+  pendingFrames.set(msg.ms, img);
+  let sourceFrames = pendingFramesBySource.get(msg.sourceId);
+  if (!sourceFrames) {
+    sourceFrames = new Map();
+    pendingFramesBySource.set(msg.sourceId, sourceFrames);
+  }
+  sourceFrames.set(msg.ms, img);
+
   if (isExporting)
-    exportFrames.push({ ms: msg.ms, imageData: pendingFrames.get(msg.ms)! });
+    exportFrames.push({ ms: msg.ms, imageData: img });
 
   // Fire pending thumbnail capture
   if (_pendingThumbCapture) {
@@ -394,6 +415,8 @@ export function handleWorkerMessage(e: MessageEvent<WorkerIncomingMessage>): voi
       _rustCompositeTsUs = msg.ts_us;
       _rustCompositeW = msg.width;
       _rustCompositeH = msg.height;
+      // Force a re-paint to show the Rust composite immediately
+      if (!isPlaying) paintFrameAtTime(_rustCompositeTsUs / 1_000);
       break;
     case 'error':
       handleEngineError(msg.error);
@@ -463,8 +486,7 @@ export async function importFile(file: File): Promise<void> {
   _loggedOnce.clear();
 
   initAudio();
-  pendingFrames.clear();
-  pendingAudio.clear();
+  // Don't clear ALL frames — only stale ones. Other sources keep their caches.
   stopAllAudioNodes();
   nextAudioStartTime = 0;
   lastScheduledChunkMs = -1;
@@ -587,7 +609,8 @@ export async function importFile(file: File): Promise<void> {
     throw e;
   });
 
-  worker!.postMessage({ type: 'load', file, fileName: file.name, ...payload });
+  const sourceId = 'imported_' + Date.now();
+  worker!.postMessage({ type: 'load', file, fileName: file.name, sourceId, ...payload });
 }
 
 function getDecoderDescription(
@@ -667,8 +690,10 @@ export function renderLoop(ts: number): void {
     log('play', `clip transition: ${currentActiveClipId} -> ${newClipId}`);
     currentActiveClipId = newClipId;
     if (newClipId !== null) {
-      const sourceMs = mapTimelineToSourceMs(playheadMs);
-      worker!.postMessage({ type: 'seek', ms: sourceMs });
+      const mapRes = mapTimelineToSource(playheadMs);
+      if (mapRes) {
+        worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId });
+      }
       pendingFrames.clear();
       pendingAudio.clear();
       audioPlayStartMs = playheadMs;
@@ -684,27 +709,29 @@ export function renderLoop(ts: number): void {
 
   paintFrameAtTime(playheadMs);
 
-  const sourcePlayheadMs = mapTimelineToSourceMs(playheadMs);
+  const mapRes = mapTimelineToSource(playheadMs);
+  const sourcePlayheadMs = mapRes ? mapRes.sourceMs : playheadMs;
   let framesAhead = 0;
-  for (const frameMs of pendingFrames.keys()) {
-    if (frameMs >= sourcePlayheadMs) framesAhead++;
+  const sourceFrames = mapRes ? pendingFramesBySource.get(mapRes.sourceId) : null;
+  if (sourceFrames) {
+    for (const frameMs of sourceFrames.keys()) {
+      if (frameMs >= sourcePlayheadMs) framesAhead++;
+    }
   }
-  
-  // If in a gap, tell worker to sleep by reporting fake frames ahead
+
   const inGap = activeNow.length === 0;
   if (inGap) framesAhead = 100;
 
-  // Throttle syncs: only when the playhead moved ≥100ms, play state flipped,
-  // or the buffer crossed the worker's pump threshold.
   const playingNow = isPlaying && !inGap;
-  const syncSig = `${Math.round(sourcePlayheadMs / 100)}|${playingNow ? 1 : 0}|${framesAhead >= 15 ? 1 : 0}`;
+  const syncSig = `${Math.round(sourcePlayheadMs / 100)}|${playingNow ? 1 : 0}|${framesAhead >= 15 ? 1 : 0}|${mapRes?.sourceId ?? ''}`;
   if (syncSig !== lastSyncSig) {
     lastSyncSig = syncSig;
     worker!.postMessage({
       type: 'sync',
       playheadMs: sourcePlayheadMs,
       isPlaying: playingNow,
-      framesAhead
+      framesAhead,
+      sourceId: mapRes?.sourceId,
     });
   }
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(playheadMs);
@@ -743,10 +770,17 @@ function _getFrameCanvas(
 
 function cleanupStaleFrames(ms: number) {
   maybeCaptureThumbnail(ms);
-  const sourceMs = mapTimelineToSourceMs(ms);
-  const pruneBeforeMs = sourceMs - 1500;
+  const mapRes = mapTimelineToSource(ms);
+  if (!mapRes) return;
+  const pruneBeforeMs = mapRes.sourceMs - 1500;
   for (const [frameMs] of pendingFrames) {
     if (frameMs < pruneBeforeMs) pendingFrames.delete(frameMs);
+  }
+  const sourceFrames = pendingFramesBySource.get(mapRes.sourceId);
+  if (sourceFrames) {
+    for (const [frameMs] of sourceFrames) {
+      if (frameMs < pruneBeforeMs) sourceFrames.delete(frameMs);
+    }
   }
   for (const [audioMs] of pendingAudio) {
     if (audioMs < pruneBeforeMs) pendingAudio.delete(audioMs);
@@ -771,31 +805,72 @@ function getActiveClipsAtTime(msUs: number): ClipWithMeta[] {
 function resolveFramesForClips(activeClips: ClipWithMeta[], ms: number) {
   const resolved: Array<{ clip: ClipWithMeta; imageData: ImageData }> = [];
   for (const clip of activeClips) {
-    // ms is in milliseconds; clip timestamps are in microseconds — divide by 1000
     const clipStartMs = clip.timeline_start_us / 1000;
     const sourceStartMs = clip.source_start_us / 1000;
     const timelineOffsetMs = ms - clipStartMs;
     const sourceMs = sourceStartMs + timelineOffsetMs;
+
+    const sourceFrames = pendingFramesBySource.get(clip.source_id);
     let bestMs = -1;
-    for (const [frameMs] of pendingFrames) {
-      if (frameMs <= sourceMs && frameMs > bestMs) bestMs = frameMs;
+    if (sourceFrames) {
+      for (const [frameMs] of sourceFrames) {
+        if (frameMs <= sourceMs && frameMs > bestMs) bestMs = frameMs;
+      }
+    }
+    // Fallback to legacy global cache
+    if (bestMs < 0) {
+      for (const [frameMs] of pendingFrames) {
+        if (frameMs <= sourceMs && frameMs > bestMs) bestMs = frameMs;
+      }
     }
     if (bestMs >= 0) {
-      resolved.push({ clip, imageData: pendingFrames.get(bestMs)! });
+      const img = (sourceFrames && sourceFrames.get(bestMs)) || pendingFrames.get(bestMs);
+      if (img) resolved.push({ clip, imageData: img });
     } else {
       logOnce(
         `no-frame-for-clip-${clip.id}-${Math.round(ms / 1000)}`,
         'paint',
-        `clip ${clip.id} active at ${ms.toFixed(0)}ms but no frame found`,
+        `clip ${clip.id} active at ${ms.toFixed(0)}ms but no frame found [${clip.source_id}]`,
       );
     }
   }
   return resolved;
 }
 
+function colourFilter(clip: ClipWithMeta): string {
+  const cs = clip.colour_settings;
+  if (!cs) return 'none';
+  const exp   = 1 + cs.exposure * 1.5;
+  const con   = 1 + cs.contrast * 1.5;
+  const sat   = 1 + cs.saturation;
+  const temp  = cs.temperature;
+  const tint  = cs.tint;
+  const parts: string[] = [];
+  if (Math.abs(exp - 1) > 0.01) parts.push(`brightness(${exp.toFixed(2)})`);
+  if (Math.abs(con - 1) > 0.01) parts.push(`contrast(${con.toFixed(2)})`);
+  if (Math.abs(sat - 1) > 0.01) parts.push(`saturate(${sat.toFixed(2)})`);
+  if (Math.abs(temp) > 0.01) parts.push(`sepia(${Math.abs(temp).toFixed(2)}) hue-rotate(${temp > 0 ? '' : '-'}${(Math.abs(temp) * 15).toFixed(0)}deg)`);
+  if (Math.abs(tint) > 0.01) parts.push(`hue-rotate(${(tint * 10).toFixed(0)}deg)`);
+  return parts.length > 0 ? parts.join(' ') : 'none';
+}
+
 function drawResolvedFrames(resolved: Array<{ clip: ClipWithMeta; imageData: ImageData }>, width: number, height: number) {
   if (resolved.length === 1) {
-    ctx!.putImageData(resolved[0]!.imageData, 0, 0);
+    const clip = resolved[0]!.clip;
+    const filter = colourFilter(clip);
+    if (filter !== 'none') {
+      const [fc, fctx] = _getFrameCanvas(width, height);
+      fctx.filter = 'none';
+      fctx.putImageData(resolved[0]!.imageData, 0, 0);
+      fctx.filter = filter;
+      // drawImage with filter; copy back to imageData
+      fctx.drawImage(fc, 0, 0);
+      const filtered = fctx.getImageData(0, 0, width, height);
+      fctx.filter = 'none';
+      ctx!.putImageData(filtered, 0, 0);
+    } else {
+      ctx!.putImageData(resolved[0]!.imageData, 0, 0);
+    }
   } else {
     const [cc, cctx] = _getCompositeCanvas(width, height);
     const [fc, fctx] = _getFrameCanvas(width, height);
@@ -807,7 +882,14 @@ function drawResolvedFrames(resolved: Array<{ clip: ClipWithMeta; imageData: Ima
     for (let i = 0; i < resolved.length; i++) {
       const { clip, imageData } = resolved[i]!;
       const opacity = clip.transform ? clip.transform.opacity : 1;
+      const filter = colourFilter(clip);
+      fctx.filter = 'none';
       fctx.putImageData(imageData, 0, 0);
+      if (filter !== 'none') {
+        fctx.filter = filter;
+        fctx.drawImage(fc, 0, 0);
+        fctx.filter = 'none';
+      }
       cctx.globalAlpha = Math.max(0, Math.min(1, opacity));
       cctx.drawImage(fc, 0, 0);
     }
@@ -869,6 +951,24 @@ export const __TEST_HOOKS__ = {
 function paintFrameAtTime(ms: number): void {
   if (!ctx || !canvas) return;
 
+  // Prefer the Rust composite when available (it respects per-clip grades).
+  // Accept composites within 100ms of the target time.
+  const tsUs = Math.round(ms * 1_000);
+  if (_rustCompositeBuffer && Math.abs(_rustCompositeTsUs - tsUs) < 100_000) {
+    const arr = new Uint8ClampedArray(_rustCompositeBuffer);
+    const imageData = new ImageData(arr, _rustCompositeW, _rustCompositeH);
+    ctx.putImageData(imageData, 0, 0);
+    return;
+  }
+
+  // Request a Rust composite when paused/scrubbing (debounced 250ms).
+  // During playback, JS compositing handles preview at 60fps — the
+  // Rust composite would arrive too late for the current frame.
+  if (!isPlaying && Math.abs(ms - _lastCompositeRequestMs) > 250) {
+    _lastCompositeRequestMs = ms;
+    requestComposite(ms);
+  }
+
   const msUs = Math.round(ms * 1_000);
   const activeClips = getActiveClipsAtTime(msUs);
 
@@ -929,7 +1029,8 @@ async function startPlayback(opts?: { fromSeek?: boolean }): Promise<void> {
   // the correct position; a resync_audio here would reset the decoder and
   // discard those chunks, wasting time and arriving stale.
   if (!opts?.fromSeek) {
-    worker?.postMessage({ type: 'resync_audio', ms: mapTimelineToSourceMs(playheadMs) });
+    const mapRes = mapTimelineToSource(playheadMs);
+    worker?.postMessage({ type: 'resync_audio', ms: mapRes ? mapRes.sourceMs : playheadMs, sourceId: mapRes?.sourceId });
   }
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
@@ -994,9 +1095,12 @@ export async function seekTo(ms: number): Promise<void> {
   pendingAudio.clear();
   audioConfigVersion++;
   worker!.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
-  const sourceTargetMs = mapTimelineToSourceMs(ms);
+  const mapRes = mapTimelineToSource(ms);
+  const sourceTargetMs = mapRes ? mapRes.sourceMs : ms;
+  const sourceId = mapRes ? mapRes.sourceId : undefined;
   seekGeneration++;
-  worker!.postMessage({ type: 'seek', ms: sourceTargetMs, seekId: seekGeneration });
+  worker!.postMessage({ type: 'seek', ms: sourceTargetMs, sourceId, seekId: seekGeneration });
+  requestComposite(ms);
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
@@ -1006,18 +1110,18 @@ export async function seekTo(ms: number): Promise<void> {
 function syncWorkerState(): void {
   const activeNow = getActiveClipsAtTime(Math.round(playheadMs * 1_000));
   const inGap = activeNow.length === 0;
-  const sourcePlayheadMs = mapTimelineToSourceMs(playheadMs);
+  const mapRes = mapTimelineToSource(playheadMs);
+  const sourcePlayheadMs = mapRes ? mapRes.sourceMs : playheadMs;
   if (worker) {
     const playingNow = isPlaying && !inGap;
     const framesAhead = inGap ? 100 : 0;
-    // Discrete transitions always sync — and record the sig so renderLoop
-    // doesn't immediately re-send a duplicate.
-    lastSyncSig = `${Math.round(sourcePlayheadMs / 100)}|${playingNow ? 1 : 0}|${framesAhead >= 15 ? 1 : 0}`;
+    lastSyncSig = `${Math.round(sourcePlayheadMs / 100)}|${playingNow ? 1 : 0}|${framesAhead >= 15 ? 1 : 0}|${mapRes?.sourceId ?? ''}`;
     worker.postMessage({
       type: 'sync',
       playheadMs: sourcePlayheadMs,
       isPlaying: playingNow,
-      framesAhead
+      framesAhead,
+      sourceId: mapRes?.sourceId,
     });
   }
 }
@@ -1030,6 +1134,19 @@ export function setColorGrade(params: Partial<GradeParams>): void {
     params,
     forceRenderMs: isPlaying ? undefined : playheadMs,
   });
+}
+
+export function setPerClipGrade(clipId: number, grade: Record<string, number>): void {
+  seekTargetMs = -1;
+  if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
+  worker!.postMessage({
+    type: 'set_clip_grade',
+    clipId,
+    grade,
+  });
+  // Trigger a Rust composite at the current playhead so the preview
+  // reflects the grade change immediately.
+  requestComposite(playheadMs);
 }
 
 // ── Export ───────────────────────────────────────────────────────────────
@@ -1134,6 +1251,14 @@ export function syncTimelineToRust(): void {
   setTimeline(json).then(({ ok, error }) => {
     if (!ok) {
       console.warn('[iKlippa:engine] set_timeline rejected:', error);
+    }
+    // Re-seek to repopulate the Rust frame_cache now that the project
+    // has clips. Frames decoded before set_timeline had no clips to
+    // match against in stage_frame_broadcast.
+    const mapRes = mapTimelineToSource(playheadMs);
+    if (mapRes) {
+      seekGeneration++;
+      worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId, seekId: seekGeneration });
     }
   });
 }
