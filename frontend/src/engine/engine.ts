@@ -1248,29 +1248,33 @@ export async function exportVideo(
   const totalFrames = Math.ceil(durationSec * 1000 / frameMs);
   console.log(`[export] starting: ${totalFrames} frames, ${exportW}×${exportH}, duration=${durationSec.toFixed(1)}s`);
   logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
+
+  // One seek to start, then pump with sync for continuous decode
+  const initMap = mapTimelineToSource(0);
+  const startSourceId = initMap?.sourceId;
+  worker!.postMessage({ type: 'seek', ms: 0, sourceId: startSourceId, seekId: ++seekGeneration });
+  let lastPumpedMs = -1;
   for (let i = 0; i < totalFrames; i++) {
     const ms = Math.round(i * frameMs);
-    const mapRes = mapTimelineToSource(ms);
-    if (!mapRes) {
-      // No clip at this timeline position — push a black frame and continue
-      if (onProgress) onProgress((i / totalFrames) * 0.4);
-      continue;
+    // Pump the worker by advancing the playhead via sync
+    if (ms - lastPumpedMs > 500) {
+      lastPumpedMs = ms;
+      worker!.postMessage({ type: 'sync', playheadMs: ms, isPlaying: true, framesAhead: 0 });
     }
-    const sourceMs = mapRes.sourceMs;
-    const sourceId = mapRes.sourceId;
-    seekGeneration++;
-    worker!.postMessage({ type: 'seek', ms: sourceMs, sourceId, seekId: seekGeneration });
+    // Wait for a frame near this timeline position
+    const mapRes = mapTimelineToSource(ms);
+    const targetSourceMs = mapRes ? mapRes.sourceMs : ms;
     let waited = 0;
-    while (waited < 5000) {
+    while (waited < 8000) {
       let found = false;
       for (const [fms] of pendingFrames) {
-        if (Math.abs(fms - sourceMs) <= 50) { found = true; break; }
+        if (Math.abs(fms - targetSourceMs) <= 50) { found = true; break; }
       }
       if (found) break;
       await new Promise((r) => setTimeout(r, 10));
       waited += 10;
     }
-    if (i < 3) console.log(`[export] frame ${i}: sourceMs=${sourceMs.toFixed(1)}, sourceId=${sourceId}, waited=${waited}ms, found=${waited < 5000}, pendingFrames.size=${pendingFrames.size}`);
+    if (i === 0) console.log(`[export] frame 0: waited=${waited}ms, pendingFrames.size=${pendingFrames.size}`);
     if (onProgress && i % 30 === 0) onProgress((i / totalFrames) * 0.4);
   }
 
