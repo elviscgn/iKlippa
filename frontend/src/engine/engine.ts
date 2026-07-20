@@ -1245,6 +1245,7 @@ export async function exportVideo(
 
   const frameMs = 1000 / 30;
   const totalFrames = Math.ceil(durationSec * 1000 / frameMs);
+  console.log(`[export] starting: ${totalFrames} frames, ${exportW}×${exportH}, duration=${durationSec.toFixed(1)}s`);
   logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
   for (let i = 0; i < totalFrames; i++) {
     const ms = Math.round(i * frameMs);
@@ -1268,7 +1269,8 @@ export async function exportVideo(
       await new Promise((r) => setTimeout(r, 10));
       waited += 10;
     }
-    if (onProgress) onProgress((i / totalFrames) * 0.4);
+    if (i < 3) console.log(`[export] frame ${i}: sourceMs=${sourceMs.toFixed(1)}, sourceId=${sourceId}, waited=${waited}ms, found=${waited < 5000}, pendingFrames.size=${pendingFrames.size}`);
+    if (onProgress && i % 30 === 0) onProgress((i / totalFrames) * 0.4);
   }
 
   logStatus('Export: encoding…');
