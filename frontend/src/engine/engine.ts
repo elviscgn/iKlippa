@@ -1249,12 +1249,19 @@ export async function exportVideo(
   for (let i = 0; i < totalFrames; i++) {
     const ms = Math.round(i * frameMs);
     const mapRes = mapTimelineToSource(ms);
-    const sourceMs = mapRes ? mapRes.sourceMs : ms;
-    const sourceId = mapRes ? mapRes.sourceId : undefined;
+    if (!mapRes) {
+      // No clip at this timeline position — push a black frame and continue
+      if (onProgress) onProgress((i / totalFrames) * 0.4);
+      continue;
+    }
+    const sourceMs = mapRes.sourceMs;
+    const sourceId = mapRes.sourceId;
     seekGeneration++;
     worker!.postMessage({ type: 'seek', ms: sourceMs, sourceId, seekId: seekGeneration });
-    while (!pendingFrames.has(sourceMs)) {
+    let waited = 0;
+    while (!pendingFrames.has(sourceMs) && waited < 5000) {
       await new Promise((r) => setTimeout(r, 10));
+      waited += 10;
     }
     if (onProgress) onProgress((i / totalFrames) * 0.4);
   }

@@ -395,7 +395,7 @@ textarea {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: rgba(0,0,0,0.7);
+  background: #000;
   border: none;
   color: #fff;
   display: flex;
@@ -1473,7 +1473,7 @@ textarea {
   gap: 5px;
   white-space: nowrap;
   animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  backdrop-filter: blur(4px);
+  
   box-shadow: 0 2px 8px rgba(13, 148, 136, 0.3);
   cursor: pointer;
 }
@@ -1790,12 +1790,12 @@ textarea {
 .export-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: #000;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  backdrop-filter: blur(4px);
+  
 }
 .export-modal {
   background: var(--bg-panel);
