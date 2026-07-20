@@ -86,16 +86,21 @@ let _restoredFromStorage = false;
 function remapStaleSources(newSourceId: string): void {
   const IKState = window.IKState;
   if (!IKState || !IKState.isReady()) return;
-  const allClips = IKState.getAllVideoClips ? IKState.getAllVideoClips() : IKState.getVideoClips();
+  const project = IKState.getProject();
+  if (!project) return;
   let remapped = 0;
-  for (const clip of allClips) {
-    // If the clip's source_id isn't a valid source (starts with 'imported_' but
-    // looks like a restored stale ref), remap it.
-    if (clip.source_id && clip.source_id.startsWith('imported_') && clip.source_id !== newSourceId) {
-      clip.source_id = newSourceId;
-      remapped++;
+  const totalBefore = project.tracks.reduce((s, t) => s + t.clips.length, 0);
+  console.log(`[iKlippa:app] remapStaleSources: ${totalBefore} clips across ${project.tracks.length} tracks, new source="${newSourceId}"`);
+  for (const track of project.tracks) {
+    for (const clip of track.clips) {
+      console.log(`[iKlippa:app]   clip ${clip.id} source_id="${clip.source_id}"`);
+      if (clip.source_id && clip.source_id.startsWith('imported_') && clip.source_id !== newSourceId) {
+        clip.source_id = newSourceId;
+        remapped++;
+      }
     }
   }
+  console.log(`[iKlippa:app] remapStaleSources: remapped ${remapped} clips`);
   if (remapped > 0) {
     console.log(`[iKlippa:app] Remapped ${remapped} clips to new source "${newSourceId}"`);
     window.showToast(`Project restored — ${remapped} clip(s) linked to imported media`, 'link');
@@ -473,9 +478,8 @@ initEngine(canvasEl)
     statusBadge.innerHTML = '<i data-lucide="cloud-lightning"></i> Engine ready';
     window.lucide.createIcons({ nodes: [statusBadge] });
 
-    // Sync restored project to Rust now that the worker is ready
+    // Render restored project UI (no sync — wait for import to remap + sync)
     if (_restoredFromStorage) {
-      syncTimelineToRust();
       window.calculateTimelineDuration();
       window.renderRuler();
       window.renderClips();
