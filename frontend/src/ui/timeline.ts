@@ -162,7 +162,6 @@ export function renderClips() {
     const trackEl = document.createElement('div');
     trackEl.className = `track ${track.track_type}-track`;
     trackEl.setAttribute('data-track-id', String(track.id));
-    trackEl.style.minHeight = track.track_type === 'video' ? '48px' : '36px';
 
     const gutter = document.createElement('div');
     gutter.className = 'track-gutter';
