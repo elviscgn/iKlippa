@@ -1259,7 +1259,12 @@ export async function exportVideo(
     seekGeneration++;
     worker!.postMessage({ type: 'seek', ms: sourceMs, sourceId, seekId: seekGeneration });
     let waited = 0;
-    while (!pendingFrames.has(sourceMs) && waited < 5000) {
+    while (waited < 5000) {
+      let found = false;
+      for (const [fms] of pendingFrames) {
+        if (Math.abs(fms - sourceMs) <= 50) { found = true; break; }
+      }
+      if (found) break;
       await new Promise((r) => setTimeout(r, 10));
       waited += 10;
     }
