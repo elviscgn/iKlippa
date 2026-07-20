@@ -136,6 +136,8 @@ declare global {
     handleExport: () => Promise<void>;
     resetGrade: () => void;
     reflectClipGrade: (clipId: number) => void;
+    saveProject: () => void;
+    openProject: () => void;
     skipTime: (delta: number) => void;
     submitCmd: () => void;
     applyAiAction: (type: string) => void;
