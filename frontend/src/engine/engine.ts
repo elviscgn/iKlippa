@@ -1259,9 +1259,11 @@ export async function exportVideo(
   const pump = () => {
     if (!isExporting) return;
     const lastFrame = exportFrames.length > 0 ? exportFrames[exportFrames.length - 1]!.ms : 0;
-    worker!.postMessage({ type: 'sync', playheadMs: lastFrame + 2000, isPlaying: true, framesAhead: 0, sourceId: startSourceId });
+    // Advance playhead just past the last received frame so the worker
+    // decodes the next chunk without skipping frames.
+    worker!.postMessage({ type: 'sync', playheadMs: lastFrame + 1000, isPlaying: true, framesAhead: 0, sourceId: startSourceId });
   };
-  const pumpTimer = setInterval(pump, 300);
+  const pumpTimer = setInterval(pump, 800);
 
   // Poll until we have enough frames (or timeout)
   let waited = 0;
