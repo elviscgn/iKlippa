@@ -1764,3 +1764,24 @@ textarea {
   justify-content: center;
 }
 .grade-reset-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ── Export Progress Bar ─────────────────────── */
+.export-progress {
+  width: 100%;
+  max-width: 400px;
+  margin: 8px auto 0;
+  position: relative;
+}
+.export-progress-bar {
+  height: 6px;
+  background: var(--accent-primary);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+.export-progress-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: block;
+  text-align: center;
+}

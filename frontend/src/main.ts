@@ -227,11 +227,28 @@ window.onPlayheadScrub = (timeSec: number, force?: boolean): void => {
 
 // ── Video Export Trigger ────────────────────────────────────────────────
 window.handleExport = async function (): Promise<void> {
+  const progressBar = document.getElementById('export-progress') as HTMLElement;
+  const progressFill = document.getElementById('export-progress-bar') as HTMLElement;
+  const progressLabel = document.getElementById('export-progress-label') as HTMLElement;
+  if (progressBar) progressBar.style.display = 'block';
+  if (progressFill) progressFill.style.width = '0%';
+
   await exportVideo((progress: number) => {
     const pct = Math.round(progress * 100);
-    statusBadge.innerHTML = `<i data-lucide="loader"></i> Exporting… ${pct}%`;
+    statusBadge.innerHTML = `<i data-lucide="loader"></i> Export: ${pct}%`;
     window.lucide.createIcons({ nodes: [statusBadge] });
+    if (progressFill) progressFill.style.width = pct + '%';
+    if (progressLabel) {
+      if (pct < 40) progressLabel.textContent = 'Collecting frames…';
+      else if (pct < 70) progressLabel.textContent = 'Encoding video…';
+      else if (pct < 95) progressLabel.textContent = 'Encoding audio…';
+      else progressLabel.textContent = 'Muxing…';
+    }
   });
+
+  if (progressBar) progressBar.style.display = 'none';
+  statusBadge.innerHTML = '<i data-lucide="check-circle"></i> Export complete';
+  window.lucide.createIcons({ nodes: [statusBadge] });
 };
 
 // ── Per-clip color grading ─────────────────────────────────────────────
