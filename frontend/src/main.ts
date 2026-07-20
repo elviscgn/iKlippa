@@ -15,6 +15,7 @@ import {
   seekTo,
   setColorGrade,
   setPerClipGrade,
+  syncAllTrackAudio,
   exportVideo,
   perf,
   captureThumbnailFromBuffer,
@@ -176,6 +177,8 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
 // ── Sync Rust project on any state mutation ──────────────────────────────
 window.addEventListener('ikl:reRender', () => {
   syncTimelineToRust();
+  syncAllTrackAudio();
+  autoSave();
 });
 
 // ── Trim applied: update duration ───────────────────────────────────────
@@ -224,11 +227,41 @@ window.onPlayheadScrub = (timeSec: number, force?: boolean): void => {
 
 // ── Video Export Trigger ────────────────────────────────────────────────
 window.handleExport = async function (): Promise<void> {
+  const modal = document.getElementById('export-modal') as HTMLElement;
+  const barFill = document.getElementById('export-bar-fill') as HTMLElement;
+  const pctEl = document.getElementById('export-pct') as HTMLElement;
+  const stageEl = document.getElementById('export-stage') as HTMLElement;
+  const etaEl = document.getElementById('export-eta') as HTMLElement;
+  if (modal) modal.style.display = 'flex';
+
+  const t0 = performance.now();
   await exportVideo((progress: number) => {
     const pct = Math.round(progress * 100);
-    statusBadge.innerHTML = `<i data-lucide="loader"></i> Exporting… ${pct}%`;
-    window.lucide.createIcons({ nodes: [statusBadge] });
+    const elapsed = (performance.now() - t0) / 1000;
+    const eta = progress > 0.01 ? (elapsed / progress - elapsed) : 0;
+
+    if (barFill) barFill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+    if (stageEl) {
+      if (pct < 40) stageEl.textContent = 'Collecting frames';
+      else if (pct < 70) stageEl.textContent = 'Encoding video';
+      else if (pct < 95) stageEl.textContent = 'Encoding audio';
+      else stageEl.textContent = 'Muxing';
+    }
+    if (etaEl) {
+      if (eta > 0) {
+        const m = Math.floor(eta / 60);
+        const s = Math.round(eta % 60);
+        etaEl.textContent = m > 0 ? `~${m}m ${s}s remaining` : `~${s}s remaining`;
+      } else {
+        etaEl.textContent = 'Estimating…';
+      }
+    }
   });
+
+  if (modal) modal.style.display = 'none';
+  statusBadge.innerHTML = '<i data-lucide="check-circle"></i> Export complete';
+  window.lucide.createIcons({ nodes: [statusBadge] });
 };
 
 // ── Per-clip color grading ─────────────────────────────────────────────

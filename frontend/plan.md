@@ -165,8 +165,8 @@ Update this section as tasks complete. Mark `[x]` when a task's acceptance crite
 - [ ] Task 4 — Caption editor
 - [x] Task 5 — Project persistence
 - [x] Task 6 — Multi-track timeline UI rework
-- [ ] Task 7 — Web Audio mixer
-- [ ] Task 8 — Export: audio + watermark + resolution gating
+- [x] Task 7 — Web Audio mixer
+- [x] Task 8 — Export: audio + watermark + resolution gating
 - [ ] Task 9 — LUT `.cube` import
 - [ ] Task 10 — RGB curves editor
 - [ ] Task 11 — Undo/redo command stack
