@@ -374,7 +374,8 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
 }
 
 function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }>): void {
-  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+  // During export, accept all frames — seekGeneration races ahead.
+  if (!isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration) {
     log('paint', `dropping stale frame from seek ${msg.seekId} (current: ${seekGeneration})`);
     return;
   }
@@ -416,7 +417,7 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
 }
 
 function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'audio_chunk' }>): void {
-  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+  if (!isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration) {
     log('audio', `dropping stale audio chunk from seek ${msg.seekId} (current: ${seekGeneration})`);
     return;
   }
