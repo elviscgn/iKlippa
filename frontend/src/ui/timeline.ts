@@ -166,12 +166,12 @@ export function renderClips() {
     const gutter = document.createElement('div');
     gutter.className = 'track-gutter';
     gutter.innerHTML = `
+      <div style="font-size:11px;font-weight:600;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;margin-bottom:2px;" title="${track.name}">${track.name}</div>
       <div class="track-icons">
         <i data-lucide="${track.locked ? 'lock' : 'unlock'}" class="track-lock${track.locked ? ' active' : ''}"></i>
         <i data-lucide="${track.visible ? 'eye' : 'eye-off'}" class="track-visibility${!track.visible ? ' active' : ''}"></i>
         <i data-lucide="${track.muted ? 'volume-x' : 'volume-2'}" class="track-volume-icon${track.muted ? ' active' : ''}"></i>
       </div>
-      <span style="font-size:9px;color:var(--text-muted);white-space:nowrap;overflow:hidden;">${track.name}</span>
     `;
 
     const lane = document.createElement('div');
@@ -182,7 +182,7 @@ export function renderClips() {
       const meta = IKState.getClipMeta ? IKState.getClipMeta(clip.id) : null;
       const displayName = meta?.name || clip.source_id || `Clip ${clip.id}`;
       const el = document.createElement('div');
-      el.className = `tl-clip${track.track_type === 'audio' ? ' tl-clip-audio' : ''}`;
+      el.className = `tl-clip${track.track_type === 'audio' ? ' tl-clip-audio' : ' tl-clip-video'}`;
       el.dataset.clipId = String(clip.id);
       setClipDimensions(el, clip, dur, tw);
 
