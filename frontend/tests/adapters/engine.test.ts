@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setPorts, resetPorts } from '../../src/adapters';
-import { fakeEnginePorts, expectNoLeaks, resetLeakRegistry } from '../fakes';
+import { fakeEnginePorts, expectNoLeaks, resetLeakRegistry, fakeAudioContextFactory } from '../fakes';
 import type { FakeAudioContextType } from '../fakes';
 
 vi.mock('mp4-muxer', () => ({
@@ -199,6 +199,87 @@ describe('exportVideo (Tier 2 - adapter ports)', () => {
     // initialise the H.264 decoder and render black.
     const firstCallMeta = addVideoChunkRaw.mock.calls[0]?.[4];
     expect(firstCallMeta?.decoderConfig?.description).toBeDefined();
+  });
+
+  it('mixes decoded audio into the export with its real sample rate/channels', async () => {
+    __TEST_HOOKS__.videoDurationMs = 4000;
+    __TEST_HOOKS__.audioConfigVersion = 7;
+    __TEST_HOOKS__.audioCtx = fakeAudioContextFactory.create();
+    __TEST_HOOKS__.pendingAudio = new Map();
+
+    mockWorker.postMessage.mockImplementation((msg: any) => {
+      if (msg.type === 'decode_all') {
+        const totalNeeded = Math.ceil(__TEST_HOOKS__.videoDurationMs / (1000 / 30));
+        for (let j = 0; j < totalNeeded; j++) {
+          const ms = j * (1000 / 30);
+          const fakeImage = { data: { buffer: new ArrayBuffer(0) } } as any;
+          __TEST_HOOKS__.pendingFrames.set(ms, fakeImage);
+          __TEST_HOOKS__.exportFrames.push({ ms, imageData: fakeImage });
+        }
+        // Simulate the worker's decoded audio chunks arriving during decode_all
+        for (let k = 0; k < 10; k++) {
+          handleWorkerMessage({
+            data: {
+              type: 'audio_chunk',
+              ms: k * 21,
+              channels: 1,
+              sampleRate: 44100,
+              length: 1024,
+              buffers: [new ArrayBuffer(1024 * 4)],
+              configVersion: 7,
+              sourceId: 's1',
+            },
+          } as any);
+        }
+      }
+    });
+
+    class FakeOfflineAudioContext {
+      destination = {};
+      constructor(
+        public channels: number,
+        public length: number,
+        public sampleRate: number,
+      ) {}
+      createBufferSource() {
+        return { buffer: null, connect: vi.fn(), start: vi.fn() };
+      }
+      async startRendering() {
+        return {
+          numberOfChannels: this.channels,
+          sampleRate: this.sampleRate,
+          length: 1024,
+          getChannelData: () => new Float32Array(1024),
+        };
+      }
+    }
+    vi.stubGlobal('OfflineAudioContext', FakeOfflineAudioContext);
+    vi.stubGlobal('AudioData', class {
+      timestamp: number;
+      constructor(init: any) { this.timestamp = init.timestamp ?? 0; }
+      close() {}
+    });
+
+    const { Muxer } = await import('mp4-muxer');
+    const muxerMock = vi.mocked(Muxer);
+    const before = muxerMock.mock.calls.length;
+
+    await exportVideo(vi.fn());
+
+    // The muxer must be configured with an audio track matching the actual
+    // rendered audio — not a hardcoded 48kHz stereo guess.
+    const muxerConfig = muxerMock.mock.calls[before]?.[0] as any;
+    expect(muxerConfig?.audio).toEqual({ codec: 'aac', numberOfChannels: 1, sampleRate: 44100 });
+    const instance = muxerMock.mock.results[before]?.value as any;
+    expect(instance.addAudioChunkRaw).toHaveBeenCalled();
+
+    // Clean up tracked fake AudioBuffers so the leak check passes
+    for (const buf of __TEST_HOOKS__.pendingAudio.values()) (buf as any).close?.();
+    __TEST_HOOKS__.pendingAudio = new Map();
+    // Leave module state as we found it — later describes rely on initAudio
+    // creating masterCompressor, which only happens when audioCtx is null.
+    __TEST_HOOKS__.audioCtx = null;
+    __TEST_HOOKS__.audioConfigVersion = 0;
   });
 });
 

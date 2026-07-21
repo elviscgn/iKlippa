@@ -356,6 +356,10 @@ async function decodeAllFrames(sourceId: string) {
   state.globalStartOffsetUs = -1;
   state.lastDecodedSampleIdx = -1;
   state.decoderSeeded = false;
+  // Decode the full audio track in parallel — export needs it for the AAC mix.
+  // Audio is far cheaper than video, so it finishes well within the export's
+  // frame-wait window on the main thread.
+  decodeAllAudio(sourceId).catch((e: unknown) => wwarn('worker', 'decode_all audio failed', String(e)));
   const { samples, file } = state;
   let startIdx = state.lastDecodedSampleIdx + 1;
   if (startIdx <= 0) {
@@ -391,6 +395,42 @@ async function decodeAllFrames(sourceId: string) {
   state.decoderSeeded = true;
   isDecodeAll = false;
   wlog('worker', `decode_all [${sourceId}] — done, ${samples.length} samples decoded`);
+}
+
+// ── Decode entire audio track (for export) ──────────────────────────────
+async function decodeAllAudio(sourceId: string) {
+  const state = sourceStates.get(sourceId);
+  if (!state || !state.audioConfig || state.audioSamples.length === 0) return;
+  // Fresh decoder so it starts from the very first sample
+  if (state.audioDecoder && state.audioDecoder.state !== 'closed') state.audioDecoder.close();
+  await setupAudioDecoder(sourceId, state);
+  if (!state.audioDecoder || state.audioDecoder.state !== 'configured') return;
+  state.lastDecodedAudioIdx = -1;
+  const { audioSamples, file } = state;
+  let i = 0;
+  while (i < audioSamples.length) {
+    if (latestSeekId !== currentSeekId) { wwarn('worker', 'decode_all audio interrupted by seek'); break; }
+    const batchEnd = Math.min(i + MAX_READS_PER_PUMP * 4, audioSamples.length);
+    const batch = audioSamples.slice(i, batchEnd);
+    const dataArray = await Promise.all(batch.map((s) => readSampleData(file, s)));
+    for (let j = 0; j < batch.length; j++) {
+      const s = batch[j]!;
+      state.audioDecoder.decode(
+        new EncodedAudioChunk({
+          type: s.is_sync ? 'key' : 'delta',
+          timestamp: (s.cts * 1_000_000) / s.timescale,
+          duration: (s.duration * 1_000_000) / s.timescale,
+          data: dataArray[j]!,
+        })
+      );
+      state.lastDecodedAudioIdx = i + j;
+    }
+    i = batchEnd;
+    // Let the decoder drain between batches
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  try { await state.audioDecoder.flush(); } catch { /* decoder may already be closed */ }
+  wlog('worker', `decode_all audio [${sourceId}] — done, ${audioSamples.length} samples decoded`);
 }
 
 // ── Message scheduler ─────────────────────────────────────────────────────────

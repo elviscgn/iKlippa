@@ -1358,6 +1358,8 @@ export async function exportVideo(
 
   // ── Audio render & encode ─────────────────────────────────────────
   let encodedAudio: Array<{ buf: ArrayBuffer; timestamp: number; type: string }> = [];
+  let exportAudioSampleRate = 48000;
+  let exportAudioChannels = 2;
   if (pendingAudio.size > 0) {
     logStatus('Export: encoding audio…');
     const sortedAudio = [...pendingAudio.entries()].sort(([a], [b]) => a - b);
@@ -1380,6 +1382,8 @@ export async function exportVideo(
     }
 
     const rendered = await offlineCtx.startRendering();
+    exportAudioSampleRate = rendered.sampleRate;
+    exportAudioChannels = rendered.numberOfChannels;
 
     // Encode to AAC
     const audioEncoder = getPorts().audioEncoderFactory.create(
@@ -1433,7 +1437,7 @@ export async function exportVideo(
     fastStart: 'in-memory',
   };
   if (encodedAudio.length > 0) {
-    muxerConfig.audio = { codec: 'aac' as const, numberOfChannels: 2, sampleRate: 48000 };
+    muxerConfig.audio = { codec: 'aac' as const, numberOfChannels: exportAudioChannels, sampleRate: exportAudioSampleRate };
   }
 
   const muxer = new Muxer(muxerConfig);
@@ -1455,7 +1459,8 @@ export async function exportVideo(
     muxer.addVideoChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, frameMs * 1000, meta);
   }
   for (const { buf, timestamp, type } of encodedAudio) {
-    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024);
+    // AAC frames hold 1024 samples each — derive the duration from the rate.
+    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, Math.round(1024 * 1e6 / exportAudioSampleRate));
   }
   if (onProgress) onProgress(0.95);
 
