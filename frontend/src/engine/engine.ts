@@ -1304,7 +1304,7 @@ export async function exportVideo(
   const expCanvas = ports.canvasFactory.createCanvas() as unknown as HTMLCanvasElement;
   expCanvas.width = exportW;
   expCanvas.height = exportH;
-  const expCtx = expCanvas.getContext('2d')!;
+  const expCtx = expCanvas.getContext('2d', { willReadFrequently: true })!;
 
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
   for (let i = 0; i < sortedFrames.length; i++) {
