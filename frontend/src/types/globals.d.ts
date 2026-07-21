@@ -236,6 +236,12 @@ declare global {
       timestamp: number,
       duration: number,
     ): void;
+    addAudioChunkRaw(
+      buf: ArrayBuffer,
+      type: string,
+      timestamp: number,
+      duration: number,
+    ): void;
     finalize(): { buffer: ArrayBuffer };
   }
 

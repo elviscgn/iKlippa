@@ -166,8 +166,26 @@ class FakeAudioContext {
   createGain(): GainNode {
     return {
       connect: () => {},
-      gain: { value: 1 },
+      gain: { value: 1, setTargetAtTime: () => {} },
     } as unknown as GainNode;
+  }
+
+  createStereoPanner(): StereoPannerNode {
+    return {
+      connect: () => {},
+      pan: { value: 0, setTargetAtTime: () => {} },
+    } as unknown as StereoPannerNode;
+  }
+
+  createDynamicsCompressor(): DynamicsCompressorNode {
+    return {
+      connect: () => {},
+      threshold: { setValueAtTime: () => {} },
+      knee: { setValueAtTime: () => {} },
+      ratio: { setValueAtTime: () => {} },
+      attack: { setValueAtTime: () => {} },
+      release: { setValueAtTime: () => {} },
+    } as unknown as DynamicsCompressorNode;
   }
 
   addEventListener(): void {}

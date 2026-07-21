@@ -17,6 +17,8 @@ import type {
 } from './types';
 import type { ClipWithMeta } from '../state/types';
 
+import { currentTier, getTierConfig } from './tier';
+
 const DECODE_LOOKAHEAD = 12;
 
 // ── Diagnostic logger ───────────────────────────────────────────────────
@@ -131,6 +133,57 @@ let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
 let audioPlayStartCtxTime = 0;
 let audioPlayStartMs = 0;
+
+// ── Audio Mixer ──────────────────────────────────────────────────────────
+let masterCompressor: DynamicsCompressorNode | null = null;
+let trackAudioNodes = new Map<number, { gain: GainNode; pan: StereoPannerNode }>();
+
+function getTrackGainPan(trackId: number): { gain: GainNode; pan: StereoPannerNode } {
+  if (!audioCtx) throw new Error('AudioContext not ready');
+  let nodes = trackAudioNodes.get(trackId);
+  if (!nodes) {
+    const gain = audioCtx.createGain();
+    const pan = audioCtx.createStereoPanner();
+    gain.connect(pan);
+    pan.connect(masterCompressor || audioCtx.destination);
+    nodes = { gain, pan };
+    trackAudioNodes.set(trackId, nodes);
+    syncTrackAudioSettings(trackId, nodes);
+  }
+  return nodes;
+}
+
+function syncTrackAudioSettings(trackId: number, nodes?: { gain: GainNode; pan: StereoPannerNode }): void {
+  const n = nodes || trackAudioNodes.get(trackId);
+  if (!n || !audioCtx) return;
+  const IKState = (window as any).IKState;
+  if (!IKState || !IKState.isReady()) return;
+  const track = IKState.getTrackById ? IKState.getTrackById(trackId) : null;
+  if (!track) return;
+  const now = audioCtx.currentTime;
+  n.gain.gain.setTargetAtTime(track.muted ? 0 : track.volume, now, 0.02);
+  n.pan.pan.setTargetAtTime(track.pan, now, 0.02);
+}
+
+/** Update all track audio nodes from IKState. Call on re-render. */
+export function syncAllTrackAudio(): void {
+  trackAudioNodes.forEach((nodes, trackId) => syncTrackAudioSettings(trackId, nodes));
+}
+
+function findActiveAudioTrack(sourceMs: number): number | null {
+  const IKState = (window as any).IKState;
+  if (!IKState || !IKState.isReady()) return null;
+  const tracks = IKState.getTracks ? IKState.getTracks() : [];
+  for (const track of tracks) {
+    if (track.track_type !== 'audio') continue;
+    for (const clip of track.clips) {
+      const sStart = clip.source_start_us / 1000;
+      const sEnd = clip.source_end_us / 1000;
+      if (sourceMs >= sStart && sourceMs < sEnd) return track.id;
+    }
+  }
+  return null;
+}
 
 // ── Thumbnail Capture State ─────────────────────────────────────────────
 let currentFileName = '';
@@ -280,6 +333,13 @@ async function initAudio(): Promise<void> {
   if (!audioCtx) {
     audioCtx = getPorts().audioContextFactory.create();
     log('audio', `AudioContext created (sampleRate: ${audioCtx.sampleRate}Hz)`);
+    masterCompressor = audioCtx.createDynamicsCompressor();
+    masterCompressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+    masterCompressor.knee.setValueAtTime(30, audioCtx.currentTime);
+    masterCompressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+    masterCompressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+    masterCompressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+    masterCompressor.connect(audioCtx.destination);
   }
   if (audioCtx.state !== 'running') {
     await audioCtx.resume();
@@ -314,7 +374,8 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
 }
 
 function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }>): void {
-  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+  // During export, accept all frames — seekGeneration races ahead.
+  if (!isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration) {
     log('paint', `dropping stale frame from seek ${msg.seekId} (current: ${seekGeneration})`);
     return;
   }
@@ -356,7 +417,7 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
 }
 
 function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'audio_chunk' }>): void {
-  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+  if (!isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration) {
     log('audio', `dropping stale audio chunk from seek ${msg.seekId} (current: ${seekGeneration})`);
     return;
   }
@@ -431,9 +492,9 @@ function handleEngineError(e: EngineError): void {
 }
 
 function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
-  if (!audioCtx) return;
+  if (!audioCtx || !masterCompressor) return;
   const timelineMs = mapSourceToTimelineMs(chunkMs);
-  if (timelineMs === null) return; // Drop audio outside active clip bounds
+  if (timelineMs === null) return;
 
   const idealCtxTime = audioPlayStartCtxTime + (timelineMs - audioPlayStartMs) / 1000;
   if (nextAudioStartTime === 0 || nextAudioStartTime < audioCtx.currentTime) {
@@ -450,9 +511,20 @@ function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
   if (idealCtxTime > nextAudioStartTime + 0.05) nextAudioStartTime = idealCtxTime;
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
-  source.connect(audioCtx.destination);
-  // Keep scheduledAudioNodes bounded: without removal, thousands of finished
-  // nodes accumulate over a playback session (GC pressure + stop-all cost).
+
+  // Route through the correct audio track's gain/pan nodes
+  const trackId = findActiveAudioTrack(chunkMs);
+  if (trackId !== null) {
+    try {
+      const { gain, pan } = getTrackGainPan(trackId);
+      source.connect(gain);
+    } catch {
+      source.connect(masterCompressor);
+    }
+  } else {
+    source.connect(masterCompressor);
+  }
+
   source.onended = () => {
     const i = scheduledAudioNodes.indexOf(source);
     if (i >= 0) scheduledAudioNodes.splice(i, 1);
@@ -1157,79 +1229,211 @@ export async function exportVideo(
   pausePlayback();
   isExporting = true;
   exportFrames = [];
+  pendingAudio.clear();
   seekTargetMs = -1;
   if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
 
+  const tier = getTierConfig();
+  const durationSec = videoDurationMs / 1000;
+  if (durationSec > tier.maxDurationSec) {
+    alert(`Free tier limited to ${tier.maxDurationSec}s. Your video is ${durationSec.toFixed(0)}s. Upgrade to export longer videos.`);
+    isExporting = false;
+    return;
+  }
+  const exportW = Math.min(sourceVideoWidth, tier.maxWidth);
+  const exportH = Math.min(sourceVideoHeight, tier.maxHeight);
+  const needsResize = exportW !== sourceVideoWidth || exportH !== sourceVideoHeight;
+
   const frameMs = 1000 / 30;
-  const totalFrames = Math.ceil(videoDurationMs / frameMs);
-  logStatus('Export: collecting frames…');
+  const totalFrames = Math.ceil(durationSec * 1000 / frameMs);
+  console.log(`[export] starting: ${totalFrames} frames, ${exportW}×${exportH}, duration=${durationSec.toFixed(1)}s`);
+  logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
+
+  // One seek to start, then pump with sync for continuous decode
+  const initMap = mapTimelineToSource(0);
+  const startSourceId = initMap?.sourceId;
+  worker!.postMessage({ type: 'seek', ms: 0, sourceId: startSourceId, seekId: ++seekGeneration });
+  let lastPumpedMs = -1;
   for (let i = 0; i < totalFrames; i++) {
     const ms = Math.round(i * frameMs);
-    const sourceMs = mapTimelineToSourceMs(ms);
-    worker!.postMessage({ type: 'seek', ms: sourceMs });
-    while (!pendingFrames.has(sourceMs)) {
-      await new Promise((r) => setTimeout(r, 10));
+    // Pump the worker by advancing the playhead via sync
+    if (ms - lastPumpedMs > 500) {
+      lastPumpedMs = ms;
+      worker!.postMessage({ type: 'sync', playheadMs: ms, isPlaying: true, framesAhead: 0 });
     }
-    if (onProgress) onProgress((i / totalFrames) * 0.5);
+    // Wait for a frame near this timeline position
+    const mapRes = mapTimelineToSource(ms);
+    const targetSourceMs = mapRes ? mapRes.sourceMs : ms;
+    let waited = 0;
+    while (waited < 8000) {
+      let found = false;
+      for (const [fms] of pendingFrames) {
+        if (Math.abs(fms - targetSourceMs) <= 50) { found = true; break; }
+      }
+      if (found) break;
+      await new Promise((r) => setTimeout(r, 10));
+      waited += 10;
+    }
+    if (i === 0) console.log(`[export] frame 0: waited=${waited}ms, pendingFrames.size=${pendingFrames.size}`);
+    if (onProgress && i % 30 === 0) onProgress((i / totalFrames) * 0.4);
   }
 
   logStatus('Export: encoding…');
   const ports = getPorts();
-  const encodedChunks: Array<{
-    buf: ArrayBuffer;
-    timestamp: number;
-    type: string;
-  }> = [];
+  const encodedVideo: Array<{ buf: ArrayBuffer; timestamp: number; type: string }> = [];
   const encoder = ports.videoEncoderFactory.create(
     (chunk) => {
       const buf = new ArrayBuffer(chunk.byteLength);
       chunk.copyTo(buf);
-      encodedChunks.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
+      encodedVideo.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
     },
     (e) => emitLocal('EXPORT_FAILED', e, { fatal: false }),
   );
   encoder.configure({
     codec: 'avc1.42001f',
-    width: sourceVideoWidth,
-    height: sourceVideoHeight,
+    width: exportW,
+    height: exportH,
     bitrate: 8_000_000,
     framerate: 30,
     hardwareAcceleration: 'prefer-hardware',
     latencyMode: 'quality',
   });
 
+  // Reusable canvas for watermark + resize
+  const expCanvas = ports.canvasFactory.createCanvas() as unknown as HTMLCanvasElement;
+  expCanvas.width = exportW;
+  expCanvas.height = exportH;
+  const expCtx = expCanvas.getContext('2d')!;
+
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i]!;
-    const frame = new VideoFrame(imageData.data.buffer, {
+    expCtx.putImageData(imageData, 0, 0, 0, 0, sourceVideoWidth, sourceVideoHeight);
+
+    // Resize if needed
+    if (needsResize) {
+      expCtx.drawImage(expCanvas, 0, 0, sourceVideoWidth, sourceVideoHeight, 0, 0, exportW, exportH);
+    }
+
+    // Watermark for free tier
+    if (tier.watermark) {
+      const wmW = exportW * 0.2;
+      const wmH = wmW * 0.25;
+      const wmX = exportW - wmW - exportW * 0.05;
+      const wmY = exportH - wmH - exportH * 0.05;
+      expCtx.fillStyle = 'rgba(255,255,255,0.35)';
+      expCtx.fillRect(wmX, wmY, wmW, wmH);
+      expCtx.fillStyle = 'rgba(0,0,0,0.5)';
+      expCtx.font = `${Math.round(wmH * 0.5)}px sans-serif`;
+      expCtx.textAlign = 'center';
+      expCtx.fillText('iKlippa', wmX + wmW / 2, wmY + wmH * 0.65);
+    }
+
+    const frameImg = expCtx.getImageData(0, 0, exportW, exportH);
+    const frame = new VideoFrame(frameImg.data.buffer, {
       format: 'RGBA',
-      codedWidth: sourceVideoWidth,
-      codedHeight: sourceVideoHeight,
+      codedWidth: exportW,
+      codedHeight: exportH,
       timestamp: ms * 1000,
       duration: frameMs * 1000,
     });
     encoder.encode(frame, { keyFrame: i % 60 === 0 });
     frame.close();
-    if (onProgress) onProgress(0.5 + (i / sortedFrames.length) * 0.4);
+    if (onProgress) onProgress(0.4 + (i / sortedFrames.length) * 0.3);
   }
   await encoder.flush();
   encoder.close();
 
-  logStatus('Export: muxing…');
-  if (!window.Mp4Muxer)
-    await loadScript(
-      'https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js',
+  // ── Audio render & encode ─────────────────────────────────────────
+  let encodedAudio: Array<{ buf: ArrayBuffer; timestamp: number; type: string }> = [];
+  if (pendingAudio.size > 0) {
+    logStatus('Export: encoding audio…');
+    const sortedAudio = [...pendingAudio.entries()].sort(([a], [b]) => a - b);
+    let sampleRate = 48000;
+    if (sortedAudio.length > 0) sampleRate = sortedAudio[0]![1].sampleRate;
+
+    const offlineCtx = new OfflineAudioContext(
+      Math.min(sortedAudio[0]![1].numberOfChannels, 2),
+      Math.ceil((durationSec + 0.5) * sampleRate),
+      sampleRate,
     );
 
-  const muxer = new window.Mp4Muxer.Muxer({
+    for (const [srcMs, buf] of sortedAudio) {
+      const timelineMs = mapSourceToTimelineMs(srcMs);
+      if (timelineMs === null) continue;
+      const src = offlineCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(offlineCtx.destination);
+      src.start(timelineMs / 1000);
+    }
+
+    const rendered = await offlineCtx.startRendering();
+
+    // Encode to AAC
+    const audioEncoder = getPorts().audioEncoderFactory.create(
+      (chunk) => {
+        const buf = new ArrayBuffer(chunk.byteLength);
+        chunk.copyTo(buf);
+        encodedAudio.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
+      },
+      (e) => emitLocal('EXPORT_FAILED', e, { fatal: false }),
+    );
+    audioEncoder.configure({
+      codec: 'mp4a.40.2',
+      numberOfChannels: rendered.numberOfChannels,
+      sampleRate: rendered.sampleRate,
+      bitrate: 128_000,
+    });
+    const audioData = new AudioData({
+      format: 'f32-planar',
+      sampleRate: rendered.sampleRate,
+      numberOfFrames: rendered.length,
+      numberOfChannels: rendered.numberOfChannels,
+      timestamp: 0,
+      data: (() => {
+        const bufs: Float32Array[] = [];
+        for (let c = 0; c < rendered.numberOfChannels; c++) {
+          bufs.push(rendered.getChannelData(c));
+        }
+        const total = bufs.reduce((s, b) => s + b.byteLength, 0);
+        const packed = new ArrayBuffer(total);
+        let off = 0;
+        for (const b of bufs) {
+          new Uint8Array(packed).set(new Uint8Array(b.buffer, b.byteOffset, b.byteLength), off);
+          off += b.byteLength;
+        }
+        return packed;
+      })(),
+    });
+    audioEncoder.encode(audioData);
+    await audioEncoder.flush();
+    audioEncoder.close();
+    audioData.close();
+  }
+
+  // ── Mux ──────────────────────────────────────────────────────────
+  logStatus('Export: muxing…');
+  if (!window.Mp4Muxer)
+    await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js');
+
+  const muxerConfig: any = {
     target: new window.Mp4Muxer.ArrayBufferTarget(),
-    video: { codec: 'avc', width: sourceVideoWidth, height: sourceVideoHeight },
+    video: { codec: 'avc', width: exportW, height: exportH },
     fastStart: 'in-memory',
-  });
-  for (const { buf, timestamp, type } of encodedChunks) {
+  };
+  if (encodedAudio.length > 0) {
+    muxerConfig.audio = { codec: 'aac', numberOfChannels: 2, sampleRate: 48000 };
+  }
+
+  const muxer = new window.Mp4Muxer.Muxer(muxerConfig);
+  for (const { buf, timestamp, type } of encodedVideo) {
     muxer.addVideoChunkRaw(buf, type, timestamp, frameMs * 1000);
   }
+  for (const { buf, timestamp, type } of encodedAudio) {
+    muxer.addAudioChunkRaw(buf, type, timestamp, 1024);
+  }
   if (onProgress) onProgress(0.95);
+
   const { buffer } = muxer.finalize();
   const a = ports.canvasFactory.createElement('a') as HTMLAnchorElement;
   a.href = ports.urlFactory.createObjectURL(ports.blobFactory.create([buffer], { type: 'video/mp4' }));

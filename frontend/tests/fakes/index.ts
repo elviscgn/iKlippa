@@ -27,6 +27,7 @@ const fakeUrlFactory: UrlFactory = {
 export const fakeEnginePorts: EnginePorts = {
   videoEncoderFactory: fakeVideoEncoderFactory,
   videoDecoderFactory: fakeVideoEncoderFactory as any,
+  audioEncoderFactory: fakeVideoEncoderFactory as any,
   audioDecoderFactory: fakeVideoEncoderFactory as any,
   audioContextFactory: fakeAudioContextFactory,
   canvasFactory: fakeCanvasFactory,
