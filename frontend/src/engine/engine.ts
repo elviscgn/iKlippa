@@ -393,9 +393,9 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
   }
   sourceFrames.set(msg.ms, img);
 
-  if (msg.ms === 0 && isExporting) {
+  if (isExporting && exportFrames.length === 0) {
     const mid = Math.floor(arr.length / 2);
-    console.log(`[export] handleWorkerFrame ms=0, corner[0]=${arr[0]}, center[${mid}]=${arr[mid]},${arr[mid+1]},${arr[mid+2]}`);
+    console.log(`[export] first frame ms=${msg.ms}, corner[0]=${arr[0]}, center[${mid}]=${arr[mid]},${arr[mid+1]},${arr[mid+2]}`);
   }
 
   // Fire pending thumbnail capture
