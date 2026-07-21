@@ -374,7 +374,8 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
 }
 
 function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }>): void {
-  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+  // During export, accept all frames — seekGeneration races ahead.
+  if (!isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration) {
     log('paint', `dropping stale frame from seek ${msg.seekId} (current: ${seekGeneration})`);
     return;
   }
@@ -416,7 +417,7 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
 }
 
 function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'audio_chunk' }>): void {
-  if (msg.seekId !== undefined && msg.seekId !== seekGeneration) {
+  if (!isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration) {
     log('audio', `dropping stale audio chunk from seek ${msg.seekId} (current: ${seekGeneration})`);
     return;
   }
@@ -1245,6 +1246,7 @@ export async function exportVideo(
 
   const frameMs = 1000 / 30;
   const totalFrames = Math.ceil(durationSec * 1000 / frameMs);
+  console.log(`[export] starting: ${totalFrames} frames, ${exportW}×${exportH}, duration=${durationSec.toFixed(1)}s`);
   logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
   for (let i = 0; i < totalFrames; i++) {
     const ms = Math.round(i * frameMs);
@@ -1259,11 +1261,17 @@ export async function exportVideo(
     seekGeneration++;
     worker!.postMessage({ type: 'seek', ms: sourceMs, sourceId, seekId: seekGeneration });
     let waited = 0;
-    while (!pendingFrames.has(sourceMs) && waited < 5000) {
+    while (waited < 5000) {
+      let found = false;
+      for (const [fms] of pendingFrames) {
+        if (Math.abs(fms - sourceMs) <= 50) { found = true; break; }
+      }
+      if (found) break;
       await new Promise((r) => setTimeout(r, 10));
       waited += 10;
     }
-    if (onProgress) onProgress((i / totalFrames) * 0.4);
+    if (i < 3) console.log(`[export] frame ${i}: sourceMs=${sourceMs.toFixed(1)}, sourceId=${sourceId}, waited=${waited}ms, found=${waited < 5000}, pendingFrames.size=${pendingFrames.size}`);
+    if (onProgress && i % 30 === 0) onProgress((i / totalFrames) * 0.4);
   }
 
   logStatus('Export: encoding…');

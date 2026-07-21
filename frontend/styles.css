@@ -354,7 +354,7 @@ textarea {
   border: 1px solid var(--border-subtle);
   cursor: grab;
   transition: all 0.2s ease;
-  background: #000;
+  background: rgba(0,0,0,0.85);
 }
 .media-item img {
   width: 100%;
@@ -395,7 +395,7 @@ textarea {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #000;
+  background: rgba(0,0,0,0.85);
   border: none;
   color: #fff;
   display: flex;
@@ -543,7 +543,7 @@ textarea {
   max-width: 100%;
   max-height: 100%;
   aspect-ratio: 16/9;
-  background: #000;
+  background: rgba(0,0,0,0.85);
   border-radius: var(--radius-lg);
   border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
@@ -1790,7 +1790,7 @@ textarea {
 .export-modal-overlay {
   position: fixed;
   inset: 0;
-  background: #000;
+  background: rgba(0,0,0,0.85);
   display: flex;
   align-items: center;
   justify-content: center;
