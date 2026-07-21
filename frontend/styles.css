@@ -1850,3 +1850,110 @@ textarea {
 }
 .export-modal-close:hover { color: var(--text-primary); background: var(--bg-hover); }
 .export-modal { position: relative; }
+
+/* ── Caption Editor Panel ─────────────────────────────────────────────── */
+.caption-editor {
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 8px;
+}
+.caption-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.caption-editor-header h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--accent-primary);
+}
+.caption-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.caption-close:hover { color: var(--text-primary); }
+.caption-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+.caption-text-input {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 8px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.caption-text-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+.caption-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.caption-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.caption-control-row label {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.caption-control-row select,
+.caption-control-row input[type="color"] {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 2px 4px;
+  width: 100px;
+}
+.caption-control-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--accent-primary);
+}
+.caption-control-row input[type="color"] {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+}
+.caption-delete-btn {
+  width: 100%;
+  padding: 6px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #ef4444;
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.caption-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.22);
+}

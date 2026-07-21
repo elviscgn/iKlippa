@@ -302,8 +302,40 @@
             </div>
           </section>
 
-          <!-- RIGHT: AI COPILOT -->
+          <!-- RIGHT: CAPTION EDITOR + AI COPILOT -->
           <aside class="panel-right" id="panel-right">
+            <div class="caption-editor" id="caption-editor" style="display:none;">
+              <div class="caption-editor-header">
+                <h4><i data-lucide="type"></i> Caption Editor</h4>
+                <button class="caption-close" id="caption-close">&times;</button>
+              </div>
+              <div class="caption-editor-body">
+                <textarea id="caption-text-input" class="caption-text-input" placeholder="Enter caption text..." rows="2"></textarea>
+                <div class="caption-controls">
+                  <div class="caption-control-row">
+                    <label>Position</label>
+                    <select id="caption-position">
+                      <option value="lowerthird">Lower Third</option>
+                      <option value="center">Center</option>
+                      <option value="top">Top</option>
+                    </select>
+                  </div>
+                  <div class="caption-control-row">
+                    <label>Size <span id="caption-size-val">4%</span></label>
+                    <input type="range" id="caption-size" min="2" max="10" value="4" step="0.5" />
+                  </div>
+                  <div class="caption-control-row">
+                    <label>Colour</label>
+                    <input type="color" id="caption-colour" value="#ffffff" />
+                  </div>
+                  <div class="caption-control-row">
+                    <label>BG Opacity</label>
+                    <input type="range" id="caption-bg-opacity" min="0" max="100" value="30" />
+                  </div>
+                </div>
+                <button class="caption-delete-btn" id="caption-delete">Delete Caption</button>
+              </div>
+            </div>
             <div class="copilot-header">
               <i data-lucide="bot" style="color: var(--accent-primary)"></i> AI
               Director

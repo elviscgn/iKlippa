@@ -193,3 +193,138 @@ function wrapLines(
   }
   return out;
 }
+
+// ── Caption Editor Panel ──────────────────────────────────────────────────
+
+let _editingClipId: number | null = null;
+
+function getClip(id: number): any | null {
+  const IK = (window as any).IKState;
+  if (!IK) return null;
+  const tracks = IK.getTracks() || [];
+  for (const t of tracks) {
+    for (const c of t.clips || []) {
+      if (c.id === id) return c;
+    }
+  }
+  return null;
+}
+
+function findCaptionTrack(): any | null {
+  const IK = (window as any).IKState;
+  if (!IK) return null;
+  return (IK.getTracks() || []).find((t: any) => t.track_type === 'caption');
+}
+
+export function openCaptionEditor(clipId: number): void {
+  const clip = getClip(clipId);
+  if (!clip) return;
+
+  _editingClipId = clipId;
+
+  const panel = document.getElementById('caption-editor');
+  if (!panel) return;
+  panel.style.display = 'block';
+
+  const textInput = document.getElementById('caption-text-input') as HTMLTextAreaElement;
+  if (textInput) textInput.value = clip.caption_text || '';
+
+  const style = clip.caption_style || {};
+  const posSel = document.getElementById('caption-position') as HTMLSelectElement;
+  if (posSel) posSel.value = style.position || 'lowerthird';
+
+  const sizeSlider = document.getElementById('caption-size') as HTMLInputElement;
+  const sizeVal = document.getElementById('caption-size-val');
+  const size = style.size || 4;
+  if (sizeSlider) sizeSlider.value = String(size);
+  if (sizeVal) sizeVal.textContent = size + '%';
+
+  const colourIn = document.getElementById('caption-colour') as HTMLInputElement;
+  if (colourIn && style.colour) {
+    const r = style.colour[0]?.toString(16).padStart(2, '0') ?? 'ff';
+    const g = style.colour[1]?.toString(16).padStart(2, '0') ?? 'ff';
+    const b = style.colour[2]?.toString(16).padStart(2, '0') ?? 'ff';
+    colourIn.value = '#' + r + g + b;
+  }
+
+  const bgSlider = document.getElementById('caption-bg-opacity') as HTMLInputElement;
+  if (bgSlider) bgSlider.value = String(Math.round((style.bg_opacity ?? 0.3) * 100));
+}
+
+function closeCaptionEditor(): void {
+  _editingClipId = null;
+  const panel = document.getElementById('caption-editor');
+  if (panel) panel.style.display = 'none';
+}
+
+function applyCaptionChanges(): void {
+  if (_editingClipId === null) return;
+  const clip = getClip(_editingClipId);
+  if (!clip) return;
+
+  const textInput = document.getElementById('caption-text-input') as HTMLTextAreaElement;
+  if (textInput) clip.caption_text = textInput.value;
+
+  if (!clip.caption_style) {
+    clip.caption_style = {
+      font_family: 'Plus Jakarta Sans, sans-serif',
+      size: 4,
+      colour: [255, 255, 255, 255],
+      bg_opacity: 0.3,
+      position: 'lowerthird',
+    };
+  }
+
+  const posSel = document.getElementById('caption-position') as HTMLSelectElement;
+  if (posSel) clip.caption_style.position = posSel.value;
+
+  const sizeSlider = document.getElementById('caption-size') as HTMLInputElement;
+  const sizeVal = document.getElementById('caption-size-val');
+  if (sizeSlider) {
+    clip.caption_style.size = parseFloat(sizeSlider.value);
+    if (sizeVal) sizeVal.textContent = sizeSlider.value + '%';
+  }
+
+  const colourIn = document.getElementById('caption-colour') as HTMLInputElement;
+  if (colourIn) {
+    const hex = colourIn.value;
+    clip.caption_style.colour = [
+      parseInt(hex.slice(1, 3), 16),
+      parseInt(hex.slice(3, 5), 16),
+      parseInt(hex.slice(5, 7), 16),
+      255,
+    ];
+  }
+
+  const bgSlider = document.getElementById('caption-bg-opacity') as HTMLInputElement;
+  if (bgSlider) clip.caption_style.bg_opacity = parseInt(bgSlider.value) / 100;
+
+  window.dispatchEvent(new CustomEvent('ikl:reRender'));
+}
+
+function deleteCaption(): void {
+  if (_editingClipId === null) return;
+  const IK = (window as any).IKState;
+  if (!IK) return;
+  IK.removeClip(_editingClipId);
+  _editingClipId = null;
+  closeCaptionEditor();
+  window.dispatchEvent(new CustomEvent('ikl:reRender'));
+}
+
+export function initCaptionEditor(): void {
+  document.addEventListener('dblclick', (e) => {
+    const clipEl = (e.target as Element).closest('.tl-clip-caption');
+    if (!clipEl) return;
+    const clipId = parseInt((clipEl as HTMLElement).dataset.clipId!);
+    if (!isNaN(clipId)) openCaptionEditor(clipId);
+  });
+
+  document.getElementById('caption-text-input')?.addEventListener('input', applyCaptionChanges);
+  document.getElementById('caption-position')?.addEventListener('change', applyCaptionChanges);
+  document.getElementById('caption-size')?.addEventListener('input', applyCaptionChanges);
+  document.getElementById('caption-colour')?.addEventListener('input', applyCaptionChanges);
+  document.getElementById('caption-bg-opacity')?.addEventListener('input', applyCaptionChanges);
+  document.getElementById('caption-close')?.addEventListener('click', closeCaptionEditor);
+  document.getElementById('caption-delete')?.addEventListener('click', deleteCaption);
+}
