@@ -1299,11 +1299,17 @@ export async function exportVideo(
   logStatus('Export: encoding…');
   const ports = getPorts();
   const encodedVideo: Array<{ buf: ArrayBuffer; timestamp: number; type: string }> = [];
+  // The SPS/PPS (avcC) only arrives via the encoder's chunk metadata. If we
+  // drop it, mp4-muxer writes an empty avcC box and players render black.
+  let encoderDecoderConfig: VideoDecoderConfig | undefined;
   const encoder = ports.videoEncoderFactory.create(
-    (chunk) => {
+    (chunk, metadata) => {
       const buf = new ArrayBuffer(chunk.byteLength);
       chunk.copyTo(buf);
       encodedVideo.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
+      if (!encoderDecoderConfig && metadata?.decoderConfig) {
+        encoderDecoderConfig = metadata.decoderConfig;
+      }
     },
     (e) => emitLocal('EXPORT_FAILED', e, { fatal: false }),
   );
@@ -1431,14 +1437,18 @@ export async function exportVideo(
   }
 
   const muxer = new Muxer(muxerConfig);
+  if (!encoderDecoderConfig?.description) {
+    console.warn('[export] encoder sent no avcC description — exported file may not decode');
+  }
   for (let i = 0; i < encodedVideo.length; i++) {
     const { buf, timestamp, type } = encodedVideo[i]!;
-    const meta: any = {};
+    const meta: EncodedVideoChunkMetadata = {};
     if (i === 0) {
       meta.decoderConfig = {
-        codec: 'avc1.64001f',
+        codec: encoderDecoderConfig?.codec ?? 'avc1.42001f',
         codedWidth: exportW,
         codedHeight: exportH,
+        description: encoderDecoderConfig?.description,
         colorSpace: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false },
       };
     }

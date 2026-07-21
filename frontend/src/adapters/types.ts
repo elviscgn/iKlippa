@@ -83,7 +83,10 @@ export interface EncodedChunkFactory {
 }
 
 export interface VideoEncoderFactory {
-  create(output: (chunk: EncodedVideoChunkOutput) => void, error: (err: Error) => void): VideoEncoderPort;
+  create(
+    output: (chunk: EncodedVideoChunkOutput, metadata?: EncodedVideoChunkMetadata) => void,
+    error: (err: Error) => void,
+  ): VideoEncoderPort;
 }
 
 export interface AudioEncoderFactory {

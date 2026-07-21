@@ -169,6 +169,37 @@ describe('exportVideo (Tier 2 - adapter ports)', () => {
 
     expect(progressSpy).toHaveBeenCalledWith(1);
   });
+
+  it('passes the encoder avcC description to the muxer (otherwise exports are black)', async () => {
+    __TEST_HOOKS__.videoDurationMs = 4000;
+    mockWorker.postMessage.mockImplementation((msg: any) => {
+      if (msg.type === 'decode_all') {
+        const totalNeeded = Math.ceil(__TEST_HOOKS__.videoDurationMs / (1000 / 30));
+        for (let j = 0; j < totalNeeded; j++) {
+          const ms = j * (1000 / 30);
+          const fakeImage = { data: { buffer: new ArrayBuffer(0) } } as any;
+          __TEST_HOOKS__.pendingFrames.set(ms, fakeImage);
+          __TEST_HOOKS__.exportFrames.push({ ms, imageData: fakeImage });
+        }
+      }
+    });
+
+    const { Muxer } = await import('mp4-muxer');
+    const muxerMock = vi.mocked(Muxer);
+    const before = muxerMock.mock.results.length;
+
+    await exportVideo(vi.fn());
+
+    const instance = muxerMock.mock.results[before]?.value as any;
+    expect(instance).toBeDefined();
+    const addVideoChunkRaw = instance.addVideoChunkRaw as ReturnType<typeof vi.fn>;
+    expect(addVideoChunkRaw).toHaveBeenCalled();
+    // addVideoChunkRaw(data, type, timestamp, duration, meta) — the first
+    // chunk must carry decoderConfig.description (SPS/PPS) or players can't
+    // initialise the H.264 decoder and render black.
+    const firstCallMeta = addVideoChunkRaw.mock.calls[0]?.[4];
+    expect(firstCallMeta?.decoderConfig?.description).toBeDefined();
+  });
 });
 
 import {
