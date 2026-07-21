@@ -507,7 +507,8 @@ export function applyAiAction(type: 'silence' | 'captions' | 'sync') {
     aiNodes.push({ time: Math.min(2.0, S.dur * 0.1), label: 'Captions Generated', icon: 'captions' });
     aiNodes.push({ time: Math.min(10.0, S.dur * 0.5), label: 'Captions Synced', icon: 'captions' });
     showToast('AI Captions Added', 'captions');
-    $('#canvas-text')?.classList.add('active');
+    const capOverlay = $('#caption-overlay');
+    if (capOverlay) capOverlay.style.display = 'block';
     acts.cap = true;
   } else if (type === 'sync' && !acts.sync) {
     if (videoClips.length === 0) { showToast('Import a video first', 'info'); return; }
