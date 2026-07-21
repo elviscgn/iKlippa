@@ -1317,40 +1317,12 @@ export async function exportVideo(
   }
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i]!;
-    expCtx.putImageData(imageData, 0, 0);
-
-    // Resize if needed
-    if (needsResize) {
-      expCtx.drawImage(expCanvas, 0, 0, sourceVideoWidth, sourceVideoHeight, 0, 0, exportW, exportH);
-    }
-
-    // Watermark for free tier
-    if (tier.watermark) {
-      const wmW = exportW * 0.2;
-      const wmH = wmW * 0.25;
-      const wmX = exportW - wmW - exportW * 0.05;
-      const wmY = exportH - wmH - exportH * 0.05;
-      expCtx.fillStyle = 'rgba(255,255,255,0.35)';
-      expCtx.fillRect(wmX, wmY, wmW, wmH);
-      expCtx.fillStyle = 'rgba(0,0,0,0.5)';
-      expCtx.font = `${Math.round(wmH * 0.5)}px sans-serif`;
-      expCtx.textAlign = 'center';
-      expCtx.fillText('iKlippa', wmX + wmW / 2, wmY + wmH * 0.65);
-    }
-
-    const frameImg = expCtx.getImageData(0, 0, exportW, exportH);
-    const frame = new VideoFrame(frameImg.data.buffer, {
+    const frame = new VideoFrame(imageData.data.buffer, {
       format: 'RGBA',
-      codedWidth: exportW,
-      codedHeight: exportH,
+      codedWidth: sourceVideoWidth,
+      codedHeight: sourceVideoHeight,
       timestamp: ms * 1000,
       duration: frameMs * 1000,
-      colorSpace: {
-        primaries: 'bt709',
-        transfer: 'bt709',
-        matrix: 'bt709',
-        fullRange: true,
-      },
     });
     encoder.encode(frame, { keyFrame: i % 60 === 0 });
     frame.close();
