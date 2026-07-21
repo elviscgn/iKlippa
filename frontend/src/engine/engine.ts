@@ -1251,6 +1251,9 @@ export async function exportVideo(
   logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
   if (onProgress) onProgress(0);
 
+  // Reset global grade so exported frames are unaltered
+  worker!.postMessage({ type: 'reset_grade' });
+
   // One message to decode ALL frames in a single pass
   const initMap = mapTimelineToSource(0);
   worker!.postMessage({ type: 'decode_all', sourceId: initMap?.sourceId });

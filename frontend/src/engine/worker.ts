@@ -435,6 +435,7 @@ async function routeMessage(msg: any): Promise<void> {
   else if (msg.type === 'get_project_json') handleGetProjectJson();
   else if (msg.type === 'composite') handleComposite(msg);
   else if (msg.type === 'decode_all') handleDecodeAll(msg);
+  else if (msg.type === 'reset_grade') { if (wasmModule) { wasmModule.set_exposure(0); wasmModule.set_contrast(0); wasmModule.set_saturation(0); wasmModule.set_temperature(0); wasmModule.set_highlights(0); wasmModule.set_shadows(0); wasmModule.set_vignette(0); wasmModule.set_grain(0); wasmModule.set_lut(0); } }
 }
 
 self.onmessage = (e: MessageEvent<any>) => {
