@@ -348,12 +348,11 @@ let isDecodeAll = false;
 async function decodeAllFrames(sourceId: string) {
   isDecodeAll = true;
   const state = sourceStates.get(sourceId);
-  if (!state || !state.decoder) return;
-  if (state.decoder.state === 'closed') { await setupDecoder(sourceId, state); }
-  if (state.decoder.state !== 'configured') return;
-  // Always reset — decoder might be at EOF from a previous decode_all
-  state.decoder.reset();
-  await state.decoder.configure(state.codecConfig);
+  if (!state) return;
+  // Close old decoder and create a fresh one so it hasn't seen any samples
+  if (state.decoder && state.decoder.state !== 'closed') state.decoder.close();
+  await setupDecoder(sourceId, state);
+  if (!state.decoder || state.decoder.state !== 'configured') { isDecodeAll = false; return; }
   state.globalStartOffsetUs = -1;
   state.lastDecodedSampleIdx = -1;
   state.decoderSeeded = false;
