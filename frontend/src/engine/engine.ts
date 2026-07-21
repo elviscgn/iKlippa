@@ -398,6 +398,9 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
     console.log(`[export] first frame ms=${msg.ms}, corner[0]=${arr[0]}, center[${mid}]=${arr[mid]},${arr[mid+1]},${arr[mid+2]}`);
   }
 
+  if (isExporting)
+    exportFrames.push({ ms: msg.ms, imageData: img });
+
   // Fire pending thumbnail capture
   if (_pendingThumbCapture) {
     const cb = _pendingThumbCapture;
@@ -1435,13 +1438,8 @@ export async function exportVideo(
     }
     muxer.addVideoChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, frameMs * 1000, meta);
   }
-  for (let i = 0; i < encodedAudio.length; i++) {
-    const { buf, timestamp, type } = encodedAudio[i]!;
-    const meta: any = {};
-    if (i === 0) {
-      meta.decoderConfig = { codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 48000 };
-    }
-    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024, meta);
+  for (const { buf, timestamp, type } of encodedAudio) {
+    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024);
   }
   if (onProgress) onProgress(0.95);
 
