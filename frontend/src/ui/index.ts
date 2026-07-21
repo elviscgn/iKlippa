@@ -7,6 +7,7 @@ import { initPlayback } from './playback';
 import { initKeyboardShortcuts } from './keyboard';
 import { resizeCanvas } from './utils';
 import { initCaptionOverlay, initCaptionEditor } from './captions';
+import { initLutPanel } from './lut';
 
 // Expose state and mediaPool globally to avoid breaking app.js / main.ts expectations
 declare global {
@@ -29,6 +30,7 @@ function initUI() {
   initKeyboardShortcuts();
   initCaptionOverlay();
   initCaptionEditor();
+  initLutPanel();
 
   window.renderMedia('footage');
   calculateTimelineDuration();

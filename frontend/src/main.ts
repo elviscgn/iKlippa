@@ -26,6 +26,7 @@ import {
 import type { EngineError, GradeParams } from './engine/types';
 import { USER_ERROR_MESSAGES, emitLocal } from './engine/errors';
 import { initCaptionOverlay, renderCaptionOverlay } from './ui/captions';
+import { reflectClipEffects } from './ui/lut';
 
 // Import CSS so Vite bundles it
 import '../styles.css';
@@ -344,6 +345,7 @@ function reflectClipGrade(clipId: number) {
   });
   const label = document.getElementById('grade-clip-label');
   if (label) label.textContent = `${clip.name || 'Clip ' + clipId} — Grade`;
+  reflectClipEffects(clip);
 }
 
 window.reflectClipGrade = reflectClipGrade;

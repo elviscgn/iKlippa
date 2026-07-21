@@ -1,4 +1,6 @@
+use crate::lut::LutCache;
 use crate::timeline_state;
+use crate::timeline_state::{EffectParams, EffectType};
 use crate::FramePool;
 use std::collections::HashMap;
 
@@ -15,6 +17,7 @@ pub fn compose_at(
     frame_cache: &HashMap<u32, (u32, u32, Vec<u8>)>,
     temp_pool: &mut FramePool,
     composite_pool: &mut FramePool,
+    luts: &LutCache,
 ) {
     let active = project.clips_at(ts_us);
 
@@ -42,6 +45,18 @@ pub fn compose_at(
 
         // Per-clip colour grade
         apply_clip_colour_grade(temp_pool, &clip.colour_settings);
+
+        // Apply LUT effects (after grade, before blend)
+        for effect in &clip.effects {
+            if !effect.enabled {
+                continue;
+            }
+            if effect.effect_type == EffectType::LUT {
+                if let EffectParams::LUT { lut_id, intensity } = &effect.params {
+                    apply_lut_effect(temp_pool, luts, *lut_id, *intensity);
+                }
+            }
+        }
 
         if is_first {
             // First layer: copy directly to composite
@@ -228,6 +243,34 @@ pub fn apply_clip_colour_grade(pool: &mut FramePool, settings: &timeline_state::
             pool.buf[base] = clamp_u8(r);
             pool.buf[base + 1] = clamp_u8(g);
             pool.buf[base + 2] = clamp_u8(b);
+        }
+    }
+}
+
+/// Apply a cached 3D LUT with intensity blending (0 = passthrough, 1 = full LUT).
+pub fn apply_lut_effect(pool: &mut FramePool, luts: &LutCache, lut_id: u32, intensity: f32) {
+    let lut = match luts.get(lut_id) {
+        Some(l) => l,
+        None => return,
+    };
+    if intensity <= 0.001 {
+        return;
+    }
+    let inv_255 = 1.0 / 255.0;
+    let intensity = intensity.clamp(0.0, 1.0);
+    let w = pool.width;
+    let h = pool.height;
+    for y in 0..h {
+        let row_base = (y * w * 4) as usize;
+        for x in 0..w {
+            let base = row_base + (x * 4) as usize;
+            let r = pool.buf[base] as f32 * inv_255;
+            let g = pool.buf[base + 1] as f32 * inv_255;
+            let b = pool.buf[base + 2] as f32 * inv_255;
+            let [lr, lg, lb] = lut.sample(r, g, b);
+            pool.buf[base] = clamp_u8(r + (lr - r) * intensity);
+            pool.buf[base + 1] = clamp_u8(g + (lg - g) * intensity);
+            pool.buf[base + 2] = clamp_u8(b + (lb - b) * intensity);
         }
     }
 }

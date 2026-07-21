@@ -592,6 +592,31 @@
                 <i data-lucide="sliders-horizontal"></i> Reset Grade
               </button>
             </div>
+            <!-- LUT PANEL -->
+            <div class="lut-panel" id="lut-panel" style="display:none;">
+              <div class="grade-header" style="border-top:1px solid var(--border-subtle);padding-top:10px;">
+                <i data-lucide="palette" style="color:var(--accent-primary);"></i>
+                <span>3D LUT</span>
+              </div>
+              <div class="grade-sliders">
+                <div class="grade-row" style="flex-wrap:wrap;gap:4px;">
+                  <label style="width:100%;">Preset</label>
+                  <select id="lut-select" style="flex:1;min-width:0;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:4px;color:var(--text-primary);font-size:11px;padding:4px;">
+                    <option value="">None</option>
+                  </select>
+                  <button id="import-lut-btn" class="tl-zoom-btn" style="padding:2px 6px;font-size:10px;width:auto;">
+                    <i data-lucide="upload"></i> .cube
+                  </button>
+                </div>
+                <div class="grade-row">
+                  <label>Intensity <span id="lut-intensity-val">100%</span></label>
+                  <input type="range" id="lut-intensity" min="0" max="100" value="100" step="1">
+                </div>
+                <div class="grade-row" id="lut-status-row" style="display:none;font-size:10px;color:var(--text-muted);">
+                  <span id="lut-status">No LUT loaded</span>
+                </div>
+              </div>
+            </div>
           </aside>
         </div>
 

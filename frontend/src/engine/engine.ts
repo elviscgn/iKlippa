@@ -309,6 +309,7 @@ export async function initEngine(canvasEl: HTMLCanvasElement): Promise<boolean> 
   canvas = canvasEl;
   ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
   worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  (window as any).__iklippaWorker = worker;
   worker.onmessage = handleWorkerMessage;
   worker.onerror = (e) => {
     err('engine', 'Worker threw an uncaught error', e.message);
