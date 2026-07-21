@@ -393,6 +393,11 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
   }
   sourceFrames.set(msg.ms, img);
 
+  if (isExporting && exportFrames.length === 0) {
+    const mid = Math.floor(arr.length / 2);
+    console.log(`[export] first frame ms=${msg.ms}, corner[0]=${arr[0]}, center[${mid}]=${arr[mid]},${arr[mid+1]},${arr[mid+2]}`);
+  }
+
   if (isExporting)
     exportFrames.push({ ms: msg.ms, imageData: img });
 
@@ -1251,9 +1256,20 @@ export async function exportVideo(
   logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
   if (onProgress) onProgress(0);
 
+  // Reset global grade so exported frames are unaltered
+  worker!.postMessage({ type: 'reset_grade' });
+
   // One message to decode ALL frames in a single pass
   const initMap = mapTimelineToSource(0);
   worker!.postMessage({ type: 'decode_all', sourceId: initMap?.sourceId });
+
+  // Merge frames decoded before export (from normal playback) into exportFrames
+  for (const [ms, img] of pendingFrames) {
+    if (!exportFrames.some((f) => f.ms === ms)) {
+      exportFrames.push({ ms, imageData: img });
+    }
+  }
+  console.log(`[export] ${exportFrames.length} frames after merge`);
 
   // Wait for all frames to arrive from the worker's continuous decode.
   // Stop when no new frames for 3s (actual frame count may differ from 30fps estimate).
@@ -1308,34 +1324,16 @@ export async function exportVideo(
   const expCtx = expCanvas.getContext('2d', { willReadFrequently: true })!;
 
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
+  if (sortedFrames.length > 0) {
+    const first = sortedFrames[0]!.imageData.data;
+    console.log(`[export] first frame: ${first.length} bytes, pixel[0-3]=${first[0]},${first[1]},${first[2]},${first[3]}`);
+  }
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i]!;
-    expCtx.putImageData(imageData, 0, 0, 0, 0, sourceVideoWidth, sourceVideoHeight);
-
-    // Resize if needed
-    if (needsResize) {
-      expCtx.drawImage(expCanvas, 0, 0, sourceVideoWidth, sourceVideoHeight, 0, 0, exportW, exportH);
-    }
-
-    // Watermark for free tier
-    if (tier.watermark) {
-      const wmW = exportW * 0.2;
-      const wmH = wmW * 0.25;
-      const wmX = exportW - wmW - exportW * 0.05;
-      const wmY = exportH - wmH - exportH * 0.05;
-      expCtx.fillStyle = 'rgba(255,255,255,0.35)';
-      expCtx.fillRect(wmX, wmY, wmW, wmH);
-      expCtx.fillStyle = 'rgba(0,0,0,0.5)';
-      expCtx.font = `${Math.round(wmH * 0.5)}px sans-serif`;
-      expCtx.textAlign = 'center';
-      expCtx.fillText('iKlippa', wmX + wmW / 2, wmY + wmH * 0.65);
-    }
-
-    const frameImg = expCtx.getImageData(0, 0, exportW, exportH);
-    const frame = new VideoFrame(frameImg.data.buffer, {
+    const frame = new VideoFrame(imageData.data.buffer, {
       format: 'RGBA',
-      codedWidth: exportW,
-      codedHeight: exportH,
+      codedWidth: sourceVideoWidth,
+      codedHeight: sourceVideoHeight,
       timestamp: ms * 1000,
       duration: frameMs * 1000,
     });
@@ -1440,13 +1438,8 @@ export async function exportVideo(
     }
     muxer.addVideoChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, frameMs * 1000, meta);
   }
-  for (let i = 0; i < encodedAudio.length; i++) {
-    const { buf, timestamp, type } = encodedAudio[i]!;
-    const meta: any = {};
-    if (i === 0) {
-      meta.decoderConfig = { codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 48000 };
-    }
-    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024, meta);
+  for (const { buf, timestamp, type } of encodedAudio) {
+    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024);
   }
   if (onProgress) onProgress(0.95);
 

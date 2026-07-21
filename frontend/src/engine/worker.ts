@@ -343,14 +343,16 @@ function handleDecodeAll(msg: { sourceId: string }) {
   decodeAllFrames(sid).catch((e) => wwarn('worker', 'decode_all failed', String(e)));
 }
 
+let isDecodeAll = false;
+
 async function decodeAllFrames(sourceId: string) {
+  isDecodeAll = true;
   const state = sourceStates.get(sourceId);
-  if (!state || !state.decoder) return;
-  if (state.decoder.state === 'closed') { await setupDecoder(sourceId, state); }
-  if (state.decoder.state !== 'configured') return;
-  // Always reset — decoder might be at EOF from a previous decode_all
-  state.decoder.reset();
-  await state.decoder.configure(state.codecConfig);
+  if (!state) return;
+  // Close old decoder and create a fresh one so it hasn't seen any samples
+  if (state.decoder && state.decoder.state !== 'closed') state.decoder.close();
+  await setupDecoder(sourceId, state);
+  if (!state.decoder || state.decoder.state !== 'configured') { isDecodeAll = false; return; }
   state.globalStartOffsetUs = -1;
   state.lastDecodedSampleIdx = -1;
   state.decoderSeeded = false;
@@ -378,11 +380,16 @@ async function decodeAllFrames(sourceId: string) {
           data: dataArray[j]!,
         })
       );
+      // Give the decoder time to process each chunk
+      if (j < batch.length - 1) await new Promise((r) => setTimeout(r, 5));
     }
     state.lastDecodedSampleIdx = batchEnd - 1;
     i = batchEnd;
+    // Let decoder drain between batches
+    await new Promise((r) => setTimeout(r, 10));
   }
   state.decoderSeeded = true;
+  isDecodeAll = false;
   wlog('worker', `decode_all [${sourceId}] — done, ${samples.length} samples decoded`);
 }
 
@@ -435,6 +442,7 @@ async function routeMessage(msg: any): Promise<void> {
   else if (msg.type === 'get_project_json') handleGetProjectJson();
   else if (msg.type === 'composite') handleComposite(msg);
   else if (msg.type === 'decode_all') handleDecodeAll(msg);
+  else if (msg.type === 'reset_grade') { if (wasmModule) { wasmModule.set_exposure(0); wasmModule.set_contrast(0); wasmModule.set_saturation(0); wasmModule.set_temperature(0); wasmModule.set_highlights(0); wasmModule.set_shadows(0); wasmModule.set_vignette(0); wasmModule.set_grain(0); wasmModule.set_lut(0); } }
 }
 
 self.onmessage = (e: MessageEvent<any>) => {
@@ -548,14 +556,13 @@ async function setupDecoder(sourceId: string, state: SourceState) {
 
       refreshFrameView();
 
-      if (videoFrame.format === null) {
-        offscreenCtx!.drawImage(videoFrame, 0, 0);
-        videoFrame.close();
-        const imgData = offscreenCtx!.getImageData(0, 0, width, height);
-        frameView!.set(imgData.data);
-      } else {
-        await videoFrame.copyTo(frameView!, { format: 'RGBA' });
-        videoFrame.close();
+      // Always use offscreen canvas — copyTo can produce wrong colors
+      offscreenCtx!.drawImage(videoFrame, 0, 0);
+      videoFrame.close();
+      const imgData = offscreenCtx!.getImageData(0, 0, width, height);
+      frameView!.set(imgData.data);
+      if (isDecodeAll && normalizedTsUs === 0) {
+        wlog('decode', `canvas frame: pixel[0]=${imgData.data[0]},${imgData.data[1]},${imgData.data[2]}`);
       }
 
       try {
@@ -566,7 +573,7 @@ async function setupDecoder(sourceId: string, state: SourceState) {
       }
 
       let gradeMs = 0;
-      if (!isWorkerPlaying) {
+      if (!isWorkerPlaying && !isDecodeAll) {
         const gradeStart = performance.now();
         try {
           wasmModule!.process_frame();
