@@ -381,9 +381,13 @@ async function decodeAllFrames(sourceId: string) {
           data: dataArray[j]!,
         })
       );
+      // Give the decoder time to process each chunk
+      if (j < batch.length - 1) await new Promise((r) => setTimeout(r, 5));
     }
     state.lastDecodedSampleIdx = batchEnd - 1;
     i = batchEnd;
+    // Let decoder drain between batches
+    await new Promise((r) => setTimeout(r, 10));
   }
   state.decoderSeeded = true;
   isDecodeAll = false;
