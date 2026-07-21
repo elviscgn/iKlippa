@@ -1,4 +1,5 @@
 import type { CaptionStyle } from '../state/types';
+import { saveSnapshot } from './dragDrop';
 
 let overlay: HTMLCanvasElement | null = null;
 let octx: CanvasRenderingContext2D | null = null;
@@ -14,6 +15,8 @@ export function addCaptionAtPlayhead(): void {
     captionTrack = IK.getTrackById(newId);
   }
   if (!captionTrack) return;
+
+  saveSnapshot();
 
   const playheadUs = Math.round((window.S?.time ?? 0) * 1_000_000);
   const clipDurationUs = 3_000_000; // 3 seconds
@@ -220,6 +223,7 @@ export function openCaptionEditor(clipId: number): void {
   const clip = getClip(clipId);
   if (!clip) return;
 
+  saveSnapshot();
   _editingClipId = clipId;
 
   const panel = document.getElementById('caption-editor');
@@ -306,6 +310,7 @@ function deleteCaption(): void {
   if (_editingClipId === null) return;
   const IK = (window as any).IKState;
   if (!IK) return;
+  saveSnapshot();
   IK.removeClip(_editingClipId);
   _editingClipId = null;
   closeCaptionEditor();

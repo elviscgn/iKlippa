@@ -401,6 +401,7 @@ export function initTimelineUI() {
   $('#add-video-track')?.addEventListener('click', () => {
     const IKState = (window as any).IKState;
     if (!IKState || !IKState.isReady()) return;
+    saveSnapshot();
     IKState.addTrack('video');
     window.dispatchEvent(new CustomEvent('ikl:reRender'));
     showToast('Video track added', 'plus');
@@ -408,6 +409,7 @@ export function initTimelineUI() {
   $('#add-audio-track')?.addEventListener('click', () => {
     const IKState = (window as any).IKState;
     if (!IKState || !IKState.isReady()) return;
+    saveSnapshot();
     IKState.addTrack('audio');
     window.dispatchEvent(new CustomEvent('ikl:reRender'));
     showToast('Audio track added', 'plus');
@@ -415,6 +417,7 @@ export function initTimelineUI() {
   $('#add-caption-track')?.addEventListener('click', () => {
     const IKState = (window as any).IKState;
     if (!IKState || !IKState.isReady()) return;
+    saveSnapshot();
     IKState.addTrack('caption');
     window.dispatchEvent(new CustomEvent('ikl:reRender'));
     showToast('Caption track added', 'plus');
