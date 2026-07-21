@@ -18,6 +18,7 @@ import type {
 import type { ClipWithMeta } from '../state/types';
 
 import { currentTier, getTierConfig } from './tier';
+import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 
 const DECODE_LOOKAHEAD = 12;
 
@@ -1415,25 +1416,27 @@ export async function exportVideo(
   // ── Mux ──────────────────────────────────────────────────────────
   logStatus('Export: muxing…');
 
+  const target = new ArrayBufferTarget();
   const muxerConfig: any = {
-    target: new window.Mp4Muxer.ArrayBufferTarget(),
-    video: { codec: 'avc', width: exportW, height: exportH },
+    target,
+    video: { codec: 'avc' as const, width: exportW, height: exportH },
     fastStart: 'in-memory',
   };
   if (encodedAudio.length > 0) {
-    muxerConfig.audio = { codec: 'aac', numberOfChannels: 2, sampleRate: 48000 };
+    muxerConfig.audio = { codec: 'aac' as const, numberOfChannels: 2, sampleRate: 48000 };
   }
 
-  const muxer = new window.Mp4Muxer.Muxer(muxerConfig);
+  const muxer = new Muxer(muxerConfig);
   for (const { buf, timestamp, type } of encodedVideo) {
-    muxer.addVideoChunkRaw(buf, type as any, timestamp, frameMs * 1000);
+    muxer.addVideoChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, frameMs * 1000);
   }
   for (const { buf, timestamp, type } of encodedAudio) {
-    muxer.addAudioChunkRaw(buf, type as any, timestamp, 1024);
+    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024);
   }
   if (onProgress) onProgress(0.95);
 
-  const { buffer } = muxer.finalize();
+  muxer.finalize();
+  const buffer = target.buffer;
   const a = ports.canvasFactory.createElement('a') as HTMLAnchorElement;
   a.href = ports.urlFactory.createObjectURL(ports.blobFactory.create([buffer], { type: 'video/mp4' }));
   a.download = `iklippa-export-${Date.now()}.mp4`;
