@@ -3,6 +3,42 @@ import type { CaptionStyle } from '../state/types';
 let overlay: HTMLCanvasElement | null = null;
 let octx: CanvasRenderingContext2D | null = null;
 
+export function addCaptionAtPlayhead(): void {
+  const IK = (window as any).IKState;
+  if (!IK || !IK.isReady()) return;
+
+  // Find or create a caption track
+  let captionTrack = (IK.getTracks() || []).find((t: any) => t.track_type === 'caption');
+  if (!captionTrack) {
+    const newId = IK.addTrack('caption');
+    captionTrack = IK.getTrackById(newId);
+  }
+  if (!captionTrack) return;
+
+  const playheadUs = Math.round((window.S?.time ?? 0) * 1_000_000);
+  const clipDurationUs = 3_000_000; // 3 seconds
+  const clip = IK.addClip(
+    captionTrack.id,
+    `caption-${Date.now()}`,
+    playheadUs,
+    playheadUs + clipDurationUs,
+    { name: 'New caption', isReal: false },
+  );
+
+  if (clip) {
+    clip.caption_text = 'New caption';
+    clip.caption_style = {
+      font_family: 'Plus Jakarta Sans, sans-serif',
+      size: 0,
+      colour: [255, 255, 255, 255],
+      bg_opacity: 0.3,
+      position: 'lowerthird',
+    };
+  }
+
+  window.dispatchEvent(new CustomEvent('ikl:reRender'));
+}
+
 export function initCaptionOverlay(): HTMLCanvasElement | null {
   if (overlay) return overlay;
   const canvas = document.getElementById('caption-overlay') as HTMLCanvasElement | null;

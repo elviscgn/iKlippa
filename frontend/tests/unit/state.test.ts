@@ -14,7 +14,7 @@ describe('IKState Module', () => {
     expect(project).toBeDefined();
     expect(project!.width).toBe(1920);
     expect(project!.height).toBe(1080);
-    expect(project!.tracks.length).toBe(2);
+    expect(project!.tracks.length).toBe(3);
   });
 
   it('adds and retrieves a video clip with metadata', () => {

@@ -1586,6 +1586,14 @@ textarea {
   box-shadow: inset 0 0 0 1px rgba(4, 120, 87, 0.5);
   border: none;
 }
+.tl-clip-caption {
+  background: linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(6,6,8,0.8) 100%);
+  box-shadow: inset 0 0 0 1px rgba(245,158,11,0.25);
+  border: none;
+}
+.tl-clip-caption .tl-clip-label {
+  color: rgba(251, 191, 36, 0.9);
+}
 .waveform {
   position: absolute;
   inset: 0;

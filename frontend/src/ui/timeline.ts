@@ -1,4 +1,5 @@
 import { applySnap, showSnapGuide, hideSnapGuide, getLaneW } from './timelineUtils';
+import { addCaptionAtPlayhead } from './captions';
 
 function getTrackLane(trackId: number): HTMLElement | null {
   return document.querySelector(`[data-track-id="${trackId}"] .track-lane`);
@@ -156,7 +157,7 @@ export function renderClips() {
   });
 
   // Clear existing track DOM (keep AI track)
-  tlTracks.querySelectorAll('.track.video-track, .track.audio-track').forEach((t) => t.remove());
+  tlTracks.querySelectorAll('.track.video-track, .track.audio-track, .track.caption-track').forEach((t) => t.remove());
 
   for (const track of sortedTracks) {
     const trackEl = document.createElement('div');
@@ -165,11 +166,14 @@ export function renderClips() {
 
     const gutter = document.createElement('div');
     gutter.className = 'track-gutter';
+    const isCaption = track.track_type === 'caption';
+    const trackIcon = isCaption ? 'captions' : '';
     gutter.innerHTML = `
+      ${isCaption ? '<i data-lucide="captions" style="width:14px;height:14px;margin-right:4px;color:var(--text-muted);"></i>' : ''}
       <div class="track-icons">
-        <i data-lucide="${track.locked ? 'lock' : 'unlock'}" class="track-lock${track.locked ? ' active' : ''}"></i>
+        <i data-lucide="${isCaption ? 'plus-square' : (track.locked ? 'lock' : 'unlock')}" class="${isCaption ? 'add-caption-btn' : 'track-lock'}${track.locked && !isCaption ? ' active' : ''}" style="${isCaption ? 'cursor:pointer;' : ''}"></i>
         <i data-lucide="${track.visible ? 'eye' : 'eye-off'}" class="track-visibility${!track.visible ? ' active' : ''}"></i>
-        <i data-lucide="${track.muted ? 'volume-x' : 'volume-2'}" class="track-volume-icon${track.muted ? ' active' : ''}"></i>
+        ${!isCaption ? `<i data-lucide="${track.muted ? 'volume-x' : 'volume-2'}" class="track-volume-icon${track.muted ? ' active' : ''}"></i>` : ''}
       </div>
       <span style="font-size:9px;color:var(--text-muted);white-space:nowrap;overflow:hidden;">${track.name}</span>
     `;
@@ -182,11 +186,15 @@ export function renderClips() {
       const meta = IKState.getClipMeta ? IKState.getClipMeta(clip.id) : null;
       const displayName = meta?.name || clip.source_id || `Clip ${clip.id}`;
       const el = document.createElement('div');
-      el.className = `tl-clip${track.track_type === 'audio' ? ' tl-clip-audio' : ' tl-clip-video'}`;
+      const clipClass = track.track_type === 'audio' ? ' tl-clip-audio' : track.track_type === 'caption' ? ' tl-clip-caption' : ' tl-clip-video';
+      el.className = `tl-clip${clipClass}`;
       el.dataset.clipId = String(clip.id);
       setClipDimensions(el, clip, dur, tw);
 
-      if (track.track_type === 'video') {
+      if (track.track_type === 'caption') {
+        const txt = (clip.caption_text || '').slice(0, 60);
+        el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:4px;overflow:hidden;"><i data-lucide="type" style="width:10px;height:10px;flex-shrink:0;"></i> ${txt || '&lt;empty&gt;'}</span>`;
+      } else if (track.track_type === 'video') {
         if (meta?.isReal && meta?.thumbnails && meta.thumbnails.length > 0) {
           const w = parseFloat(el.style.left || '0') + ((clip.timeline_end_us - clip.timeline_start_us) / 1_000_000 / dur) * tw;
           const count = Math.max(1, Math.floor(Math.max(1, parseFloat(el.style.width) || tw) / 60));
@@ -218,9 +226,12 @@ export function renderClips() {
       lane.appendChild(el);
     }
 
-    if (track.clips.length === 0 && track.track_type === 'video') {
-      lane.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop video here</div>';
-    }
+      if (track.clips.length === 0 && track.track_type === 'video') {
+        lane.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop video here</div>';
+      }
+      if (track.clips.length === 0 && track.track_type === 'caption') {
+        lane.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Click + to add a caption</div>';
+      }
 
     trackEl.appendChild(gutter);
     trackEl.appendChild(lane);
@@ -381,6 +392,8 @@ export function initTimelineUI() {
       window.lucide.createIcons({ nodes: [icon] });
       IKState.setTrackProp(trackId, 'muted', isMuted);
       showToast(isMuted ? 'Track muted' : 'Track unmuted', isMuted ? 'volume-x' : 'volume-2');
+    } else if (iconType === 'plus-square') {
+      addCaptionAtPlayhead();
     }
   });
 
@@ -398,6 +411,13 @@ export function initTimelineUI() {
     IKState.addTrack('audio');
     window.dispatchEvent(new CustomEvent('ikl:reRender'));
     showToast('Audio track added', 'plus');
+  });
+  $('#add-caption-track')?.addEventListener('click', () => {
+    const IKState = (window as any).IKState;
+    if (!IKState || !IKState.isReady()) return;
+    IKState.addTrack('caption');
+    window.dispatchEvent(new CustomEvent('ikl:reRender'));
+    showToast('Caption track added', 'plus');
   });
 
   initTimelineDrop();
