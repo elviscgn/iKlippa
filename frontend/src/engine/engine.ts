@@ -125,6 +125,8 @@ let videoDurationMs = 0;
 let isExporting = false;
 let exportFrames: Array<{ ms: number; imageData: ImageData }> = [];
 
+let isBuffering = false;
+
 // ── Web Audio State ─────────────────────────────────────────────────────
 let audioCtx: AudioContextPort | null = null;
 let pendingAudio = new Map<number, AudioBuffer>();
@@ -801,6 +803,42 @@ export function renderLoop(ts: number): void {
   const inGap = activeNow.length === 0;
   if (inGap) framesAhead = 100;
 
+  // Buffering detection: freeze playhead when decoder falls behind
+  if (!inGap && isPlaying) {
+    if (framesAhead === 0) {
+      if (!isBuffering) {
+        isBuffering = true;
+        log('play', `buffering started — freezing playhead @ ${playheadMs.toFixed(0)}ms`);
+        stopAllAudioNodes();
+        nextAudioStartTime = 0;
+        if (window.onBuffering) window.onBuffering(true);
+      }
+      // Still send sync so the worker keeps decoding
+      const bufSyncSig = `${Math.round(sourcePlayheadMs / 100)}|1|0|${mapRes?.sourceId ?? ''}`;
+      if (bufSyncSig !== lastSyncSig) {
+        lastSyncSig = bufSyncSig;
+        worker!.postMessage({
+          type: 'sync',
+          playheadMs: sourcePlayheadMs,
+          isPlaying: true,
+          framesAhead: 0,
+          sourceId: mapRes?.sourceId,
+        });
+      }
+      lastRafTs = ts; // prevent playhead advancing while frozen
+      rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
+      return;
+    }
+    if (isBuffering && framesAhead >= 2) {
+      isBuffering = false;
+      log('play', 'buffering ended — resuming playback');
+      audioPlayStartCtxTime = audioCtx!.currentTime;
+      audioPlayStartMs = playheadMs;
+      nextAudioStartTime = 0;
+      if (window.onBuffering) window.onBuffering(false);
+    }
+  }
+
   const playingNow = isPlaying && !inGap;
   const syncSig = `${Math.round(sourcePlayheadMs / 100)}|${playingNow ? 1 : 0}|${framesAhead >= 15 ? 1 : 0}|${mapRes?.sourceId ?? ''}`;
   if (syncSig !== lastSyncSig) {
@@ -1023,6 +1061,10 @@ export const __TEST_HOOKS__ = {
   set seekTargetMs(val: number) { seekTargetMs = val; },
   get lastSyncSig() { return lastSyncSig; },
   set lastSyncSig(val: string) { lastSyncSig = val; },
+  get pendingFramesBySource() { return pendingFramesBySource; },
+  set pendingFramesBySource(val: Map<string, Map<number, ImageData>>) { pendingFramesBySource = val; },
+  get isBuffering() { return isBuffering; },
+  set isBuffering(val: boolean) { isBuffering = val; },
   setTimeline,
   getProjectJson,
 };
@@ -1087,6 +1129,7 @@ async function startPlayback(opts?: { fromSeek?: boolean }): Promise<void> {
     `startPlayback @ ${playheadMs.toFixed(0)}ms — pendingFrames: ${pendingFrames.size}, pendingAudio: ${pendingAudio.size}`,
   );
   isPlaying = true;
+  isBuffering = false;
   lastRafTs = null;
   await initAudio();
   audioPlayStartCtxTime = audioCtx!.currentTime;
@@ -1119,6 +1162,7 @@ function pausePlayback(): void {
   if (!isPlaying && rafHandle === null) return;
   log('play', `pausePlayback @ ${playheadMs.toFixed(0)}ms`);
   isPlaying = false;
+  isBuffering = false;
   lastRafTs = null;
   if (rafHandle) {
     getPorts().rafScheduler.cancelAnimationFrame(rafHandle);
@@ -1130,6 +1174,7 @@ function pausePlayback(): void {
   lastScheduledChunkMs = -1;
   syncWorkerState();
   if (window.onPlaybackPaused) window.onPlaybackPaused();
+  if (window.onBuffering) window.onBuffering(false);
 }
 
 export function togglePlayback(): boolean {
