@@ -553,7 +553,9 @@ async function setupDecoder(sourceId: string, state: SourceState) {
 
       refreshFrameView();
 
-      if (videoFrame.format === null) {
+      const fmt = videoFrame.format;
+      const ts = videoFrame.timestamp;
+      if (fmt === null) {
         offscreenCtx!.drawImage(videoFrame, 0, 0);
         videoFrame.close();
         const imgData = offscreenCtx!.getImageData(0, 0, width, height);

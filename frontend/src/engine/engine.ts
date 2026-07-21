@@ -1317,7 +1317,7 @@ export async function exportVideo(
   }
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i]!;
-    expCtx.putImageData(imageData, 0, 0, 0, 0, sourceVideoWidth, sourceVideoHeight);
+    expCtx.putImageData(imageData, 0, 0);
 
     // Resize if needed
     if (needsResize) {
