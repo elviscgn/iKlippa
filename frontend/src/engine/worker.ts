@@ -557,16 +557,13 @@ async function setupDecoder(sourceId: string, state: SourceState) {
 
       refreshFrameView();
 
-      const fmt = videoFrame.format;
-      const ts = videoFrame.timestamp;
-      if (fmt === null) {
-        offscreenCtx!.drawImage(videoFrame, 0, 0);
-        videoFrame.close();
-        const imgData = offscreenCtx!.getImageData(0, 0, width, height);
-        frameView!.set(imgData.data);
-      } else {
-        await videoFrame.copyTo(frameView!, { format: 'RGBA' });
-        videoFrame.close();
+      // Always use offscreen canvas — copyTo can produce wrong colors
+      offscreenCtx!.drawImage(videoFrame, 0, 0);
+      videoFrame.close();
+      const imgData = offscreenCtx!.getImageData(0, 0, width, height);
+      frameView!.set(imgData.data);
+      if (isDecodeAll && normalizedTsUs === 0) {
+        wlog('decode', `canvas frame: pixel[0]=${imgData.data[0]},${imgData.data[1]},${imgData.data[2]}`);
       }
 
       try {

@@ -393,8 +393,9 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
   }
   sourceFrames.set(msg.ms, img);
 
-  if (isExporting)
-    exportFrames.push({ ms: msg.ms, imageData: img });
+  if (msg.ms === 0 && isExporting) {
+    console.log(`[export] handleWorkerFrame ms=0, buffer.byteLength=${msg.buffer.byteLength}, first pixels: ${arr[0]},${arr[1]},${arr[2]},${arr[3]}`);
+  }
 
   // Fire pending thumbnail capture
   if (_pendingThumbCapture) {
