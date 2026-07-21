@@ -343,7 +343,10 @@ function handleDecodeAll(msg: { sourceId: string }) {
   decodeAllFrames(sid).catch((e) => wwarn('worker', 'decode_all failed', String(e)));
 }
 
+let isDecodeAll = false;
+
 async function decodeAllFrames(sourceId: string) {
+  isDecodeAll = true;
   const state = sourceStates.get(sourceId);
   if (!state || !state.decoder) return;
   if (state.decoder.state === 'closed') { await setupDecoder(sourceId, state); }
@@ -383,6 +386,7 @@ async function decodeAllFrames(sourceId: string) {
     i = batchEnd;
   }
   state.decoderSeeded = true;
+  isDecodeAll = false;
   wlog('worker', `decode_all [${sourceId}] — done, ${samples.length} samples decoded`);
 }
 
@@ -567,7 +571,7 @@ async function setupDecoder(sourceId: string, state: SourceState) {
       }
 
       let gradeMs = 0;
-      if (!isWorkerPlaying) {
+      if (!isWorkerPlaying && !isDecodeAll) {
         const gradeStart = performance.now();
         try {
           wasmModule!.process_frame();
