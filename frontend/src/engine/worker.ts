@@ -348,12 +348,12 @@ async function decodeAllFrames(sourceId: string) {
   if (!state || !state.decoder) return;
   if (state.decoder.state === 'closed') { await setupDecoder(sourceId, state); }
   if (state.decoder.state !== 'configured') return;
-  if (!state.decoderSeeded) {
-    state.decoder.reset();
-    await state.decoder.configure(state.codecConfig);
-    state.globalStartOffsetUs = -1;
-    state.lastDecodedSampleIdx = -1;
-  }
+  // Always reset — decoder might be at EOF from a previous decode_all
+  state.decoder.reset();
+  await state.decoder.configure(state.codecConfig);
+  state.globalStartOffsetUs = -1;
+  state.lastDecodedSampleIdx = -1;
+  state.decoderSeeded = false;
   const { samples, file } = state;
   let startIdx = state.lastDecodedSampleIdx + 1;
   if (startIdx <= 0) {

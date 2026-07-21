@@ -1256,9 +1256,14 @@ export async function exportVideo(
 
   // Wait for all frames to arrive from the worker's continuous decode
   let waited = 0;
+  let _lastLogLen = 0;
   while (exportFrames.length < totalFrames * 0.95 && waited < 120000) {
     await new Promise((r) => setTimeout(r, 100));
     waited += 100;
+    if (exportFrames.length !== _lastLogLen) {
+      console.log(`[export] ${exportFrames.length}/${totalFrames} frames after ${(waited/1000).toFixed(0)}s`);
+      _lastLogLen = exportFrames.length;
+    }
     if (onProgress && waited % 300 === 0) {
       onProgress(Math.min(0.4, exportFrames.length / totalFrames * 0.4));
     }
