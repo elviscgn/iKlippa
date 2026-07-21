@@ -1,5 +1,6 @@
 import type {
   VideoEncoderFactory,
+  AudioEncoderFactory,
   AudioContextFactory,
   CanvasFactory,
   OffscreenCanvasFactory,
@@ -94,9 +95,16 @@ export const browserUrlFactory: UrlFactory = {
   },
 };
 
+export const browserAudioEncoderFactory: AudioEncoderFactory = {
+  create(output, error) {
+    return new AudioEncoder({ output, error });
+  },
+};
+
 export const browserEnginePorts: EnginePorts = {
   videoEncoderFactory: browserVideoEncoderFactory,
   videoDecoderFactory: browserVideoDecoderFactory,
+  audioEncoderFactory: browserAudioEncoderFactory,
   audioDecoderFactory: browserAudioDecoderFactory,
   audioContextFactory: browserAudioContextFactory,
   canvasFactory: browserCanvasFactory,

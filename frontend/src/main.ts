@@ -15,6 +15,7 @@ import {
   seekTo,
   setColorGrade,
   setPerClipGrade,
+  syncAllTrackAudio,
   exportVideo,
   perf,
   captureThumbnailFromBuffer,
@@ -176,6 +177,8 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
 // ── Sync Rust project on any state mutation ──────────────────────────────
 window.addEventListener('ikl:reRender', () => {
   syncTimelineToRust();
+  syncAllTrackAudio();
+  autoSave();
 });
 
 // ── Trim applied: update duration ───────────────────────────────────────

@@ -10,6 +10,8 @@ class FakeCanvasRenderingContext2D {
   _globalCompositeOperation: string = 'source-over';
   _globalAlpha: number = 1;
   _fillStyle: string = '#000';
+  _font: string = '';
+  _textAlign: string = 'start';
 
   get globalCompositeOperation(): string { return this._globalCompositeOperation; }
   set globalCompositeOperation(val: string) { this._globalCompositeOperation = val; }
@@ -20,11 +22,23 @@ class FakeCanvasRenderingContext2D {
   get fillStyle(): string { return this._fillStyle; }
   set fillStyle(val: string) { this._fillStyle = val; }
 
-  putImageData(imageData: ImageData, dx: number, dy: number): void {
+  get font(): string { return this._font; }
+  set font(val: string) { this._font = val; }
+
+  get textAlign(): string { return this._textAlign; }
+  set textAlign(val: string) { this._textAlign = val; }
+
+  fillText(_text: string, _x: number, _y: number): void {}
+
+  putImageData(imageData: ImageData, dx: number, dy: number, _dx2?: number, _dy2?: number, _dw?: number, _dh?: number): void {
     this._lastPut = { data: imageData, x: dx, y: dy };
   }
 
-  drawImage(_source: CanvasImageSource, _dx: number, _dy: number): void {}
+  getImageData(_x: number, _y: number, w: number, h: number): ImageData {
+    return { data: new Uint8ClampedArray(w * h * 4), width: w, height: h, colorSpace: 'srgb' } as unknown as ImageData;
+  }
+
+  drawImage(_source: CanvasImageSource, _dx: number, _dy: number, _dw?: number, _dh?: number, _sx?: number, _sy?: number, _sw?: number, _sh?: number): void {}
 
   fillRect(x: number, y: number, w: number, h: number): void {
     this._fillRects.push({ x, y, w, h });
