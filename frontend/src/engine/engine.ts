@@ -1260,6 +1260,14 @@ export async function exportVideo(
   const initMap = mapTimelineToSource(0);
   worker!.postMessage({ type: 'decode_all', sourceId: initMap?.sourceId });
 
+  // Merge frames decoded before export (from normal playback) into exportFrames
+  for (const [ms, img] of pendingFrames) {
+    if (!exportFrames.some((f) => f.ms === ms)) {
+      exportFrames.push({ ms, imageData: img });
+    }
+  }
+  console.log(`[export] ${exportFrames.length} frames after merge`);
+
   // Wait for all frames to arrive from the worker's continuous decode.
   // Stop when no new frames for 3s (actual frame count may differ from 30fps estimate).
   let waited = 0;
