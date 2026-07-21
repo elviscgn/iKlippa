@@ -1336,6 +1336,12 @@ export async function exportVideo(
       codedHeight: sourceVideoHeight,
       timestamp: ms * 1000,
       duration: frameMs * 1000,
+      colorSpace: {
+        primaries: 'bt709',
+        transfer: 'bt709',
+        matrix: 'bt709',
+        fullRange: true,
+      },
     });
     encoder.encode(frame, { keyFrame: i % 60 === 0 });
     frame.close();
