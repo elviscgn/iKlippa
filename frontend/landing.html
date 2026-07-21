@@ -1,0 +1,3119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iKlippa — Pro video editing on the laptop you already own</title>
+    <meta
+      name="description"
+      content="iKlippa is a browser-native, AI-powered short-form video editor that runs at pro performance on a dual-core, 8GB RAM laptop. No install, no uploads, no foreign-currency subscription. Built in and for South Africa."
+    />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link
+      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-400-normal.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-500-normal.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-600-normal.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-700-normal.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-800-normal.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-400-normal.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-500-normal.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-600-normal.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-700-normal.css"
+      rel="stylesheet"
+    />
+    <style>
+      /* ============================================================
+   iKlippa — landing page
+   Palette: #060608 base · teal #0d9488 / #14b8a6 / #2dd4bf
+   Plus Jakarta Sans + JetBrains Mono · sharp dev-tool radii
+   ============================================================ */
+      :root {
+        --bg: #060608;
+        --bg-2: #0a0a0d;
+        --panel: rgba(18, 18, 20, 0.85);
+        --surface: rgba(30, 30, 35, 0.6);
+        --card: rgba(255, 255, 255, 0.04);
+        --card-hover: rgba(255, 255, 255, 0.08);
+        --border: rgba(255, 255, 255, 0.06);
+        --border-strong: rgba(255, 255, 255, 0.12);
+        --border-active: rgba(13, 148, 136, 0.5);
+        --text: #f8fafc;
+        --text-2: #cbd5e1;
+        --muted: #64748b;
+        --teal: #0d9488;
+        --teal-b: #14b8a6;
+        --teal-l: #2dd4bf;
+        --teal-xl: #5eead4;
+        --teal-soft: rgba(13, 148, 136, 0.15);
+        --teal-softer: rgba(13, 148, 136, 0.08);
+        --teal-line: rgba(13, 148, 136, 0.4);
+        --radius-lg: 10px;
+        --radius-md: 6px;
+        --radius-sm: 4px;
+        --maxw: 1160px;
+        --frame: url("https://image.qwenlm.ai/public_source/4ac2c8ab-0401-404a-a38a-eeb80a365f39/128861268-f6a8-47a8-8d33-d2c27f0b0594.png");
+        --mono:
+          "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        --ease: cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 88px;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          "Plus Jakarta Sans",
+          -apple-system,
+          system-ui,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        overflow-x: hidden;
+      }
+      img {
+        display: block;
+        max-width: 100%;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      ::selection {
+        background: rgba(13, 148, 136, 0.45);
+        color: #fff;
+      }
+
+      /* ambient background glow */
+      .bg-glow {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background:
+          radial-gradient(
+            820px 520px at 88% -4%,
+            rgba(13, 148, 136, 0.1),
+            transparent 60%
+          ),
+          radial-gradient(
+            760px 560px at 4% 12%,
+            rgba(20, 184, 166, 0.06),
+            transparent 60%
+          ),
+          radial-gradient(
+            900px 700px at 50% 120%,
+            rgba(13, 148, 136, 0.05),
+            transparent 60%
+          );
+      }
+
+      .wrap {
+        width: min(var(--maxw), 92%);
+        margin: 0 auto;
+      }
+      .section {
+        padding: 72px 0;
+      }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--teal-l);
+        margin-bottom: 18px;
+      }
+      .eyebrow .dot {
+        margin: 0;
+      }
+      h2.title {
+        font-size: clamp(27px, 4.6vw, 44px);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1.12;
+      }
+      h2.title em {
+        font-style: normal;
+        background: linear-gradient(90deg, var(--teal-b), var(--teal-l));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .lead {
+        color: var(--text-2);
+        font-size: clamp(15px, 1.7vw, 18px);
+        max-width: 62ch;
+        margin-top: 16px;
+      }
+      .grad {
+        background: linear-gradient(90deg, var(--teal-b), var(--teal-l));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      /* dot indicator motif */
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--teal-l);
+        flex: none;
+        box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.5);
+        animation: pulse 2.6s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.45);
+          opacity: 1;
+        }
+        50% {
+          box-shadow: 0 0 0 5px rgba(45, 212, 191, 0);
+          opacity: 0.6;
+        }
+      }
+
+      /* buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 14.5px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition:
+          transform 150ms var(--ease),
+          box-shadow 150ms var(--ease),
+          background 150ms var(--ease),
+          border-color 150ms var(--ease);
+      }
+      .btn svg {
+        width: 16px;
+        height: 16px;
+      }
+      .btn-primary {
+        background: var(--teal-b);
+        color: #02231d;
+        box-shadow:
+          0 0 0 1px rgba(20, 184, 166, 0.4),
+          0 10px 30px -10px rgba(20, 184, 166, 0.45);
+      }
+      .btn-primary:hover {
+        background: var(--teal-l);
+        transform: translateY(-1px);
+        box-shadow:
+          0 0 0 1px rgba(45, 212, 191, 0.55),
+          0 16px 40px -10px rgba(45, 212, 191, 0.5);
+      }
+      .btn-ghost {
+        background: var(--card);
+        border-color: var(--border-strong);
+        color: var(--text);
+      }
+      .btn-ghost:hover {
+        background: var(--card-hover);
+        transform: translateY(-1px);
+      }
+
+      /* generic card */
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 26px;
+        transition:
+          transform 200ms var(--ease),
+          border-color 200ms var(--ease),
+          background 200ms var(--ease);
+      }
+      .card:hover {
+        border-color: var(--border-active);
+        background: var(--card-hover);
+      }
+
+      /* reveal-on-scroll */
+      .reveal {
+        opacity: 0;
+        transform: translateY(24px);
+        transition:
+          opacity 0.7s ease,
+          transform 0.8s var(--ease);
+        transition-delay: var(--d, 0s);
+      }
+      .reveal.in-view {
+        opacity: 1;
+        transform: none;
+      }
+
+      /* meter animation */
+      .meter {
+        position: relative;
+        height: 6px;
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+      .meter i {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 0;
+        border-radius: 99px;
+        background: linear-gradient(90deg, var(--teal), var(--teal-l));
+        transition: width 1.2s var(--ease) 0.25s;
+      }
+      .in-view .meter i {
+        width: var(--w);
+      }
+
+      /* ============================================================ NAV */
+      .nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: rgba(6, 6, 8, 0.66);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border-bottom: 1px solid transparent;
+        transition:
+          border-color 150ms var(--ease),
+          background 150ms var(--ease);
+      }
+      .nav.scrolled {
+        border-color: var(--border);
+        background: rgba(6, 6, 8, 0.88);
+      }
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+      }
+      .logo {
+        display: inline-flex;
+        align-items: center;
+      }
+      .logo-img {
+        height: 30px;
+        width: auto;
+        display: block;
+      }
+      .nav-links {
+        display: none;
+        flex-direction: column;
+        gap: 4px;
+        position: fixed;
+        top: 64px;
+        left: 0;
+        right: 0;
+        background: rgba(6, 6, 8, 0.97);
+        backdrop-filter: blur(14px);
+        border-bottom: 1px solid var(--border);
+        padding: 14px 6%;
+        transform: translateY(-10px);
+        opacity: 0;
+        pointer-events: none;
+        transition: 0.25s;
+      }
+      .nav-links.open {
+        transform: none;
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .nav-links a {
+        padding: 12px 6px;
+        color: var(--text-2);
+        font-weight: 600;
+        font-size: 15px;
+        border-radius: var(--radius-md);
+      }
+      .nav-links a:hover {
+        color: var(--text);
+      }
+      .nav-links .btn {
+        margin-top: 8px;
+      }
+      .burger {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 5px;
+        background: none;
+        border: 0;
+        cursor: pointer;
+        padding: 8px;
+      }
+      .burger span {
+        width: 22px;
+        height: 2px;
+        background: var(--text);
+        border-radius: 2px;
+        transition: 0.28s;
+      }
+      .burger.active span:nth-child(1) {
+        transform: translateY(7px) rotate(45deg);
+      }
+      .burger.active span:nth-child(2) {
+        opacity: 0;
+      }
+      .burger.active span:nth-child(3) {
+        transform: translateY(-7px) rotate(-45deg);
+      }
+
+      /* ============================================================ HERO */
+      .hero {
+        position: relative;
+        padding: 124px 0 70px;
+        overflow: hidden;
+      }
+      .hero::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+          linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.022) 1px,
+            transparent 1px
+          );
+        background-size: 48px 48px;
+        -webkit-mask-image: radial-gradient(
+          70% 60% at 60% 30%,
+          #000,
+          transparent 80%
+        );
+        mask-image: radial-gradient(70% 60% at 60% 30%, #000, transparent 80%);
+      }
+      .hero-grid {
+        display: grid;
+        gap: 44px;
+        align-items: center;
+      }
+      .hero h1 {
+        font-size: clamp(36px, 6vw, 60px);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.04;
+      }
+      .hero h1 em {
+        font-style: normal;
+      }
+      .tagline {
+        margin: 22px 0 16px;
+        padding: 14px 18px;
+        border-left: 2px solid var(--teal);
+        background: linear-gradient(90deg, var(--teal-soft), transparent 70%);
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
+        font-size: clamp(16px, 1.9vw, 19px);
+        font-weight: 600;
+        color: #e6faf6;
+        line-height: 1.45;
+      }
+      .hero .sub {
+        color: var(--text-2);
+        font-size: clamp(15px, 1.7vw, 17.5px);
+        max-width: 54ch;
+      }
+      .hero-cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 26px;
+      }
+      .proof {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+        margin-top: 22px;
+      }
+      .proof span {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 6px 11px;
+        background: var(--card);
+      }
+      .proof svg {
+        width: 13px;
+        height: 13px;
+        color: var(--teal-l);
+        flex: none;
+      }
+
+      /* ---- editor mock ---- */
+      .mock-wrap {
+        position: relative;
+      }
+      .editor-mock {
+        background: #0a0a0c;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        box-shadow:
+          0 36px 90px -34px rgba(0, 0, 0, 0.85),
+          0 0 0 1px rgba(13, 148, 136, 0.06),
+          0 0 100px -44px rgba(13, 148, 136, 0.3);
+      }
+      .mock-top {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 42px;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .mock-dots {
+        display: flex;
+        gap: 6px;
+      }
+      .mock-dots i {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.14);
+      }
+      .mock-title {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 500;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mock-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        border-radius: var(--radius-sm);
+        padding: 4px 8px;
+        border: 1px solid var(--border);
+      }
+      .chip-granite {
+        color: var(--teal-l);
+        border-color: var(--teal-line);
+        background: var(--teal-soft);
+      }
+      .chip-score {
+        color: var(--text-2);
+      }
+      .chip-score b {
+        color: var(--teal-l);
+      }
+      .chip-score .meter {
+        width: 32px;
+        height: 4px;
+      }
+      .mock-body {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+      .mock-main {
+        min-width: 0;
+      }
+      .preview {
+        position: relative;
+        aspect-ratio: 16/9;
+        background: #000;
+        overflow: hidden;
+      }
+      .preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .preview::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          180deg,
+          transparent 55%,
+          rgba(0, 0, 0, 0.55)
+        );
+      }
+      .preview .cap {
+        position: absolute;
+        left: 50%;
+        bottom: 9%;
+        transform: translateX(-50%);
+        z-index: 2;
+        background: rgba(0, 0, 0, 0.62);
+        padding: 5px 12px;
+        border-radius: var(--radius-sm);
+        font-weight: 800;
+        font-size: clamp(11px, 2.4vw, 14px);
+        letter-spacing: 0.01em;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+      .preview .cap em {
+        color: var(--teal-l);
+        font-style: normal;
+      }
+      .preview .tc {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        z-index: 2;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 3px 8px;
+        border-radius: var(--radius-sm);
+        color: #fff;
+      }
+      .preview .res {
+        position: absolute;
+        top: 10px;
+        left: 12px;
+        z-index: 2;
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 3px 8px;
+        border-radius: var(--radius-sm);
+        color: var(--text-2);
+      }
+
+      /* timeline */
+      .timeline {
+        position: relative;
+        padding: 10px 12px 14px;
+        border-top: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.3);
+      }
+      .tl-ruler {
+        display: flex;
+        justify-content: space-between;
+        font-family: var(--mono);
+        font-size: 9px;
+        color: var(--muted);
+        padding: 0 0 6px 30px;
+      }
+      .tl-track {
+        display: flex;
+        align-items: center;
+        height: 24px;
+        margin: 3px 0;
+      }
+      .tl-track.v1 {
+        height: 34px;
+      }
+      .tl-label {
+        width: 30px;
+        flex: none;
+        font-family: var(--mono);
+        font-size: 9px;
+        font-weight: 600;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+      }
+      .tl-clips {
+        position: relative;
+        flex: 1;
+        height: 100%;
+      }
+      .clip {
+        position: absolute;
+        top: 0;
+        height: 100%;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-strong);
+        overflow: hidden;
+      }
+      .clip-vid {
+        background-image: var(--frame);
+        background-size: cover;
+      }
+      .clip-vid::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          90deg,
+          rgba(13, 148, 136, 0.18),
+          rgba(0, 0, 0, 0.4)
+        );
+      }
+      .clip-cap {
+        background: rgba(45, 212, 191, 0.1);
+        border-color: rgba(45, 212, 191, 0.35);
+        display: grid;
+        place-items: center;
+        font-family: var(--mono);
+        font-size: 8px;
+        font-weight: 600;
+        color: var(--teal-xl);
+        letter-spacing: 0.05em;
+      }
+      .clip-aud {
+        background: var(--teal-soft);
+        border-color: var(--teal-line);
+        color: var(--teal-b);
+      }
+      .clip-mus {
+        background: rgba(45, 212, 191, 0.12);
+        border-color: rgba(45, 212, 191, 0.4);
+        color: var(--teal-l);
+      }
+      .wave {
+        display: flex;
+        align-items: center;
+        gap: 1px;
+        height: 100%;
+        padding: 4px 5px;
+      }
+      .wave i {
+        flex: 1;
+        min-width: 1px;
+        background: currentColor;
+        border-radius: 1px;
+        opacity: 0.85;
+      }
+      .playhead {
+        position: absolute;
+        top: 30px;
+        bottom: 12px;
+        width: 2px;
+        background: var(--teal-l);
+        box-shadow: 0 0 8px rgba(45, 212, 191, 0.8);
+        left: 8%;
+        animation: sweep 13s ease-in-out infinite alternate;
+      }
+      .playhead::before {
+        content: "";
+        position: absolute;
+        top: -3px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 9px;
+        height: 9px;
+        background: var(--teal-l);
+        clip-path: polygon(0 0, 100% 0, 50% 100%);
+      }
+      @keyframes sweep {
+        from {
+          left: 8%;
+        }
+        to {
+          left: 90%;
+        }
+      }
+
+      /* director side panel */
+      .mock-side {
+        display: none;
+        border-top: 1px solid var(--border);
+        background: #08080b;
+        padding: 12px;
+      }
+      .side-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 10px;
+      }
+      .side-head .model {
+        margin-left: auto;
+        font-family: var(--mono);
+        font-size: 9px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 2px 6px;
+      }
+      .side-chat {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .msg {
+        font-size: 11px;
+        line-height: 1.4;
+        padding: 7px 10px;
+        border-radius: var(--radius-md);
+        max-width: 92%;
+      }
+      .msg-you {
+        align-self: flex-end;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+      }
+      .msg-ai {
+        align-self: flex-start;
+        background: var(--teal-soft);
+        border: 1px solid var(--teal-line);
+        color: #e6faf6;
+      }
+      .msg-ai b {
+        color: var(--teal-l);
+      }
+      .side-input {
+        margin-top: 11px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-md);
+        padding: 8px 12px;
+        font-size: 10.5px;
+        color: var(--muted);
+      }
+      .side-input kbd {
+        font-family: var(--mono);
+        background: rgba(255, 255, 255, 0.07);
+        border-radius: var(--radius-sm);
+        padding: 1px 5px;
+        font-weight: 600;
+        color: var(--text-2);
+      }
+      .caret {
+        width: 1.5px;
+        height: 12px;
+        background: var(--teal-l);
+        animation: blink 1.1s steps(1) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+
+      /* floating chips */
+      .float-chip {
+        display: none;
+        position: absolute;
+        z-index: 3;
+        align-items: center;
+        gap: 8px;
+        background: rgba(10, 10, 13, 0.92);
+        border: 1px solid var(--border-strong);
+        backdrop-filter: blur(8px);
+        border-radius: var(--radius-md);
+        padding: 9px 13px;
+        font-size: 12px;
+        font-weight: 600;
+        box-shadow: 0 14px 40px -16px rgba(0, 0, 0, 0.8);
+      }
+      .float-chip kbd {
+        font-family: var(--mono);
+        color: var(--teal-l);
+        font-weight: 600;
+      }
+      .float-chip .ok {
+        color: var(--teal-l);
+      }
+      .float-chip .vthumb {
+        width: 22px;
+        height: 34px;
+        border-radius: var(--radius-sm);
+        background-image: var(--frame);
+        background-size: cover;
+        background-position: 50% 25%;
+        flex: none;
+      }
+      .fc-1 {
+        top: -16px;
+        right: 6%;
+        animation: floaty 7s ease-in-out infinite alternate;
+      }
+      .fc-2 {
+        bottom: -18px;
+        left: -14px;
+        animation: floaty 8s ease-in-out infinite alternate-reverse;
+      }
+      @keyframes floaty {
+        from {
+          transform: translateY(-6px);
+        }
+        to {
+          transform: translateY(6px);
+        }
+      }
+
+      /* ============================================================ PROBLEM */
+      .problem-stats {
+        display: grid;
+        gap: 18px;
+        margin: 34px 0;
+      }
+      .pstat {
+        padding: 26px;
+      }
+      .pstat .big {
+        font-size: clamp(34px, 6vw, 52px);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        background: linear-gradient(90deg, var(--teal-b), var(--teal-l));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .pstat .lbl {
+        color: var(--text-2);
+        margin-top: 12px;
+        font-size: 14.5px;
+      }
+      .weekbar {
+        margin-top: 16px;
+      }
+      .weekbar .meter {
+        height: 10px;
+      }
+      .weekbar small {
+        display: block;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .barriers {
+        display: grid;
+        gap: 16px;
+      }
+      .barrier .ic {
+        width: 42px;
+        height: 42px;
+        border-radius: var(--radius-md);
+        display: grid;
+        place-items: center;
+        margin-bottom: 16px;
+        background: var(--teal-soft);
+        border: 1px solid var(--teal-line);
+        color: var(--teal-l);
+      }
+      .barrier .ic svg {
+        width: 21px;
+        height: 21px;
+      }
+      .barrier h3 {
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .barrier p {
+        color: var(--text-2);
+        font-size: 14px;
+        margin-top: 8px;
+      }
+      .closing {
+        margin-top: 34px;
+        padding: 20px 22px;
+        border-left: 2px solid var(--teal);
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
+        background: linear-gradient(90deg, var(--teal-soft), transparent 75%);
+        font-size: clamp(15px, 1.8vw, 18px);
+        font-weight: 600;
+        color: #e6faf6;
+      }
+
+      /* ============================================================ HOW */
+      .steps {
+        display: grid;
+        gap: 18px;
+        margin-top: 38px;
+        position: relative;
+      }
+      .step {
+        display: flex;
+        gap: 18px;
+        padding: 24px;
+      }
+      .step .num {
+        flex: none;
+        width: 46px;
+        height: 46px;
+        border-radius: var(--radius-md);
+        display: grid;
+        place-items: center;
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 17px;
+        color: var(--teal-l);
+        background: var(--teal-soft);
+        border: 1px solid var(--teal-line);
+      }
+      .step .ic {
+        width: 38px;
+        height: 38px;
+        border-radius: var(--radius-md);
+        display: grid;
+        place-items: center;
+        margin-bottom: 12px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        color: var(--teal-l);
+      }
+      .step .ic svg {
+        width: 19px;
+        height: 19px;
+      }
+      .step h3 {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .step p {
+        color: var(--text-2);
+        font-size: 14.5px;
+        margin-top: 8px;
+      }
+      .unlock {
+        margin-top: 22px;
+        display: grid;
+        gap: 26px;
+        align-items: center;
+        padding: 30px;
+      }
+      .unlock .eyebrow {
+        margin-bottom: 12px;
+      }
+      .unlock h3 {
+        font-size: clamp(20px, 2.6vw, 26px);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+      }
+      .unlock p {
+        color: var(--text-2);
+        margin-top: 12px;
+        font-size: 14.5px;
+      }
+      .load-compare {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .load-row {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 10px 14px;
+        align-items: center;
+      }
+      .load-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-2);
+      }
+      .load-track {
+        grid-column: 1/-1;
+        height: 14px;
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.06);
+        overflow: hidden;
+      }
+      .load-track i {
+        display: block;
+        height: 100%;
+        width: 0;
+        border-radius: 99px;
+        transition: width 1.3s var(--ease) 0.2s;
+      }
+      .load-track i.fast {
+        background: linear-gradient(90deg, var(--teal), var(--teal-l));
+      }
+      .load-track i.slow {
+        background: linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.16),
+          rgba(255, 255, 255, 0.3)
+        );
+      }
+      .in-view .load-track i {
+        width: var(--w);
+      }
+      .load-val {
+        grid-column: 1/-1;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .load-val b {
+        color: var(--teal-l);
+      }
+      .load-cap {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+
+      /* ============================================================ FEATURES */
+      .feat-grid {
+        display: grid;
+        gap: 16px;
+        margin-top: 38px;
+      }
+      .feat .ic {
+        width: 44px;
+        height: 44px;
+        border-radius: var(--radius-md);
+        display: grid;
+        place-items: center;
+        margin-bottom: 16px;
+        background: var(--teal-soft);
+        border: 1px solid var(--teal-line);
+        color: var(--teal-l);
+      }
+      .feat .ic svg {
+        width: 21px;
+        height: 21px;
+      }
+      .feat h3 {
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+      }
+      .feat p {
+        color: var(--text-2);
+        font-size: 14px;
+        margin-top: 8px;
+      }
+      .badge {
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #02231d;
+        background: var(--teal-b);
+        border-radius: var(--radius-sm);
+        padding: 3px 8px;
+      }
+      .feat-viz {
+        margin-top: 18px;
+        height: 54px;
+        border-radius: var(--radius-md);
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid var(--border);
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+      }
+      .feat-viz.tall {
+        height: 64px;
+      }
+      /* director mini pill viz */
+      .pill-viz {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+      }
+      .pill-viz .cmd {
+        font-family: var(--mono);
+        font-weight: 600;
+        color: var(--teal-l);
+        font-size: 12px;
+      }
+      .pill-viz .ok {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--text-2);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .pill-viz .ok svg {
+        width: 13px;
+        height: 13px;
+        color: var(--teal-l);
+      }
+      /* trim viz */
+      .trim-viz {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        height: 100%;
+      }
+      .trim-viz .wave {
+        flex: 1;
+        color: var(--teal-b);
+      }
+      .trim-viz .gap {
+        flex: none;
+        width: 46px;
+        height: 60%;
+        border: 1px dashed rgba(239, 107, 107, 0.5);
+        border-radius: var(--radius-sm);
+        display: grid;
+        place-items: center;
+        font-family: var(--mono);
+        font-size: 9px;
+        font-weight: 600;
+        color: #ef8a8a;
+        text-decoration: line-through;
+      }
+      /* beat viz */
+      .beat-viz {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      .beat-viz .wave {
+        color: var(--teal-l);
+        height: 100%;
+      }
+      .beats {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        justify-content: space-evenly;
+        align-items: stretch;
+      }
+      .beats b {
+        position: relative;
+        width: 1.5px;
+        background: rgba(45, 212, 191, 0.55);
+      }
+      .beats b::before {
+        content: "";
+        position: absolute;
+        top: 6px;
+        left: 50%;
+        transform: translateX(-50%) rotate(45deg);
+        width: 7px;
+        height: 7px;
+        background: var(--teal-l);
+        box-shadow: 0 0 8px var(--teal-l);
+      }
+      /* score viz */
+      .score-viz {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        width: 100%;
+      }
+      .score-viz .num {
+        font-family: var(--mono);
+        font-size: 26px;
+        font-weight: 700;
+        color: var(--teal-l);
+        line-height: 1;
+      }
+      .score-viz .meta {
+        flex: 1;
+      }
+      .score-viz .meta small {
+        display: block;
+        color: var(--muted);
+        font-size: 10.5px;
+        margin-bottom: 5px;
+      }
+      .score-viz .hint {
+        font-size: 11px;
+        color: var(--text-2);
+        margin-top: 7px;
+      }
+      /* curves viz */
+      .curves-viz {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .curves-viz svg {
+        height: 42px;
+        width: 64px;
+        flex: none;
+      }
+      .wheels {
+        display: flex;
+        gap: 8px;
+      }
+      .wheels span {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid;
+      }
+      /* caption viz */
+      .cap-viz {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        justify-content: center;
+        width: 100%;
+      }
+      .cap-viz span {
+        align-self: flex-start;
+        font-size: 11px;
+        font-weight: 800;
+        padding: 3px 9px;
+        border-radius: var(--radius-sm);
+        background: rgba(0, 0, 0, 0.45);
+      }
+      .cap-viz span:nth-child(2) {
+        color: var(--teal-l);
+        border: 1px solid var(--teal-line);
+      }
+      .roadmap {
+        margin-top: 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 16px 20px;
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius-md);
+        background: var(--card);
+        font-size: 13.5px;
+        color: var(--text-2);
+      }
+      .roadmap b {
+        color: var(--text);
+      }
+      .roadmap .soon {
+        margin-left: auto;
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--teal-l);
+        border: 1px solid var(--teal-line);
+        border-radius: var(--radius-sm);
+        padding: 3px 9px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .roadmap .soon .dot {
+        background: var(--teal-l);
+        box-shadow: 0 0 8px var(--teal-l);
+      }
+
+      /* ============================================================ DIRECTOR */
+      .director-grid {
+        display: grid;
+        gap: 34px;
+        align-items: center;
+        margin-top: 36px;
+      }
+      .quote {
+        margin: 22px 0;
+        padding: 18px 20px;
+        border-left: 2px solid var(--teal);
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
+        background: linear-gradient(90deg, var(--teal-soft), transparent 75%);
+        font-size: clamp(15px, 1.8vw, 18px);
+        font-weight: 600;
+        color: #e6faf6;
+        line-height: 1.5;
+      }
+      .cmds {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 18px;
+      }
+      .cmds span {
+        font-family: var(--mono);
+        font-weight: 600;
+        font-size: 12px;
+        color: var(--teal-l);
+        border: 1px solid var(--teal-line);
+        background: var(--teal-soft);
+        border-radius: var(--radius-sm);
+        padding: 6px 11px;
+      }
+      .chat {
+        background: #0a0a0c;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        box-shadow:
+          0 30px 80px -34px rgba(0, 0, 0, 0.8),
+          0 0 90px -44px rgba(13, 148, 136, 0.28);
+      }
+      .chat-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.02);
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .chat-head .model {
+        margin-left: 6px;
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 2px 7px;
+      }
+      .chat-head .live {
+        margin-left: auto;
+        font-size: 10px;
+        color: var(--teal-l);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 600;
+      }
+      .chatlog {
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .msg-row {
+        display: flex;
+        gap: 10px;
+        opacity: 0;
+        transform: translateY(12px);
+        transition:
+          opacity 0.5s ease,
+          transform 0.6s var(--ease);
+        transition-delay: var(--d, 0s);
+      }
+      .chatlog.in-view .msg-row {
+        opacity: 1;
+        transform: none;
+      }
+      .msg-row .av {
+        flex: none;
+        width: 24px;
+        height: 24px;
+        border-radius: var(--radius-sm);
+        display: grid;
+        place-items: center;
+        font-family: var(--mono);
+        font-size: 9px;
+        font-weight: 700;
+      }
+      .msg-row.you .av {
+        background: rgba(255, 255, 255, 0.07);
+        color: var(--text-2);
+      }
+      .msg-row.ai .av {
+        background: var(--teal-soft);
+        color: var(--teal-l);
+        border: 1px solid var(--teal-line);
+      }
+      .bubble {
+        font-size: 13.5px;
+        line-height: 1.5;
+        padding: 10px 13px;
+        border-radius: var(--radius-md);
+        max-width: 88%;
+      }
+      .msg-row.you .bubble {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .msg-row.ai .bubble {
+        background: var(--teal-soft);
+        border: 1px solid var(--teal-line);
+        color: #e6faf6;
+      }
+      .bubble .act {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 9px;
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--teal-l);
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid var(--teal-line);
+        border-radius: var(--radius-sm);
+        padding: 4px 9px;
+      }
+      .bubble .act svg {
+        width: 12px;
+        height: 12px;
+      }
+      .chat-input {
+        margin: 0 18px 18px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-md);
+        padding: 11px 16px;
+        font-size: 13px;
+        color: var(--muted);
+        background: rgba(0, 0, 0, 0.3);
+      }
+      .chat-input kbd {
+        font-family: var(--mono);
+        background: rgba(255, 255, 255, 0.07);
+        border-radius: var(--radius-sm);
+        padding: 1px 6px;
+        font-weight: 600;
+        color: var(--text-2);
+      }
+
+      /* ============================================================ STATS STRIP */
+      .stats-sec {
+        padding: 64px 0;
+      }
+      .stats-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 28px;
+      }
+      .stats-head h3 {
+        font-size: clamp(20px, 2.6vw, 26px);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .stats-head p {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        background: var(--card);
+      }
+      .stat {
+        padding: 28px 24px;
+        border-top: 1px solid var(--border);
+      }
+      .stat .n {
+        font-size: clamp(30px, 4.4vw, 42px);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        background: linear-gradient(90deg, var(--teal-b), var(--teal-xl));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .stat .t {
+        color: var(--text-2);
+        font-size: 14px;
+        margin-top: 10px;
+      }
+      .stat .t b {
+        color: var(--text);
+      }
+
+      /* ============================================================ PRICING */
+      .price-card {
+        max-width: 560px;
+        margin: 34px auto 0;
+        padding: 32px;
+        text-align: left;
+      }
+      .price-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .price-top h3 {
+        font-size: 22px;
+        font-weight: 800;
+      }
+      .tbd {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        color: var(--teal-l);
+        border: 1px dashed var(--teal-line);
+        border-radius: var(--radius-sm);
+        padding: 6px 12px;
+        background: var(--teal-soft);
+      }
+      .price-sub {
+        color: var(--text-2);
+        margin: 8px 0 22px;
+        font-size: 14px;
+      }
+      .price-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+      }
+      .price-list li {
+        display: flex;
+        gap: 11px;
+        align-items: flex-start;
+        font-size: 14.5px;
+        color: var(--text-2);
+      }
+      .price-list svg {
+        width: 18px;
+        height: 18px;
+        color: var(--teal-l);
+        flex: none;
+        margin-top: 2px;
+      }
+      .price-list li b {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .price-card .btn {
+        width: 100%;
+        margin-top: 26px;
+      }
+      .klippa-note {
+        max-width: 560px;
+        margin: 18px auto 0;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .klippa-note em {
+        color: var(--text-2);
+        font-style: normal;
+        font-weight: 600;
+      }
+
+      /* ============================================================ CTA */
+      .cta-sec {
+        text-align: center;
+        padding: 90px 0;
+      }
+      .cta-sec h2 {
+        font-size: clamp(30px, 5vw, 50px);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.08;
+      }
+      .cta-sec p {
+        color: var(--text-2);
+        max-width: 54ch;
+        margin: 16px auto 0;
+        font-size: clamp(15px, 1.7vw, 17px);
+      }
+      .cta-form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 440px;
+        margin: 30px auto 0;
+      }
+      .cta-form input {
+        width: 100%;
+        background: var(--card);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        padding: 14px 16px;
+        color: var(--text);
+        font-family: inherit;
+        font-size: 15px;
+        transition:
+          border-color 150ms var(--ease),
+          box-shadow 150ms var(--ease);
+      }
+      .cta-form input::placeholder {
+        color: var(--muted);
+      }
+      .cta-form input:focus {
+        outline: none;
+        border-color: var(--border-active);
+        box-shadow: 0 0 0 3px var(--teal-soft);
+      }
+      .cta-form .btn {
+        width: 100%;
+      }
+      .fine {
+        color: var(--muted);
+        font-size: 12.5px;
+        margin-top: 14px;
+      }
+      .form-success {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        border: 1px solid var(--teal-line);
+        background: var(--teal-soft);
+        border-radius: var(--radius-md);
+        padding: 18px 22px;
+        font-weight: 600;
+        color: #e6faf6;
+        animation: pop 0.4s var(--ease);
+      }
+      @keyframes pop {
+        from {
+          opacity: 0;
+          transform: scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      /* ============================================================ FOOTER */
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 48px 0 36px;
+      }
+      .foot-grid {
+        display: grid;
+        gap: 28px;
+      }
+      .foot-brand p {
+        color: var(--text-2);
+        font-size: 14px;
+        margin-top: 12px;
+        max-width: 34ch;
+      }
+      .foot-brand .logo-img {
+        height: 26px;
+      }
+      .foot-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 22px;
+      }
+      .foot-links a {
+        color: var(--text-2);
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .foot-links a:hover {
+        color: var(--teal-l);
+      }
+      .foot-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 7px 13px;
+      }
+      .foot-bottom {
+        margin-top: 34px;
+        padding-top: 22px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+
+      /* ============================================================ BREAKPOINTS */
+      @media (min-width: 560px) {
+        .cta-form {
+          flex-direction: row;
+        }
+        .cta-form .btn {
+          width: auto;
+          white-space: nowrap;
+        }
+        .feat-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+        .barriers {
+          grid-template-columns: 1fr 1fr;
+        }
+        .problem-stats {
+          grid-template-columns: 1fr 1fr;
+        }
+        .stats {
+          grid-template-columns: repeat(4, 1fr);
+        }
+        .stat {
+          border-top: none;
+          border-left: 1px solid var(--border);
+        }
+        .stat:nth-child(1) {
+          border-left: none;
+        }
+        .stat:nth-child(3) {
+          border-top: 1px solid var(--border);
+        }
+        .stat:nth-child(4) {
+          border-top: 1px solid var(--border);
+        }
+      }
+      @media (min-width: 760px) {
+        .section {
+          padding: 96px 0;
+        }
+        .mock-side {
+          display: block;
+          border-top: none;
+          border-left: 1px solid var(--border);
+        }
+        .mock-body {
+          grid-template-columns: 1fr 210px;
+        }
+        .float-chip {
+          display: inline-flex;
+        }
+        .barriers {
+          grid-template-columns: repeat(3, 1fr);
+        }
+        .feat-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+        .unlock {
+          grid-template-columns: 1.05fr 0.95fr;
+          gap: 40px;
+        }
+        .director-grid {
+          grid-template-columns: 1fr 1fr;
+          gap: 48px;
+        }
+        .foot-grid {
+          grid-template-columns: 1.4fr 1fr auto;
+          align-items: start;
+        }
+      }
+      @media (min-width: 900px) {
+        .burger {
+          display: none;
+        }
+        .nav-links {
+          display: flex;
+          flex-direction: row;
+          position: static;
+          transform: none;
+          opacity: 1;
+          pointer-events: auto;
+          background: none;
+          backdrop-filter: none;
+          border: 0;
+          padding: 0;
+          gap: 6px;
+          align-items: center;
+        }
+        .nav-links a {
+          padding: 8px 12px;
+          font-size: 14px;
+        }
+        .nav-links .btn {
+          margin: 0 0 0 8px;
+          padding: 9px 18px;
+        }
+        .hero-grid {
+          grid-template-columns: 1.05fr 0.95fr;
+          gap: 54px;
+        }
+        .hero {
+          padding: 148px 0 90px;
+        }
+      }
+      @media (min-width: 1024px) {
+        .mock-body {
+          grid-template-columns: 1fr 230px;
+        }
+      }
+
+      /* reduced motion */
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition-duration: 0.001s !important;
+        }
+        .reveal,
+        .msg-row {
+          opacity: 1 !important;
+          transform: none !important;
+        }
+        .in-view .meter i,
+        .in-view .load-track i {
+          width: var(--w);
+        }
+        .playhead {
+          left: 42%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bg-glow" aria-hidden="true"></div>
+
+    <!-- ============ NAV ============ -->
+    <header class="nav" id="top">
+      <div class="wrap nav-inner">
+        <a href="#top" class="logo" aria-label="iKlippa home">
+          <img
+            class="logo-img"
+            src="https://i.ibb.co/WvhnzQ0v/logo.png"
+            alt="iKlippa"
+          />
+        </a>
+        <nav class="nav-links" id="navlinks" aria-label="Primary">
+          <a href="#problem">Why iKlippa</a>
+          <a href="#how">How it works</a>
+          <a href="#features">Features</a>
+          <a href="#director">Director</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#cta" class="btn btn-primary">Join the waitlist</a>
+        </nav>
+        <button
+          class="burger"
+          id="burger"
+          aria-label="Toggle menu"
+          aria-controls="navlinks"
+          aria-expanded="false"
+        >
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <!-- ============ HERO ============ -->
+      <section class="hero">
+        <div class="wrap hero-grid">
+          <div class="hero-copy reveal">
+            <span class="eyebrow"
+              ><span class="dot"></span> Pre-launch · built in South Africa, for
+              the continent</span
+            >
+            <h1>
+              The editing suite that runs on the laptop you
+              <em class="grad">already own.</em>
+            </h1>
+            <p class="tagline">
+              Pro-level video editing on a basic laptop, for the price of a
+              Klippa a month.
+            </p>
+            <p class="sub">
+              iKlippa is a browser-native editor with a Rust engine, a pro
+              timeline and an AI Director at your side — fast on a dual-core,
+              8GB machine, with nothing to install and nothing ever uploaded.
+            </p>
+            <div class="hero-cta">
+              <a href="#cta" class="btn btn-primary"
+                >Join the waitlist
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </a>
+              <a href="#how" class="btn btn-ghost">See how it works</a>
+            </div>
+            <div class="proof">
+              <span
+                ><svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6L9 17l-5-5" /></svg
+                >Under 2MB to load</span
+              >
+              <span
+                ><svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6L9 17l-5-5" /></svg
+                >Runs on 8GB RAM · dual-core</span
+              >
+              <span
+                ><svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6L9 17l-5-5" /></svg
+                >Footage never leaves your device</span
+              >
+            </div>
+          </div>
+
+          <!-- editor mock -->
+          <div class="mock-wrap reveal" style="--d: 0.12s">
+            <div class="editor-mock">
+              <div class="mock-top">
+                <div class="mock-dots" aria-hidden="true">
+                  <i></i><i></i><i></i>
+                </div>
+                <div class="mock-title">untitled_amapiano_edit.ikp</div>
+                <div class="mock-status">
+                  <span class="chip chip-score"
+                    >Pacing <b>82</b
+                    ><span class="meter"><i style="--w: 82%"></i></span
+                  ></span>
+                  <span class="chip chip-granite"
+                    ><span class="dot"></span>GRANITE</span
+                  >
+                </div>
+              </div>
+              <div class="mock-body">
+                <div class="mock-main">
+                  <div class="preview">
+                    <img
+                      src="https://image.qwenlm.ai/public_source/4ac2c8ab-0401-404a-a38a-eeb80a365f39/128861268-f6a8-47a8-8d33-d2c27f0b0594.png"
+                      alt="A creator filming a talking-head video, shown in the iKlippa preview window"
+                    />
+                    <span class="res">16:9 · 1080p</span>
+                    <span class="tc">00:32.14</span>
+                    <span class="cap">and <em>THAT'S</em> the drop</span>
+                  </div>
+                  <div class="timeline" aria-hidden="true">
+                    <div class="tl-ruler">
+                      <span>0:00</span><span>0:15</span><span>0:30</span
+                      ><span>0:45</span><span>1:00</span>
+                    </div>
+                    <div class="tl-track">
+                      <span class="tl-label">V2</span>
+                      <div class="tl-clips">
+                        <span
+                          class="clip clip-cap"
+                          style="left: 18%; width: 13%"
+                          >CAPTION</span
+                        >
+                        <span
+                          class="clip clip-cap"
+                          style="left: 50%; width: 15%"
+                          >CAPTION</span
+                        >
+                        <span
+                          class="clip clip-cap"
+                          style="left: 78%; width: 12%"
+                          >CAPTION</span
+                        >
+                      </div>
+                    </div>
+                    <div class="tl-track v1">
+                      <span class="tl-label">V1</span>
+                      <div class="tl-clips">
+                        <span
+                          class="clip clip-vid"
+                          style="
+                            left: 1%;
+                            width: 27%;
+                            background-position: 30% 30%;
+                          "
+                        ></span>
+                        <span
+                          class="clip clip-vid"
+                          style="
+                            left: 29.5%;
+                            width: 19%;
+                            background-position: 60% 40%;
+                          "
+                        ></span>
+                        <span
+                          class="clip clip-vid"
+                          style="
+                            left: 50%;
+                            width: 22%;
+                            background-position: 45% 35%;
+                          "
+                        ></span>
+                        <span
+                          class="clip clip-vid"
+                          style="
+                            left: 73.5%;
+                            width: 24%;
+                            background-position: 70% 45%;
+                          "
+                        ></span>
+                      </div>
+                    </div>
+                    <div class="tl-track">
+                      <span class="tl-label">A1</span>
+                      <div class="tl-clips">
+                        <span class="clip clip-aud" style="left: 1%; width: 70%"
+                          ><i class="wave" data-bars="46"></i
+                        ></span>
+                      </div>
+                    </div>
+                    <div class="tl-track">
+                      <span class="tl-label">A2</span>
+                      <div class="tl-clips">
+                        <span class="clip clip-mus" style="left: 0; width: 98%"
+                          ><i class="wave" data-bars="64"></i
+                        ></span>
+                      </div>
+                    </div>
+                    <div class="playhead"></div>
+                  </div>
+                </div>
+                <aside class="mock-side">
+                  <div class="side-head">
+                    <span class="dot"></span> Director
+                    <span class="model">Granite</span>
+                  </div>
+                  <div class="side-chat">
+                    <div class="msg msg-you">sync my cuts to the drop</div>
+                    <div class="msg msg-ai">
+                      <b>Done</b> — 14 cuts snapped to the beat at 0:32.
+                    </div>
+                    <div class="msg msg-you">/trim-silence</div>
+                    <div class="msg msg-ai">
+                      6 silences removed · 4.2s recovered
+                    </div>
+                  </div>
+                  <div class="side-input">
+                    <span class="caret"></span> Ask Granite or type
+                    <kbd>/</kbd> …
+                  </div>
+                </aside>
+              </div>
+            </div>
+            <div class="float-chip fc-1">
+              <kbd>/sync-audio</kbd> <span class="ok">✓ 14 cuts</span>
+            </div>
+            <div class="float-chip fc-2">
+              <span class="vthumb"></span> 9:16 exported · 0 uploads
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PROBLEM ============ -->
+      <section class="section" id="problem">
+        <div class="wrap">
+          <div class="reveal">
+            <span class="eyebrow"><span class="dot"></span> The problem</span>
+            <h2 class="title">
+              Short-form is cheap to watch.<br />It's
+              <em>brutally expensive</em> to make.
+            </h2>
+            <p class="lead">
+              The mainstream tools were built for someone else's laptop, someone
+              else's bandwidth and someone else's currency. The math breaks the
+              moment you're the one making the videos.
+            </p>
+          </div>
+
+          <div class="problem-stats">
+            <div class="card pstat reveal" style="--d: 0.05s">
+              <div class="big">3.5–5.5 hrs</div>
+              <p class="lbl">
+                to take one polished 60-second video from script to export —
+                scripting, filming, rough cut, colour grade, captions, audio
+                mix, and three separate aspect-ratio exports.
+              </p>
+            </div>
+            <div class="card pstat reveal" style="--d: 0.12s">
+              <div class="big">17–27 hrs/wk</div>
+              <p class="lbl">
+                burned on production by a creator posting 5× a week — before an
+                audience ever sees a frame.
+              </p>
+              <div class="weekbar">
+                <div class="meter"><i style="--w: 67%"></i></div>
+                <small
+                  >Up to two-thirds of a full-time week — before a single view,
+                  comment or rand comes back.</small
+                >
+              </div>
+            </div>
+          </div>
+
+          <div class="barriers">
+            <div class="card barrier reveal" style="--d: 0.05s">
+              <div class="ic" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                  <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                  <line x1="12" y1="20" x2="12.01" y2="20" />
+                </svg>
+              </div>
+              <h3>Data you can't afford to burn</h3>
+              <p>
+                A 1GB bundle costs 1–3 hours of minimum-wage work in South
+                Africa. Rival browser editors ship 20–30MB of codec libraries
+                before they can process a single frame — your data, gone before
+                you've started.
+              </p>
+            </div>
+            <div class="card barrier reveal" style="--d: 0.12s">
+              <div class="ic" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="12" rx="2" />
+                  <line x1="2" y1="20" x2="22" y2="20" />
+                </svg>
+              </div>
+              <h3>Hardware they never designed for</h3>
+              <p>
+                The laptop most creators actually own is a dual-core i3 with 8GB
+                RAM — the R4,000–R8,000 shelf at every SA retailer. Software
+                video decoding chokes on exactly that machine.
+              </p>
+            </div>
+            <div class="card barrier reveal" style="--d: 0.19s">
+              <div class="ic" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <path
+                    d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+                  />
+                </svg>
+              </div>
+              <h3>Priced in someone else's currency</h3>
+              <p>
+                Desktop pro tools run $20–$60 a month — R360–R1,100 — billed in
+                dollars to creators earning rands. An early-stage independent
+                creator simply can't pay that.
+              </p>
+            </div>
+          </div>
+
+          <p class="closing reveal">
+            Three walls between you and "posted." iKlippa was built to walk
+            through all three — at the architecture level, not as an
+            afterthought.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============ HOW IT WORKS ============ -->
+      <section
+        class="section"
+        id="how"
+        style="background: var(--bg-2); border-block: 1px solid var(--border)"
+      >
+        <div class="wrap">
+          <div class="reveal">
+            <span class="eyebrow"
+              ><span class="dot"></span> The architecture</span
+            >
+            <h2 class="title">
+              Three layers, built for <em>your reality.</em>
+            </h2>
+            <p class="lead">
+              No jargon. Just the three reasons iKlippa runs where other tools
+              can't.
+            </p>
+          </div>
+
+          <div class="steps">
+            <div class="card step reveal" style="--d: 0.05s">
+              <div class="num">01</div>
+              <div>
+                <div class="ic" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <rect x="4" y="4" width="16" height="16" rx="2" />
+                    <rect x="9" y="9" width="6" height="6" />
+                    <path
+                      d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"
+                    />
+                  </svg>
+                </div>
+                <h3>A pro engine, compiled for your browser</h3>
+                <p>
+                  A custom Rust engine, compiled to WebAssembly, handles
+                  compositing, colour and effects at near-native speed —
+                  entirely on your machine. Fast on modest hardware, and your
+                  footage never leaves your device.
+                </p>
+              </div>
+            </div>
+            <div class="card step reveal" style="--d: 0.12s">
+              <div class="num">02</div>
+              <div>
+                <div class="ic" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                    <circle cx="8" cy="6" r="2" fill="currentColor" />
+                    <circle cx="15" cy="12" r="2" fill="currentColor" />
+                    <circle cx="10" cy="18" r="2" fill="currentColor" />
+                  </svg>
+                </div>
+                <h3>An editor built for the hardware you have</h3>
+                <p>
+                  A fully custom timeline, colour panel, audio mixer and caption
+                  editor — engineered for buttery scrubbing on weak machines,
+                  with exports that render locally. What you see is what
+                  renders. Instantly, privately.
+                </p>
+              </div>
+            </div>
+            <div class="card step reveal" style="--d: 0.19s">
+              <div class="num">03</div>
+              <div>
+                <div class="ic" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path
+                      d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                    />
+                  </svg>
+                </div>
+                <h3>iKlippa Director — your AI co-pilot</h3>
+                <p>
+                  Powered by IBM Granite. Tell it in plain language — "remove
+                  the dead air", "add a caption here", "match this grade" — and
+                  it executes on your timeline in real time. A creative partner,
+                  not a content generator.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card unlock reveal">
+            <div>
+              <span class="eyebrow"><span class="dot"></span> The unlock</span>
+              <h3>
+                Your browser already ships a hardware video decoder. We use it.
+              </h3>
+              <p>
+                Instead of shipping 20–30MB of downloadable codec libraries like
+                every other browser editor, iKlippa talks directly to WebCodecs
+                — the hardware decoder already inside your browser. The whole
+                app loads in under 2MB. That's not a marketing number; it's the
+                architecture.
+              </p>
+            </div>
+            <div class="load-compare">
+              <div class="load-row">
+                <span class="load-name">iKlippa</span>
+                <div class="load-track">
+                  <i class="fast" style="--w: 7%"></i>
+                </div>
+                <span class="load-val"
+                  ><b>Under 2MB</b> — full app, ready to edit</span
+                >
+              </div>
+              <div class="load-row">
+                <span class="load-name">Typical browser editor</span>
+                <div class="load-track">
+                  <i class="slow" style="--w: 100%"></i>
+                </div>
+                <span class="load-val"
+                  >20–30MB of WASM codec libraries — downloaded before a single
+                  frame</span
+                >
+              </div>
+              <p class="load-cap">
+                First-load size — everything you download before you can touch a
+                clip.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FEATURES ============ -->
+      <section class="section" id="features">
+        <div class="wrap">
+          <div class="reveal">
+            <span class="eyebrow"><span class="dot"></span> Features</span>
+            <h2 class="title">Everything between you and <em>"posted."</em></h2>
+            <p class="lead">
+              Not a toy with AI bolted on. A real editor — with AI where it
+              actually saves you time.
+            </p>
+          </div>
+
+          <div class="feat-grid">
+            <div class="card feat reveal" style="--d: 0.04s">
+              <div class="ic" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                  />
+                </svg>
+              </div>
+              <h3>Say it. Watch it happen.</h3>
+              <p>
+                Trim silences, sync cuts to music, grade footage — in plain
+                language, or slash commands when you're in flow.
+              </p>
+              <div class="feat-viz">
+                <div class="pill-viz">
+                  <span class="cmd">/sync-audio</span
+                  ><span class="ok"
+                    ><svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M20 6L9 17l-5-5" /></svg
+                    >14 cuts synced</span
+                  >
+                </div>
+              </div>
+            </div>
+
+            <div class="card feat reveal" style="--d: 0.1s">
+              <div class="ic" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="6" cy="6" r="3" />
+                  <circle cx="6" cy="18" r="3" />
+                  <line x1="20" y1="4" x2="8.12" y2="15.88" />
+                  <line x1="14.47" y1="14.48" x2="20" y2="20" />
+                  <line x1="8.12" y1="8.12" x2="12" y2="12" />
+                </svg>
+              </div>
+              <h3>Dead air, deleted.</h3>
+              <p>
+                iKlippa finds the gaps where viewers leave and cuts them out.
+                You approve every snip.
+              </p>
+              <div class="feat-viz">
+                <div class="trim-viz">
+                  <i class="wave" data-bars="14"></i
+                  ><span class="gap">4.2s</span
+                  ><i class="wave" data-bars="18"></i>
+                </div>
+              </div>
+            </div>
+
+            <div class="card feat reveal" style="--d: 0.16s">
+              <div class="ic" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M9 18V5l12-2v13" />
+                  <circle cx="6" cy="18" r="3" />
+                  <circle cx="18" cy="16" r="3" />
+                </svg>
+              </div>
+              <h3>
+                Cuts that land on the drop <span class="badge">Signature</span>
+              </h3>
+              <p>
+                Snaps your edits to Amapiano and Afrobeat drops automatically.
+                Built here, for the sound that raised us.
+              </p>
+              <div class="feat-viz">
+                <div class="beat-viz">
+                  <i class="wave" data-bars="40"></i>
+                  <div class="beats" aria-hidden="true">
+                    <b></b><b></b><b></b><b></b><b></b>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card feat reveal" style="--d: 0.04s">
+              <div class="ic" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M4 14a8 8 0 1 1 16 0" />
+                  <path d="M12 14l4-4" />
+                  <circle cx="12" cy="14" r="1.4" fill="currentColor" />
+                </svg>
+              </div>
+              <h3>Know if your edit flows.</h3>
+              <p>
+                An AI score — like 76/100 — grades your pacing and flow, with
+                concrete fixes instead of vibes.
+              </p>
+              <div class="feat-viz tall">
+                <div class="score-viz">
+                  <span class="num">76</span>
+                  <div class="meta">
+                    <small>Pacing score / 100</small>
+                    <div class="meter"><i style="--w: 76%"></i></div>
+                    <span class="hint">→ tighten the intro by 2s</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card feat reveal" style="--d: 0.1s">
+              <div class="ic" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="4" y1="21" x2="4" y2="14" />
+                  <line x1="4" y1="10" x2="4" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12" y2="3" />
+                  <line x1="20" y1="21" x2="20" y2="16" />
+                  <line x1="20" y1="12" x2="20" y2="3" />
+                  <line x1="1" y1="14" x2="7" y2="14" />
+                  <line x1="9" y1="8" x2="15" y2="8" />
+                  <line x1="17" y1="16" x2="23" y2="16" />
+                </svg>
+              </div>
+              <h3>Real grading. Real curves.</h3>
+              <p>
+                A multi-track timeline with real-time colour, a curves editor
+                and LUT import — no "lite" mode hiding behind the AI.
+              </p>
+              <div class="feat-viz">
+                <div class="curves-viz">
+                  <svg viewBox="0 0 64 42" fill="none" aria-hidden="true">
+                    <rect
+                      x="0"
+                      y="0"
+                      width="64"
+                      height="42"
+                      rx="4"
+                      fill="rgba(255,255,255,.03)"
+                    />
+                    <path
+                      d="M2 40 L20 38 L40 12 L62 4"
+                      stroke="#2dd4bf"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    />
+                    <circle cx="20" cy="38" r="2.4" fill="#2dd4bf" />
+                    <circle cx="40" cy="12" r="2.4" fill="#2dd4bf" />
+                  </svg>
+                  <div class="wheels" aria-hidden="true">
+                    <span style="border-color: #0d9488"></span
+                    ><span style="border-color: #14b8a6"></span
+                    ><span style="border-color: #5eead4"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card feat reveal" style="--d: 0.16s">
+              <div class="ic" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <line x1="7" y1="11" x2="11" y2="11" />
+                  <line x1="13" y1="11" x2="17" y2="11" />
+                  <line x1="7" y1="15" x2="17" y2="15" />
+                </svg>
+              </div>
+              <h3>Every word, on brand.</h3>
+              <p>
+                A full caption editor — font, size, colour, position, CASE —
+                with AI suggestions you can take or leave.
+              </p>
+              <div class="feat-viz tall">
+                <div class="cap-viz">
+                  <span>that's the drop.</span><span>THAT'S THE DROP.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="roadmap reveal">
+            <span class="dot"></span>
+            <span
+              ><b>On the roadmap — Brand Kit:</b> paste your script and brand
+              guidelines; fonts and colours apply themselves.</span
+            >
+            <span class="soon"><span class="dot"></span> Coming soon</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ DIRECTOR ============ -->
+      <section
+        class="section"
+        id="director"
+        style="background: var(--bg-2); border-block: 1px solid var(--border)"
+      >
+        <div class="wrap">
+          <div class="director-grid">
+            <div class="reveal">
+              <span class="eyebrow"
+                ><span class="dot"></span> iKlippa Director · powered by IBM
+                Granite</span
+              >
+              <h2 class="title">
+                An AI that edits <em>with you.</em><br />Never over you.
+              </h2>
+              <p class="lead">
+                The Director lives beside your timeline and speaks plain
+                language. Ask it to remove dead air, add a caption, match a
+                grade — or type <b style="color: var(--teal-l)">/</b> and let
+                the commands fly. Every change lands on your timeline in real
+                time, and every one is yours to undo.
+              </p>
+              <p class="quote">
+                AI as a creative partner, not a replacement — it removes the
+                drudgery, it doesn't make creative decisions for you.
+              </p>
+              <div class="cmds" aria-label="Example slash commands">
+                <span>/trim-silence</span><span>/sync-audio</span
+                ><span>/auto-broll</span><span>/add-captions</span>
+              </div>
+            </div>
+
+            <div class="chat reveal" style="--d: 0.12s">
+              <div class="chat-head">
+                <span class="dot"></span> Director
+                <span class="model">Granite</span
+                ><span class="live"
+                  ><span class="dot"></span> on your timeline</span
+                >
+              </div>
+              <div class="chatlog" id="chatlog">
+                <div class="msg-row you" style="--d: 0.1s">
+                  <span class="av">YOU</span>
+                  <div class="bubble">sync my cuts to the beat</div>
+                </div>
+                <div class="msg-row ai" style="--d: 0.45s">
+                  <span class="av">AI</span>
+                  <div class="bubble">
+                    Done — 14 cuts snapped to the Amapiano drop at 0:32. Want
+                    the chorus tighter?<br /><span class="act"
+                      ><svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M20 6L9 17l-5-5" /></svg
+                      >Timeline updated · 14 cuts</span
+                    >
+                  </div>
+                </div>
+                <div class="msg-row you" style="--d: 0.8s">
+                  <span class="av">YOU</span>
+                  <div class="bubble">/trim-silence</div>
+                </div>
+                <div class="msg-row ai" style="--d: 1.1s">
+                  <span class="av">AI</span>
+                  <div class="bubble">
+                    6 silences removed — 4.2s of dead air gone. Undo anytime.<br /><span
+                      class="act"
+                      ><svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M20 6L9 17l-5-5" /></svg
+                      >−4.2s recovered</span
+                    >
+                  </div>
+                </div>
+                <div class="msg-row you" style="--d: 1.4s">
+                  <span class="av">YOU</span>
+                  <div class="bubble">match this grade to clip 2</div>
+                </div>
+                <div class="msg-row ai" style="--d: 1.7s">
+                  <span class="av">AI</span>
+                  <div class="bubble">
+                    Grade matched across 3 clips. Preview updated.<br /><span
+                      class="act"
+                      ><svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M20 6L9 17l-5-5" /></svg
+                      >3 clips graded</span
+                    >
+                  </div>
+                </div>
+              </div>
+              <div class="chat-input">
+                <span class="caret"></span> Ask Granite or type <kbd>/</kbd> for
+                commands…
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ STATS STRIP ============ -->
+      <section class="stats-sec">
+        <div class="wrap">
+          <div class="stats-head reveal">
+            <h3>The honest numbers.</h3>
+            <p>No user counts. No testimonials. Just the spec sheet.</p>
+          </div>
+          <div class="stats reveal">
+            <div class="stat">
+              <div class="n">&lt;2MB</div>
+              <p class="t">
+                Full app load — others ship <b>20–30MB</b> of codecs first.
+              </p>
+            </div>
+            <div class="stat">
+              <div class="n">8GB</div>
+              <p class="t">
+                <b>Dual-core</b> RAM — the laptops SA actually sells.
+              </p>
+            </div>
+            <div class="stat">
+              <div class="n">3</div>
+              <p class="t">
+                Aspect ratios — <b>16:9 · 9:16 · 1:1</b>, one export pass.
+              </p>
+            </div>
+            <div class="stat">
+              <div class="n">0</div>
+              <p class="t">
+                Uploads — your footage <b>renders on your device</b>.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PRICING ============ -->
+      <section class="section" id="pricing">
+        <div class="wrap">
+          <div class="reveal" style="text-align: center">
+            <span class="eyebrow" style="justify-content: center"
+              ><span class="dot"></span> Pricing · pre-launch</span
+            >
+            <h2 class="title">The price of a <em>Klippa</em> a month.</h2>
+            <p class="lead" style="margin-left: auto; margin-right: auto">
+              No dollar billing. No cloud-render meter running while you sleep.
+              No paywall around the good parts. One honest rand price at launch.
+            </p>
+          </div>
+
+          <div class="card price-card reveal" style="--d: 0.1s">
+            <div class="price-top">
+              <h3>Founder plan</h3>
+              <span class="tbd">PRICE TBD</span>
+            </div>
+            <p class="price-sub">
+              Everything, for everyone. At launch you get:
+            </p>
+            <ul class="price-list">
+              <li>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6L9 17l-5-5" /></svg
+                ><span
+                  ><b>Full editor</b> — timeline, colour, audio mixer,
+                  captions.</span
+                >
+              </li>
+              <li>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6L9 17l-5-5" /></svg
+                ><span><b>iKlippa Director</b>, powered by IBM Granite.</span>
+              </li>
+              <li>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6L9 17l-5-5" /></svg
+                ><span
+                  ><b>Offline exports</b> — 16:9 · 9:16 · 1:1 in one pass.</span
+                >
+              </li>
+              <li>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6L9 17l-5-5" /></svg
+                ><span><b>Under 2MB load</b> — kind to your data bundle.</span>
+              </li>
+              <li>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6L9 17l-5-5" /></svg
+                ><span><b>No foreign-currency billing.</b> Ever.</span>
+              </li>
+            </ul>
+            <a href="#cta" class="btn btn-primary"
+              >Join the waitlist
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </a>
+          </div>
+          <p class="klippa-note reveal">
+            A <em>klippa</em> is a paperclip — the cheapest tool that holds
+            everything together. That's the whole pricing philosophy: small,
+            local, enough.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============ FINAL CTA ============ -->
+      <section class="cta-sec" id="cta">
+        <div class="wrap reveal">
+          <span class="eyebrow" style="justify-content: center"
+            ><span class="dot"></span> Pre-launch</span
+          >
+          <h2>Be first in line.</h2>
+          <p>
+            iKlippa is in pre-launch, built on and for the laptops South Africa
+            actually uses. Drop your email — we'll send exactly one when it's
+            ready.
+          </p>
+          <div id="form-wrap">
+            <form class="cta-form" id="waitlist-form" novalidate>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                placeholder="you@example.com"
+                aria-label="Email address"
+                required
+              />
+              <button type="submit" class="btn btn-primary">
+                Join the waitlist
+              </button>
+            </form>
+            <p class="fine">One email at launch. No drip campaign, no spam.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============ FOOTER ============ -->
+    <footer>
+      <div class="wrap">
+        <div class="foot-grid">
+          <div class="foot-brand">
+            <a href="#top" class="logo"
+              ><img
+                class="logo-img"
+                src="https://i.ibb.co/WvhnzQ0v/logo.png"
+                alt="iKlippa"
+            /></a>
+            <p>
+              Pro-level video editing on a basic laptop — built in &amp; for
+              South Africa, for the hardware you actually have.
+            </p>
+          </div>
+          <nav class="foot-links" aria-label="Footer">
+            <a href="#problem">Why iKlippa</a>
+            <a href="#how">How it works</a>
+            <a href="#features">Features</a>
+            <a href="#director">Director</a>
+            <a href="#pricing">Pricing</a>
+          </nav>
+          <span class="foot-status"
+            ><span class="dot"></span> Pre-launch — waitlist open</span
+          >
+        </div>
+        <div class="foot-bottom">
+          <span>© 2026 iKlippa. Built for the hardware you actually have.</span>
+          <span>Browser-native · AI-powered · Open web standards</span>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      /* ---------- build waveforms ---------- */
+      (function buildWaves() {
+        document.querySelectorAll(".wave").forEach(function (w) {
+          var n = parseInt(w.getAttribute("data-bars") || "40", 10);
+          var html = "";
+          for (var i = 0; i < n; i++) {
+            var h =
+              16 +
+              Math.abs(Math.sin(i * 0.7 + 1.3)) * 60 +
+              (Math.sin(i * 2.1) * 0.5 + 0.5) * 22;
+            html +=
+              '<i style="height:' +
+              Math.min(Math.max(h, 12), 96).toFixed(0) +
+              '%"></i>';
+          }
+          w.innerHTML = html;
+        });
+      })();
+
+      /* ---------- mobile nav ---------- */
+      (function navToggle() {
+        var burger = document.getElementById("burger");
+        var links = document.getElementById("navlinks");
+        if (!burger || !links) return;
+        burger.addEventListener("click", function () {
+          var open = links.classList.toggle("open");
+          burger.classList.toggle("active", open);
+          burger.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+        links.querySelectorAll("a").forEach(function (a) {
+          a.addEventListener("click", function () {
+            links.classList.remove("open");
+            burger.classList.remove("active");
+            burger.setAttribute("aria-expanded", "false");
+          });
+        });
+      })();
+
+      /* ---------- nav shadow on scroll ---------- */
+      (function navScroll() {
+        var nav = document.querySelector(".nav");
+        var onScroll = function () {
+          nav.classList.toggle("scrolled", window.scrollY > 8);
+        };
+        window.addEventListener("scroll", onScroll, { passive: true });
+        onScroll();
+      })();
+
+      /* ---------- reveal on scroll ---------- */
+      (function reveal() {
+        var els = document.querySelectorAll(".reveal");
+        if (!("IntersectionObserver" in window)) {
+          els.forEach(function (el) {
+            el.classList.add("in-view");
+          });
+          var cl = document.getElementById("chatlog");
+          if (cl) cl.classList.add("in-view");
+          return;
+        }
+        var io = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (e) {
+              if (e.isIntersecting) {
+                e.target.classList.add("in-view");
+                io.unobserve(e.target);
+              }
+            });
+          },
+          { threshold: 0.15, rootMargin: "0px 0px -40px 0px" },
+        );
+        els.forEach(function (el) {
+          io.observe(el);
+        });
+
+        /* chat log staggered reveal */
+        var chat = document.getElementById("chatlog");
+        if (chat) {
+          var cio = new IntersectionObserver(
+            function (entries) {
+              entries.forEach(function (e) {
+                if (e.isIntersecting) {
+                  chat.classList.add("in-view");
+                  cio.unobserve(chat);
+                }
+              });
+            },
+            { threshold: 0.25 },
+          );
+          cio.observe(chat);
+        }
+      })();
+
+      /* ---------- waitlist form ---------- */
+      (function form() {
+        var form = document.getElementById("waitlist-form");
+        var wrap = document.getElementById("form-wrap");
+        if (!form || !wrap) return;
+        form.addEventListener("submit", function (e) {
+          e.preventDefault();
+          var input = document.getElementById("email");
+          if (!input.value || !input.checkValidity()) {
+            input.reportValidity();
+            input.focus();
+            return;
+          }
+          wrap.innerHTML =
+            '<div class="form-success" role="status"><span class="dot"></span> You\'re on the list. One email when it launches — that\'s a promise.</div>';
+        });
+      })();
+    </script>
+  </body>
+</html>

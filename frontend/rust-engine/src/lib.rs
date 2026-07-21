@@ -23,6 +23,7 @@ use std::collections::HashMap;
 
 mod timeline_state;
 mod compositing;
+mod lut;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -394,6 +395,7 @@ pub struct IklippaEngine {
     project:        timeline_state::Project,
     composite_pool: FramePool,
     frame_cache:    HashMap<u32, (u32, u32, Vec<u8>)>,
+    lut_cache:      lut::LutCache,
 }
 
 #[wasm_bindgen]
@@ -418,6 +420,7 @@ impl IklippaEngine {
             ),
             composite_pool: FramePool::new(width, height),
             frame_cache:    HashMap::new(),
+            lut_cache:      lut::LutCache::new(),
         }
     }
 
@@ -572,8 +575,9 @@ impl IklippaEngine {
             &self.project,
             ts_us,
             &self.frame_cache,
-            &mut self.pool,       // reused as temp buffer for per-pixel ops
+            &mut self.pool,
             &mut self.composite_pool,
+            &self.lut_cache,
         );
     }
 
@@ -594,6 +598,21 @@ impl IklippaEngine {
     #[wasm_bindgen]
     pub fn reset_frame_cache(&mut self) {
         self.frame_cache.clear();
+    }
+
+    // ── LUT (3D Look-Up Table) API ────────────────────────────────────────
+
+    /// Parse a .cube LUT from raw bytes and store it under the given id.
+    /// Returns true on success, false if the file is not a valid .cube LUT.
+    #[wasm_bindgen]
+    pub fn load_lut(&mut self, id: u32, data: &[u8]) -> bool {
+        self.lut_cache.load(id, data)
+    }
+
+    /// Return the number of currently cached 3D LUTs.
+    #[wasm_bindgen]
+    pub fn lut_count(&self) -> u32 {
+        self.lut_cache.count()
     }
 
     // ── Project API (Phase 1 Task 1 — new canonical model) ───────────────────

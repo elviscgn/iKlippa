@@ -309,6 +309,7 @@ export async function initEngine(canvasEl: HTMLCanvasElement): Promise<boolean> 
   canvas = canvasEl;
   ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
   worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  (window as any).__iklippaWorker = worker;
   worker.onmessage = handleWorkerMessage;
   worker.onerror = (e) => {
     err('engine', 'Worker threw an uncaught error', e.message);
@@ -1299,11 +1300,17 @@ export async function exportVideo(
   logStatus('Export: encoding…');
   const ports = getPorts();
   const encodedVideo: Array<{ buf: ArrayBuffer; timestamp: number; type: string }> = [];
+  // The SPS/PPS (avcC) only arrives via the encoder's chunk metadata. If we
+  // drop it, mp4-muxer writes an empty avcC box and players render black.
+  let encoderDecoderConfig: VideoDecoderConfig | undefined;
   const encoder = ports.videoEncoderFactory.create(
-    (chunk) => {
+    (chunk, metadata) => {
       const buf = new ArrayBuffer(chunk.byteLength);
       chunk.copyTo(buf);
       encodedVideo.push({ buf, timestamp: chunk.timestamp, type: chunk.type });
+      if (!encoderDecoderConfig && metadata?.decoderConfig) {
+        encoderDecoderConfig = metadata.decoderConfig;
+      }
     },
     (e) => emitLocal('EXPORT_FAILED', e, { fatal: false }),
   );
@@ -1336,6 +1343,12 @@ export async function exportVideo(
       codedHeight: sourceVideoHeight,
       timestamp: ms * 1000,
       duration: frameMs * 1000,
+      colorSpace: {
+        primaries: 'bt709',
+        transfer: 'bt709',
+        matrix: 'rgb',
+        fullRange: true,
+      },
     });
     encoder.encode(frame, { keyFrame: i % 60 === 0 });
     frame.close();
@@ -1346,6 +1359,8 @@ export async function exportVideo(
 
   // ── Audio render & encode ─────────────────────────────────────────
   let encodedAudio: Array<{ buf: ArrayBuffer; timestamp: number; type: string }> = [];
+  let exportAudioSampleRate = 48000;
+  let exportAudioChannels = 2;
   if (pendingAudio.size > 0) {
     logStatus('Export: encoding audio…');
     const sortedAudio = [...pendingAudio.entries()].sort(([a], [b]) => a - b);
@@ -1368,6 +1383,8 @@ export async function exportVideo(
     }
 
     const rendered = await offlineCtx.startRendering();
+    exportAudioSampleRate = rendered.sampleRate;
+    exportAudioChannels = rendered.numberOfChannels;
 
     // Encode to AAC
     const audioEncoder = getPorts().audioEncoderFactory.create(
@@ -1421,25 +1438,30 @@ export async function exportVideo(
     fastStart: 'in-memory',
   };
   if (encodedAudio.length > 0) {
-    muxerConfig.audio = { codec: 'aac' as const, numberOfChannels: 2, sampleRate: 48000 };
+    muxerConfig.audio = { codec: 'aac' as const, numberOfChannels: exportAudioChannels, sampleRate: exportAudioSampleRate };
   }
 
   const muxer = new Muxer(muxerConfig);
+  if (!encoderDecoderConfig?.description) {
+    console.warn('[export] encoder sent no avcC description — exported file may not decode');
+  }
   for (let i = 0; i < encodedVideo.length; i++) {
     const { buf, timestamp, type } = encodedVideo[i]!;
-    const meta: any = {};
+    const meta: EncodedVideoChunkMetadata = {};
     if (i === 0) {
       meta.decoderConfig = {
-        codec: 'avc1.64001f',
+        codec: encoderDecoderConfig?.codec ?? 'avc1.42001f',
         codedWidth: exportW,
         codedHeight: exportH,
+        description: encoderDecoderConfig?.description,
         colorSpace: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false },
       };
     }
     muxer.addVideoChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, frameMs * 1000, meta);
   }
   for (const { buf, timestamp, type } of encodedAudio) {
-    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024);
+    // AAC frames hold 1024 samples each — derive the duration from the rate.
+    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, Math.round(1024 * 1e6 / exportAudioSampleRate));
   }
   if (onProgress) onProgress(0.95);
 
