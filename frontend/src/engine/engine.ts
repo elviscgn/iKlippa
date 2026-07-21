@@ -1311,6 +1311,10 @@ export async function exportVideo(
   const expCtx = expCanvas.getContext('2d', { willReadFrequently: true })!;
 
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
+  if (sortedFrames.length > 0) {
+    const first = sortedFrames[0]!.imageData.data;
+    console.log(`[export] first frame: ${first.length} bytes, pixel[0-3]=${first[0]},${first[1]},${first[2]},${first[3]}`);
+  }
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i]!;
     expCtx.putImageData(imageData, 0, 0, 0, 0, sourceVideoWidth, sourceVideoHeight);
