@@ -1414,8 +1414,19 @@ export async function exportVideo(
 
   // ── Mux ──────────────────────────────────────────────────────────
   logStatus('Export: muxing…');
-  if (!window.Mp4Muxer)
-    await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js');
+  if (!window.Mp4Muxer) {
+    try {
+      await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js');
+    } catch {
+      // Fallback CDN
+      await loadScript('https://unpkg.com/mp4-muxer@4.4.2/build/mp4-muxer.js');
+    }
+  }
+  if (!window.Mp4Muxer || !window.Mp4Muxer.Muxer) {
+    logStatus('Export failed — mp4-muxer not available (check internet)');
+    isExporting = false;
+    return;
+  }
 
   const muxerConfig: any = {
     target: new window.Mp4Muxer.ArrayBufferTarget(),
