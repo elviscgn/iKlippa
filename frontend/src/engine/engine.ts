@@ -1263,6 +1263,7 @@ export async function exportVideo(
     await new Promise((r) => setTimeout(r, 100));
     waited += 100;
     if (exportFrames.length !== _lastLogLen) {
+      console.log(`[export] ${exportFrames.length} frames after ${(waited/1000).toFixed(0)}s`);
       _lastLogLen = exportFrames.length;
       staleCount = 0;
     } else {
