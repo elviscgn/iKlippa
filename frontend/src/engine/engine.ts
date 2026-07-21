@@ -1345,7 +1345,7 @@ export async function exportVideo(
       colorSpace: {
         primaries: 'bt709',
         transfer: 'bt709',
-        matrix: 'bt709',
+        matrix: 'rgb',
         fullRange: true,
       },
     });

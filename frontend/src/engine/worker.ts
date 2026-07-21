@@ -605,11 +605,13 @@ async function setupDecoder(sourceId: string, state: SourceState) {
         wlog('decode', `canvas frame: pixel[0]=${imgData.data[0]},${imgData.data[1]},${imgData.data[2]}`);
       }
 
-      try {
-        wasmModule!.stage_frame_broadcast(BigInt(Math.round(normalizedTsUs)), width, height);
-        refreshFrameView();
-      } catch (e) {
-        wwarn('worker', `stage_frame_broadcast failed @ ${normalizedTsUs}us`, String(e));
+      if (!isDecodeAll) {
+        try {
+          wasmModule!.stage_frame_broadcast(BigInt(Math.round(normalizedTsUs)), width, height);
+          refreshFrameView();
+        } catch (e) {
+          wwarn('worker', `stage_frame_broadcast failed @ ${normalizedTsUs}us`, String(e));
+        }
       }
 
       let gradeMs = 0;
