@@ -19,7 +19,7 @@ import type { ClipWithMeta } from '../state/types';
 
 import { currentTier, getTierConfig } from './tier';
 
-const DECODE_LOOKAHEAD = 12;
+import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 
 // ── Diagnostic logger ───────────────────────────────────────────────────
 const _loggedOnce = new Set<string>();
@@ -1414,22 +1414,9 @@ export async function exportVideo(
 
   // ── Mux ──────────────────────────────────────────────────────────
   logStatus('Export: muxing…');
-  if (!window.Mp4Muxer) {
-    try {
-      await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@4.4.2/build/mp4-muxer.js');
-    } catch {
-      // Fallback CDN
-      await loadScript('https://unpkg.com/mp4-muxer@4.4.2/build/mp4-muxer.js');
-    }
-  }
-  if (!window.Mp4Muxer || !window.Mp4Muxer.Muxer) {
-    logStatus('Export failed — mp4-muxer not available (check internet)');
-    isExporting = false;
-    return;
-  }
 
   const muxerConfig: any = {
-    target: new window.Mp4Muxer.ArrayBufferTarget(),
+    target: new ArrayBufferTarget(),
     video: { codec: 'avc', width: exportW, height: exportH },
     fastStart: 'in-memory',
   };
@@ -1437,16 +1424,18 @@ export async function exportVideo(
     muxerConfig.audio = { codec: 'aac', numberOfChannels: 2, sampleRate: 48000 };
   }
 
-  const muxer = new window.Mp4Muxer.Muxer(muxerConfig);
+  const muxer = new Muxer(muxerConfig);
   for (const { buf, timestamp, type } of encodedVideo) {
-    muxer.addVideoChunkRaw(buf, type, timestamp, frameMs * 1000);
+    muxer.addVideoChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, frameMs * 1000);
   }
   for (const { buf, timestamp, type } of encodedAudio) {
-    muxer.addAudioChunkRaw(buf, type, timestamp, 1024);
+    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024);
   }
   if (onProgress) onProgress(0.95);
 
-  const { buffer } = muxer.finalize();
+  const target = muxerConfig.target as { buffer: ArrayBuffer };
+  const { buffer } = target;
+  muxer.finalize();
   const a = ports.canvasFactory.createElement('a') as HTMLAnchorElement;
   a.href = ports.urlFactory.createObjectURL(ports.blobFactory.create([buffer], { type: 'video/mp4' }));
   a.download = `iklippa-export-${Date.now()}.mp4`;
