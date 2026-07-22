@@ -18,5 +18,8 @@
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
     "vitest": "^3.2.1"
+  },
+  "dependencies": {
+    "mp4-muxer": "^5.2.2"
   }
 }

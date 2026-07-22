@@ -3,6 +3,16 @@ import { setPorts, resetPorts } from '../../src/adapters';
 import { fakeEnginePorts, expectNoLeaks, resetLeakRegistry } from '../fakes';
 import type { FakeAudioContextType } from '../fakes';
 
+vi.mock('mp4-muxer', () => ({
+  ArrayBufferTarget: vi.fn(function(this: any) { this.buffer = new ArrayBuffer(0); }),
+  Muxer: vi.fn(function(this: any) {
+    this.addVideoChunkRaw = vi.fn();
+    this.addAudioChunkRaw = vi.fn();
+    this.finalize = vi.fn();
+    return this;
+  }),
+}));
+
 beforeEach(() => {
   resetLeakRegistry();
   setPorts(fakeEnginePorts);
