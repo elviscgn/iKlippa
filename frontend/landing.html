@@ -3,82 +3,79 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>iKlippa — Pro video editing on the laptop you already own</title>
-    <meta
-      name="description"
-      content="iKlippa is a browser-native, AI-powered short-form video editor that runs at pro performance on a dual-core, 8GB RAM laptop. No install, no uploads, no foreign-currency subscription. Built in and for South Africa."
-    />
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <title>iKlippa — Pro-level video editing on a basic laptop</title>
+
+    <!-- Fonts via fontsource CDN (no Google Fonts) -->
     <link
-      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-400-normal.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/plus-jakarta-sans/400.css"
     />
     <link
-      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-500-normal.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/plus-jakarta-sans/500.css"
     />
     <link
-      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-600-normal.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/plus-jakarta-sans/600.css"
     />
     <link
-      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-700-normal.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/plus-jakarta-sans/700.css"
     />
     <link
-      href="https://cdn.jsdelivr.net/fontsource/css/plus-jakarta-sans@latest/latin-800-normal.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/plus-jakarta-sans/800.css"
     />
     <link
-      href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-400-normal.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono/400.css"
     />
     <link
-      href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-500-normal.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono/500.css"
     />
     <link
-      href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-600-normal.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono/600.css"
     />
     <link
-      href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-700-normal.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono/700.css"
     />
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <style>
-      /* ============================================================
-   iKlippa — landing page
-   Palette: #060608 base · teal #0d9488 / #14b8a6 / #2dd4bf
-   Plus Jakarta Sans + JetBrains Mono · sharp dev-tool radii
-   ============================================================ */
       :root {
-        --bg: #060608;
-        --bg-2: #0a0a0d;
-        --panel: rgba(18, 18, 20, 0.85);
-        --surface: rgba(30, 30, 35, 0.6);
-        --card: rgba(255, 255, 255, 0.04);
-        --card-hover: rgba(255, 255, 255, 0.08);
-        --border: rgba(255, 255, 255, 0.06);
-        --border-strong: rgba(255, 255, 255, 0.12);
-        --border-active: rgba(13, 148, 136, 0.5);
-        --text: #f8fafc;
-        --text-2: #cbd5e1;
-        --muted: #64748b;
-        --teal: #0d9488;
-        --teal-b: #14b8a6;
-        --teal-l: #2dd4bf;
-        --teal-xl: #5eead4;
-        --teal-soft: rgba(13, 148, 136, 0.15);
-        --teal-softer: rgba(13, 148, 136, 0.08);
-        --teal-line: rgba(13, 148, 136, 0.4);
-        --radius-lg: 10px;
-        --radius-md: 6px;
-        --radius-sm: 4px;
-        --maxw: 1160px;
-        --frame: url("https://image.qwenlm.ai/public_source/4ac2c8ab-0401-404a-a38a-eeb80a365f39/128861268-f6a8-47a8-8d33-d2c27f0b0594.png");
-        --mono:
-          "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-        --ease: cubic-bezier(0.4, 0, 0.2, 1);
+        --bg-base: #060608;
+        --bg-panel: rgba(18, 18, 20, 0.85);
+        --bg-surface: rgba(30, 30, 35, 0.6);
+        --bg-card: rgba(255, 255, 255, 0.04);
+        --bg-hover: rgba(255, 255, 255, 0.08);
+
+        --border-subtle: rgba(255, 255, 255, 0.06);
+        --border-active: rgba(157, 217, 209, 0.4);
+
+        --accent-primary: #0d9488;
+        --accent-glow: rgba(157, 217, 209, 0.15);
+        --accent-hover: #14b8a6;
+        --accent-mint: #9dd9d1;
+        --accent-blue: #38bdf8;
+
+        --text-main: #f8fafc;
+        --text-secondary: #cbd5e1;
+        --text-muted: #64748b;
+
+        --font-sans: "Plus Jakarta Sans", -apple-system, sans-serif;
+        --font-mono: "JetBrains Mono", monospace;
+
+        /* Main dance footage — kept on Wikimedia as requested */
+        --img-dance: url("https://upload.wikimedia.org/wikipedia/commons/3/32/West_African_Dance_at_the_White_House%2C_2007Apr25.jpg");
+
+        --radius-lg: 12px;
+        --radius-md: 7px;
+        --radius-sm: 5px;
+
+        --transition-fast: 160ms cubic-bezier(0.4, 0, 0.2, 1);
       }
 
       * {
@@ -88,3032 +85,2744 @@
       }
       html {
         scroll-behavior: smooth;
-        scroll-padding-top: 88px;
-      }
-      body {
-        background: var(--bg);
-        color: var(--text);
-        font-family:
-          "Plus Jakarta Sans",
-          -apple-system,
-          system-ui,
-          Segoe UI,
-          Roboto,
-          sans-serif;
-        line-height: 1.6;
-        -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
-        overflow-x: hidden;
-      }
-      img {
-        display: block;
-        max-width: 100%;
-      }
-      a {
-        color: inherit;
-        text-decoration: none;
-      }
-      ::selection {
-        background: rgba(13, 148, 136, 0.45);
-        color: #fff;
       }
 
-      /* ambient background glow */
-      .bg-glow {
+      body {
+        font-family: var(--font-sans);
+        background-color: var(--bg-base);
+        color: var(--text-main);
+        line-height: 1.5;
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        position: relative;
+      }
+
+      /* Ambient aurora background */
+      body::before {
+        content: "";
         position: fixed;
         inset: 0;
-        z-index: -1;
-        pointer-events: none;
         background:
           radial-gradient(
-            820px 520px at 88% -4%,
+            900px 500px at 85% -5%,
             rgba(13, 148, 136, 0.1),
             transparent 60%
           ),
           radial-gradient(
-            760px 560px at 4% 12%,
-            rgba(20, 184, 166, 0.06),
+            700px 500px at 5% 20%,
+            rgba(56, 189, 248, 0.05),
             transparent 60%
           ),
           radial-gradient(
-            900px 700px at 50% 120%,
-            rgba(13, 148, 136, 0.05),
+            800px 600px at 50% 110%,
+            rgba(157, 217, 209, 0.06),
             transparent 60%
           );
+        pointer-events: none;
+        z-index: 0;
       }
 
-      .wrap {
-        width: min(var(--maxw), 92%);
+      ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 2px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+
+      .container {
+        max-width: 1200px;
         margin: 0 auto;
-      }
-      .section {
-        padding: 72px 0;
-      }
-      .eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 9px;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--teal-l);
-        margin-bottom: 18px;
-      }
-      .eyebrow .dot {
-        margin: 0;
-      }
-      h2.title {
-        font-size: clamp(27px, 4.6vw, 44px);
-        font-weight: 800;
-        letter-spacing: -0.02em;
-        line-height: 1.12;
-      }
-      h2.title em {
-        font-style: normal;
-        background: linear-gradient(90deg, var(--teal-b), var(--teal-l));
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-      }
-      .lead {
-        color: var(--text-2);
-        font-size: clamp(15px, 1.7vw, 18px);
-        max-width: 62ch;
-        margin-top: 16px;
-      }
-      .grad {
-        background: linear-gradient(90deg, var(--teal-b), var(--teal-l));
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-      }
-
-      /* dot indicator motif */
-      .dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: var(--teal-l);
-        flex: none;
-        box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.5);
-        animation: pulse 2.6s ease-in-out infinite;
-      }
-      @keyframes pulse {
-        0%,
-        100% {
-          box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.45);
-          opacity: 1;
-        }
-        50% {
-          box-shadow: 0 0 0 5px rgba(45, 212, 191, 0);
-          opacity: 0.6;
-        }
-      }
-
-      /* buttons */
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 9px;
-        padding: 12px 20px;
-        border-radius: 8px;
-        font-weight: 700;
-        font-size: 14.5px;
-        cursor: pointer;
-        border: 1px solid transparent;
-        transition:
-          transform 150ms var(--ease),
-          box-shadow 150ms var(--ease),
-          background 150ms var(--ease),
-          border-color 150ms var(--ease);
-      }
-      .btn svg {
-        width: 16px;
-        height: 16px;
-      }
-      .btn-primary {
-        background: var(--teal-b);
-        color: #02231d;
-        box-shadow:
-          0 0 0 1px rgba(20, 184, 166, 0.4),
-          0 10px 30px -10px rgba(20, 184, 166, 0.45);
-      }
-      .btn-primary:hover {
-        background: var(--teal-l);
-        transform: translateY(-1px);
-        box-shadow:
-          0 0 0 1px rgba(45, 212, 191, 0.55),
-          0 16px 40px -10px rgba(45, 212, 191, 0.5);
-      }
-      .btn-ghost {
-        background: var(--card);
-        border-color: var(--border-strong);
-        color: var(--text);
-      }
-      .btn-ghost:hover {
-        background: var(--card-hover);
-        transform: translateY(-1px);
-      }
-
-      /* generic card */
-      .card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        padding: 26px;
-        transition:
-          transform 200ms var(--ease),
-          border-color 200ms var(--ease),
-          background 200ms var(--ease);
-      }
-      .card:hover {
-        border-color: var(--border-active);
-        background: var(--card-hover);
-      }
-
-      /* reveal-on-scroll */
-      .reveal {
-        opacity: 0;
-        transform: translateY(24px);
-        transition:
-          opacity 0.7s ease,
-          transform 0.8s var(--ease);
-        transition-delay: var(--d, 0s);
-      }
-      .reveal.in-view {
-        opacity: 1;
-        transform: none;
-      }
-
-      /* meter animation */
-      .meter {
+        padding: 0 32px;
         position: relative;
-        height: 6px;
-        border-radius: 99px;
-        background: rgba(255, 255, 255, 0.08);
-        overflow: hidden;
+        z-index: 1;
       }
-      .meter i {
-        position: absolute;
-        inset: 0 auto 0 0;
-        width: 0;
-        border-radius: 99px;
-        background: linear-gradient(90deg, var(--teal), var(--teal-l));
-        transition: width 1.2s var(--ease) 0.25s;
-      }
-      .in-view .meter i {
-        width: var(--w);
+      .mono {
+        font-family: var(--font-mono);
       }
 
-      /* ============================================================ NAV */
-      .nav {
+      /* ===== Navigation ===== */
+      nav {
         position: fixed;
         top: 0;
         left: 0;
-        right: 0;
-        z-index: 100;
-        background: rgba(6, 6, 8, 0.66);
-        backdrop-filter: blur(14px);
-        -webkit-backdrop-filter: blur(14px);
-        border-bottom: 1px solid transparent;
-        transition:
-          border-color 150ms var(--ease),
-          background 150ms var(--ease);
+        width: 100%;
+        background: rgba(6, 6, 8, 0.72);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-bottom: 1px solid var(--border-subtle);
+        z-index: 1000;
       }
-      .nav.scrolled {
-        border-color: var(--border);
-        background: rgba(6, 6, 8, 0.88);
+      .nav-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 13px 32px;
+        max-width: 1200px;
+        margin: 0 auto;
       }
-      .nav-inner {
+      .nav-logo {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        height: 64px;
+        gap: 9px;
+        text-decoration: none;
+        color: var(--text-main);
+        font-weight: 800;
+        font-size: 17px;
+        letter-spacing: -0.02em;
       }
-      .logo {
-        display: inline-flex;
-        align-items: center;
-      }
-      .logo-img {
-        height: 30px;
-        width: auto;
+      .nav-logo svg {
         display: block;
       }
       .nav-links {
-        display: none;
-        flex-direction: column;
-        gap: 4px;
-        position: fixed;
-        top: 64px;
-        left: 0;
-        right: 0;
-        background: rgba(6, 6, 8, 0.97);
-        backdrop-filter: blur(14px);
-        border-bottom: 1px solid var(--border);
-        padding: 14px 6%;
-        transform: translateY(-10px);
-        opacity: 0;
-        pointer-events: none;
-        transition: 0.25s;
-      }
-      .nav-links.open {
-        transform: none;
-        opacity: 1;
-        pointer-events: auto;
+        display: flex;
+        gap: 30px;
+        align-items: center;
       }
       .nav-links a {
-        padding: 12px 6px;
-        color: var(--text-2);
-        font-weight: 600;
-        font-size: 15px;
-        border-radius: var(--radius-md);
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 13.5px;
+        font-weight: 500;
+        transition: color var(--transition-fast);
       }
       .nav-links a:hover {
-        color: var(--text);
-      }
-      .nav-links .btn {
-        margin-top: 8px;
-      }
-      .burger {
-        display: inline-flex;
-        flex-direction: column;
-        gap: 5px;
-        background: none;
-        border: 0;
-        cursor: pointer;
-        padding: 8px;
-      }
-      .burger span {
-        width: 22px;
-        height: 2px;
-        background: var(--text);
-        border-radius: 2px;
-        transition: 0.28s;
-      }
-      .burger.active span:nth-child(1) {
-        transform: translateY(7px) rotate(45deg);
-      }
-      .burger.active span:nth-child(2) {
-        opacity: 0;
-      }
-      .burger.active span:nth-child(3) {
-        transform: translateY(-7px) rotate(-45deg);
+        color: var(--accent-mint);
       }
 
-      /* ============================================================ HERO */
-      .hero {
+      .btn {
+        padding: 9px 18px;
+        border-radius: var(--radius-md);
+        font-size: 13.5px;
+        font-weight: 600;
+        font-family: var(--font-sans);
+        cursor: pointer;
+        border: none;
+        transition: all var(--transition-fast);
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        letter-spacing: -0.01em;
+      }
+      .btn-primary {
+        background: linear-gradient(180deg, #11a597, var(--accent-primary));
+        color: #fff;
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.12) inset,
+          0 6px 18px rgba(13, 148, 136, 0.25);
+      }
+      .btn-primary:hover {
+        background: linear-gradient(180deg, #16c0af, var(--accent-hover));
+        box-shadow:
+          0 0 26px var(--accent-glow),
+          0 1px 0 rgba(255, 255, 255, 0.18) inset;
+        transform: translateY(-1px);
+      }
+      .btn-ghost {
+        background: var(--bg-card);
+        color: var(--text-main);
+        border: 1px solid var(--border-subtle);
+      }
+      .btn-ghost:hover {
+        background: var(--bg-hover);
+        border-color: var(--border-active);
+        color: var(--accent-mint);
+        transform: translateY(-1px);
+      }
+
+      /* ===== Tooltip ===== */
+      .klippa-tooltip {
         position: relative;
-        padding: 124px 0 70px;
+        cursor: help;
+        border-bottom: 1px dashed var(--accent-mint);
+        display: inline-block;
+        color: var(--accent-mint);
+        font-weight: 700;
+      }
+      .tooltip-content {
+        visibility: hidden;
+        width: 180px;
+        background-color: #0b0b0e;
+        color: var(--text-main);
+        text-align: center;
+        border-radius: var(--radius-md);
+        padding: 8px 12px;
+        position: absolute;
+        z-index: 5;
+        bottom: 140%;
+        left: 50%;
+        margin-left: -90px;
+        opacity: 0;
+        transition:
+          opacity 0.25s,
+          transform 0.25s;
+        transform: translateY(4px);
+        border: 1px solid var(--border-active);
+        font-size: 12px;
+        font-family: var(--font-mono);
+        pointer-events: none;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      }
+      .klippa-tooltip:hover .tooltip-content {
+        visibility: visible;
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      /* ===== Hero ===== */
+      .hero {
+        padding: 150px 0 90px;
+        position: relative;
         overflow: hidden;
       }
-      .hero::before {
-        content: "";
+      .hero-glow {
         position: absolute;
-        inset: 0;
-        pointer-events: none;
-        background-image:
-          linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-          linear-gradient(
-            90deg,
-            rgba(255, 255, 255, 0.022) 1px,
-            transparent 1px
-          );
-        background-size: 48px 48px;
-        -webkit-mask-image: radial-gradient(
-          70% 60% at 60% 30%,
-          #000,
-          transparent 80%
+        top: -120px;
+        right: -160px;
+        width: 640px;
+        height: 640px;
+        background: radial-gradient(
+          circle,
+          var(--accent-glow) 0%,
+          transparent 65%
         );
-        mask-image: radial-gradient(70% 60% at 60% 30%, #000, transparent 80%);
+        pointer-events: none;
+        z-index: 0;
       }
       .hero-grid {
+        /* Wider editor column + tighter gap = more room to the right */
         display: grid;
-        gap: 44px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.34fr);
+        gap: 48px;
         align-items: center;
+        position: relative;
+        z-index: 1;
       }
-      .hero h1 {
-        font-size: clamp(36px, 6vw, 60px);
-        font-weight: 800;
-        letter-spacing: -0.03em;
-        line-height: 1.04;
-      }
-      .hero h1 em {
-        font-style: normal;
-      }
-      .tagline {
-        margin: 22px 0 16px;
-        padding: 14px 18px;
-        border-left: 2px solid var(--teal);
-        background: linear-gradient(90deg, var(--teal-soft), transparent 70%);
-        border-radius: 0 var(--radius-md) var(--radius-md) 0;
-        font-size: clamp(16px, 1.9vw, 19px);
-        font-weight: 600;
-        color: #e6faf6;
-        line-height: 1.45;
-      }
-      .hero .sub {
-        color: var(--text-2);
-        font-size: clamp(15px, 1.7vw, 17.5px);
-        max-width: 54ch;
-      }
-      .hero-cta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 26px;
-      }
-      .proof {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 9px;
-        margin-top: 22px;
-      }
-      .proof span {
+      .hero-eyebrow {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
+        gap: 8px;
+        padding: 6px 13px 6px 11px;
+        border-radius: 20px;
+        background: rgba(157, 217, 209, 0.06);
+        border: 1px solid rgba(157, 217, 209, 0.18);
         font-size: 12px;
-        color: var(--muted);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        padding: 6px 11px;
-        background: var(--card);
+        font-weight: 600;
+        color: var(--accent-mint);
+        margin-bottom: 26px;
+        font-family: var(--font-mono);
+        letter-spacing: 0.02em;
       }
-      .proof svg {
+      .hero-eyebrow i {
         width: 13px;
         height: 13px;
-        color: var(--teal-l);
-        flex: none;
       }
 
-      /* ---- editor mock ---- */
-      .mock-wrap {
-        position: relative;
+      h1 {
+        font-size: 54px;
+        font-weight: 800;
+        line-height: 1.04;
+        letter-spacing: -0.035em;
+        margin-bottom: 22px;
       }
-      .editor-mock {
-        background: #0a0a0c;
-        border: 1px solid var(--border-strong);
-        border-radius: var(--radius-lg);
+      h1 .dot {
+        color: var(--accent-mint);
+      }
+
+      .hero-tagline {
+        font-size: 20px;
+        color: var(--text-main);
+        margin-bottom: 14px;
+        font-weight: 500;
+        line-height: 1.4;
+      }
+      .hero-desc {
+        font-size: 15.5px;
+        color: var(--text-muted);
+        margin-bottom: 36px;
+        line-height: 1.65;
+        max-width: 460px;
+      }
+      .hero-ctas {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 40px;
+      }
+      .hero-meta {
+        display: flex;
+        gap: 22px;
+        flex-wrap: wrap;
+      }
+      .hero-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12.5px;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+      }
+      .hero-meta-item i {
+        width: 14px;
+        height: 14px;
+        color: var(--accent-mint);
+      }
+
+      /* ===== Editor Mockup (wider, more landscape) ===== */
+      .editor-mockup {
+        background: var(--bg-panel);
+        border: 1px solid var(--border-subtle);
+        border-radius: 14px;
         overflow: hidden;
         box-shadow:
-          0 36px 90px -34px rgba(0, 0, 0, 0.85),
-          0 0 0 1px rgba(13, 148, 136, 0.06),
-          0 0 100px -44px rgba(13, 148, 136, 0.3);
+          0 30px 90px rgba(0, 0, 0, 0.55),
+          0 0 0 1px rgba(255, 255, 255, 0.02),
+          0 0 60px rgba(13, 148, 136, 0.08);
+        display: flex;
+        flex-direction: column;
+        backdrop-filter: blur(10px);
+        width: 100%;
+        height: 540px;
+        position: relative;
       }
-      .mock-top {
+      .editor-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.02);
+        border-bottom: 1px solid var(--border-subtle);
+        height: 36px;
+        flex-shrink: 0;
+      }
+      .topbar-left {
         display: flex;
         align-items: center;
         gap: 12px;
-        height: 42px;
-        padding: 0 14px;
-        border-bottom: 1px solid var(--border);
-        background: rgba(255, 255, 255, 0.02);
+        min-width: 0;
       }
-      .mock-dots {
+      .topbar-controls {
         display: flex;
         gap: 6px;
+        align-items: center;
       }
-      .mock-dots i {
+      .mac-dot {
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.14);
+        border: 0.5px solid rgba(0, 0, 0, 0.2);
       }
-      .mock-title {
-        font-family: var(--mono);
+      .mac-dot.red {
+        background: #ff5f56;
+      }
+      .mac-dot.yellow {
+        background: #ffbd2e;
+      }
+      .mac-dot.green {
+        background: #27c93f;
+      }
+      .topbar-title {
+        font-family: var(--font-mono);
         font-size: 11px;
-        color: var(--muted);
-        font-weight: 500;
-        flex: 1;
+        color: var(--text-muted);
+        letter-spacing: 0.04em;
+        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
       }
-      .mock-status {
+      .topbar-right {
         display: flex;
         align-items: center;
         gap: 8px;
       }
-      .chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-family: var(--mono);
-        font-size: 10px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        border-radius: var(--radius-sm);
-        padding: 4px 8px;
-        border: 1px solid var(--border);
+      .topbar-icon {
+        width: 14px;
+        height: 14px;
+        color: var(--text-muted);
+        cursor: pointer;
       }
-      .chip-granite {
-        color: var(--teal-l);
-        border-color: var(--teal-line);
-        background: var(--teal-soft);
-      }
-      .chip-score {
-        color: var(--text-2);
-      }
-      .chip-score b {
-        color: var(--teal-l);
-      }
-      .chip-score .meter {
-        width: 32px;
-        height: 4px;
-      }
-      .mock-body {
+
+      .editor-body {
+        /* Right panel widened so chat lines sit on a single row (no vertical clip) */
         display: grid;
-        grid-template-columns: 1fr;
+        grid-template-columns: 152px minmax(0, 1fr) 216px;
+        flex: 1;
+        min-height: 0;
       }
-      .mock-main {
+
+      /* Left Panel */
+      .panel-left {
+        border-right: 1px solid var(--border-subtle);
+        padding: 10px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow-y: auto;
+        overflow-x: hidden;
         min-width: 0;
       }
-      .preview {
-        position: relative;
-        aspect-ratio: 16/9;
-        background: #000;
+      .panel-tabs {
+        display: flex;
+        gap: 4px;
+        background: rgba(0, 0, 0, 0.25);
+        padding: 3px;
+        border-radius: var(--radius-sm);
+        margin-bottom: 2px;
+      }
+      .panel-tab {
+        flex: 1;
+        text-align: center;
+        font-size: 9px;
+        font-family: var(--font-mono);
+        padding: 4px;
+        border-radius: 3px;
+        color: var(--text-muted);
+        cursor: pointer;
+      }
+      .panel-tab.active {
+        background: var(--bg-card);
+        color: var(--accent-mint);
+      }
+      .panel-header-mono {
+        font-family: var(--font-mono);
+        font-size: 8px;
+        font-weight: 600;
+        color: var(--text-muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 2px 4px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+      }
+      .media-item {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 5px 6px;
+        border-radius: var(--radius-sm);
+        background: rgba(157, 217, 209, 0.04);
+        border: 1px solid rgba(157, 217, 209, 0.1);
         overflow: hidden;
+        min-width: 0;
       }
-      .preview img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
+      .media-thumb {
+        width: 28px;
+        height: 18px;
+        border-radius: 2px;
+        flex-shrink: 0;
+        position: relative;
+        overflow: hidden;
+        background-size: cover;
+        background-position: center 30%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
-      .preview::after {
+      .media-thumb.main {
+        background-image: var(--img-dance);
+      }
+      .media-thumb.audio {
+        background: linear-gradient(135deg, #1e3a8a, #0d9488);
+      }
+      .media-thumb i {
+        color: rgba(255, 255, 255, 0.9);
+        width: 10px;
+        height: 10px;
+        z-index: 2;
+      }
+      .media-info {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        overflow: hidden;
+        min-width: 0;
+      }
+      .media-name {
+        font-size: 10px;
+        font-family: var(--font-mono);
+        color: var(--text-secondary);
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .media-meta {
+        font-size: 8px;
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+      .coming-soon-tag {
+        font-size: 6px;
+        background: rgba(157, 217, 209, 0.15);
+        color: var(--accent-mint);
+        padding: 1px 3px;
+        border-radius: 3px;
+        margin-left: auto;
+        text-transform: uppercase;
+      }
+
+      /* Stock grid — contemporary African creator imagery */
+      .stock-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 5px;
+        padding: 2px;
+      }
+      .stock-thumb {
+        aspect-ratio: 16/9;
+        background-size: cover;
+        background-position: center;
+        border-radius: 4px;
+        border: 1px solid var(--border-subtle);
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+        filter: saturate(0.98) brightness(0.92);
+        transition:
+          transform 0.18s ease,
+          border-color 0.18s ease,
+          filter 0.18s ease;
+      }
+      .stock-thumb::after {
         content: "";
         position: absolute;
         inset: 0;
         background: linear-gradient(
           180deg,
-          transparent 55%,
-          rgba(0, 0, 0, 0.55)
+          rgba(0, 0, 0, 0) 45%,
+          rgba(0, 0, 0, 0.5) 100%
         );
+        transition: opacity 0.18s ease;
       }
-      .preview .cap {
+      .stock-thumb:hover {
+        transform: translateY(-1px);
+        border-color: var(--border-active);
+        filter: saturate(1.08) brightness(1.02);
+      }
+      .stock-thumb:hover::after {
+        opacity: 0.3;
+      }
+      .stock-add {
         position: absolute;
+        top: 50%;
         left: 50%;
-        bottom: 9%;
-        transform: translateX(-50%);
-        z-index: 2;
-        background: rgba(0, 0, 0, 0.62);
-        padding: 5px 12px;
-        border-radius: var(--radius-sm);
-        font-weight: 800;
-        font-size: clamp(11px, 2.4vw, 14px);
-        letter-spacing: 0.01em;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-      }
-      .preview .cap em {
-        color: var(--teal-l);
-        font-style: normal;
-      }
-      .preview .tc {
-        position: absolute;
-        top: 10px;
-        right: 12px;
-        z-index: 2;
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 500;
-        background: rgba(0, 0, 0, 0.5);
-        padding: 3px 8px;
-        border-radius: var(--radius-sm);
+        transform: translate(-50%, -50%) scale(0.7);
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        background: rgba(13, 148, 136, 0.92);
         color: #fff;
-      }
-      .preview .res {
-        position: absolute;
-        top: 10px;
-        left: 12px;
-        z-index: 2;
-        font-family: var(--mono);
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.04em;
-        background: rgba(0, 0, 0, 0.5);
-        padding: 3px 8px;
-        border-radius: var(--radius-sm);
-        color: var(--text-2);
-      }
-
-      /* timeline */
-      .timeline {
-        position: relative;
-        padding: 10px 12px 14px;
-        border-top: 1px solid var(--border);
-        background: rgba(0, 0, 0, 0.3);
-      }
-      .tl-ruler {
-        display: flex;
-        justify-content: space-between;
-        font-family: var(--mono);
-        font-size: 9px;
-        color: var(--muted);
-        padding: 0 0 6px 30px;
-      }
-      .tl-track {
         display: flex;
         align-items: center;
-        height: 24px;
-        margin: 3px 0;
+        justify-content: center;
+        font-size: 12px;
+        line-height: 1;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        opacity: 0;
+        transition:
+          opacity 0.18s ease,
+          transform 0.18s ease;
+        z-index: 2;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
       }
-      .tl-track.v1 {
-        height: 34px;
+      .stock-thumb:hover .stock-add {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
       }
-      .tl-label {
-        width: 30px;
-        flex: none;
-        font-family: var(--mono);
-        font-size: 9px;
-        font-weight: 600;
-        color: var(--muted);
-        letter-spacing: 0.04em;
-      }
-      .tl-clips {
+
+      /* Center Preview */
+      .panel-center {
+        background: #000;
+        display: flex;
+        flex-direction: column;
         position: relative;
-        flex: 1;
-        height: 100%;
-      }
-      .clip {
-        position: absolute;
-        top: 0;
-        height: 100%;
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--border-strong);
+        min-width: 0;
         overflow: hidden;
       }
-      .clip-vid {
-        background-image: var(--frame);
-        background-size: cover;
+      .preview-area {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+        min-height: 0;
+        height: 100%;
       }
-      .clip-vid::after {
-        content: "";
+      .preview-frame {
+        width: 100%;
+        height: 100%;
+        background-image: var(--img-dance);
+        background-size: cover;
+        background-position: center 30%;
+        position: relative;
+        overflow: hidden;
+      }
+      .preview-overlay {
         position: absolute;
         inset: 0;
         background: linear-gradient(
-          90deg,
-          rgba(13, 148, 136, 0.18),
-          rgba(0, 0, 0, 0.4)
+          180deg,
+          rgba(0, 0, 0, 0.15) 0%,
+          rgba(0, 0, 0, 0) 30%,
+          rgba(0, 0, 0, 0) 55%,
+          rgba(0, 0, 0, 0.82) 100%
         );
+        z-index: 1;
+        pointer-events: none;
       }
-      .clip-cap {
-        background: rgba(45, 212, 191, 0.1);
-        border-color: rgba(45, 212, 191, 0.35);
-        display: grid;
-        place-items: center;
-        font-family: var(--mono);
-        font-size: 8px;
+      .preview-corner {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        font-family: var(--font-mono);
+        font-size: 9px;
+        color: rgba(255, 255, 255, 0.85);
+        background: rgba(0, 0, 0, 0.5);
+        padding: 3px 7px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        z-index: 2;
+      }
+      .preview-corner i {
+        width: 9px;
+        height: 9px;
+      }
+      .preview-play-btn {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 46px;
+        height: 46px;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(4px);
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        z-index: 2;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .preview-play-btn:hover {
+        background: rgba(13, 148, 136, 0.7);
+        border-color: var(--accent-mint);
+        transform: translate(-50%, -50%) scale(1.06);
+      }
+      .preview-play-btn i {
+        width: 18px;
+        height: 18px;
+      }
+      .preview-caption {
+        position: absolute;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+        color: white;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+        letter-spacing: 0.12em;
+        z-index: 2;
+        white-space: nowrap;
+      }
+
+      /* Right Panel - AI Director */
+      .panel-right {
+        border-left: 1px solid var(--border-subtle);
+        padding: 10px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow: hidden;
+        min-width: 0;
+      }
+      .director-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--font-mono);
+        font-size: 9px;
         font-weight: 600;
-        color: var(--teal-xl);
-        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        flex-shrink: 0;
       }
-      .clip-aud {
-        background: var(--teal-soft);
-        border-color: var(--teal-line);
-        color: var(--teal-b);
+      .director-header i {
+        width: 12px;
+        height: 12px;
+        color: var(--accent-mint);
       }
-      .clip-mus {
-        background: rgba(45, 212, 191, 0.12);
-        border-color: rgba(45, 212, 191, 0.4);
-        color: var(--teal-l);
+      .director-model {
+        font-size: 7px;
+        color: var(--text-muted);
+        background: var(--bg-card);
+        padding: 2px 5px;
+        border-radius: 3px;
+        margin-left: auto;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
       }
-      .wave {
+
+      .score-box {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-sm);
+        padding: 7px 8px;
+        flex-shrink: 0;
+      }
+      .score-label {
+        font-size: 8.5px;
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        margin-bottom: 4px;
+        letter-spacing: 0.03em;
+      }
+      .score-row {
+        display: flex;
+        align-items: baseline;
+        gap: 5px;
+        margin-bottom: 5px;
+        white-space: nowrap;
+      }
+      .score-num {
+        font-size: 19px;
+        font-weight: 800;
+        color: var(--accent-mint);
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+      .score-max {
+        font-size: 9px;
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+      }
+      .score-trend {
+        margin-left: auto;
+        font-size: 9px;
+        color: var(--accent-mint);
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .score-trend i {
+        width: 10px;
+        height: 10px;
+      }
+      .score-bar {
+        height: 3px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .score-fill {
+        height: 100%;
+        width: 76%;
+        background: linear-gradient(
+          90deg,
+          var(--accent-primary),
+          var(--accent-mint)
+        );
+        border-radius: 2px;
+      }
+
+      .actions-label {
+        font-family: var(--font-mono);
+        font-size: 8.5px;
+        font-weight: 600;
+        color: var(--text-muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        flex-shrink: 0;
+      }
+
+      .actions-scroll {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex-shrink: 0;
+      }
+      .action-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 7px;
+        border-radius: 4px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        font-size: 9.5px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        line-height: 1.2;
+      }
+      .action-item:hover {
+        background: rgba(157, 217, 209, 0.07);
+        border-color: var(--border-active);
+        color: var(--text-main);
+      }
+      .action-item i {
+        width: 10px;
+        height: 10px;
+        color: var(--accent-mint);
+        flex-shrink: 0;
+      }
+
+      .director-bottom {
+        margin-top: auto;
+        border-top: 1px solid var(--border-subtle);
+        padding-top: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      /* Static, icon-based status (no blinking light) */
+      .director-status {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-family: var(--font-mono);
+        font-size: 7.5px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+      }
+      .director-status i {
+        width: 9px;
+        height: 9px;
+        color: var(--accent-mint);
+        flex-shrink: 0;
+      }
+
+      .mini-chat {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .mini-chat .chat-msg {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        min-width: 0;
+      }
+      .mini-chat .chat-msg.user {
+        align-items: flex-end;
+      }
+      .mini-chat .chat-msg.ai {
+        align-items: flex-start;
+      }
+      .mini-chat .chat-bubble {
+        padding: 4px 7px;
+        border-radius: 5px;
+        font-size: 8.5px;
+        line-height: 1.35;
+        display: inline-block;
+        max-width: 100%;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        font-family: var(--font-mono);
+      }
+      .mini-chat .chat-msg.user .chat-bubble {
+        background: var(--accent-primary);
+        color: white;
+        border: 1px solid var(--accent-primary);
+        border-bottom-right-radius: 1px;
+      }
+      .mini-chat .chat-msg.ai .chat-bubble {
+        background: var(--bg-card);
+        border: 1px solid var(--border-active);
+        color: var(--text-secondary);
+        border-bottom-left-radius: 1px;
+      }
+      .mini-chat .chat-action {
+        margin-top: 3px;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 2px 6px;
+        background: rgba(157, 217, 209, 0.1);
+        border: 1px solid rgba(157, 217, 209, 0.3);
+        border-radius: 4px;
+        font-size: 7.5px;
+        color: var(--accent-mint);
+        font-family: var(--font-mono);
+        font-weight: 600;
+      }
+      .mini-chat .chat-action i {
+        width: 8px;
+        height: 8px;
+      }
+
+      /* Timeline */
+      .editor-timeline {
+        border-top: 1px solid var(--border-subtle);
+        background: rgba(0, 0, 0, 0.25);
+        padding: 8px 12px;
+        flex-shrink: 0;
+        height: 150px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .timeline-toolbar {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        height: 22px;
+      }
+      .tl-btn {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        width: 22px;
+        height: 22px;
+        border-radius: var(--radius-sm);
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tl-btn i {
+        width: 10px;
+        height: 10px;
+      }
+      .tl-btn:hover {
+        color: var(--text-main);
+        border-color: var(--border-active);
+      }
+      .tl-btn.active {
+        color: var(--accent-mint);
+        border-color: var(--border-active);
+        background: rgba(157, 217, 209, 0.08);
+      }
+      .timeline-zoom {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: auto;
+      }
+      .zoom-track {
+        width: 50px;
+        height: 3px;
+        background: var(--bg-card);
+        border-radius: 2px;
+        position: relative;
+      }
+      .zoom-handle {
+        position: absolute;
+        top: 50%;
+        left: 30%;
+        transform: translateY(-50%);
+        width: 6px;
+        height: 6px;
+        background: var(--accent-mint);
+        border-radius: 50%;
+      }
+      .timeline-ruler {
+        display: flex;
+        justify-content: space-between;
+        padding: 0 44px;
+        height: 10px;
+      }
+      .timeline-ruler span {
+        font-family: var(--font-mono);
+        font-size: 7px;
+        color: var(--text-muted);
+      }
+      .timeline-tracks {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        position: relative;
+        flex: 1;
+      }
+      .timeline-track {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 20px;
+      }
+      .track-label {
+        font-family: var(--font-mono);
+        font-size: 8px;
+        color: var(--text-muted);
+        width: 40px;
+        flex-shrink: 0;
+      }
+      .track-clip {
+        height: 100%;
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        padding: 0 6px;
+        font-family: var(--font-mono);
+        font-size: 8px;
+        position: relative;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      .track-clip.video {
+        background: linear-gradient(
+          180deg,
+          rgba(157, 217, 209, 0.2),
+          rgba(13, 148, 136, 0.1)
+        );
+        border: 1px solid rgba(157, 217, 209, 0.3);
+        color: var(--accent-mint);
+      }
+      .track-clip.audio {
+        background: linear-gradient(
+          180deg,
+          rgba(56, 189, 248, 0.2),
+          rgba(14, 165, 233, 0.1)
+        );
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        color: var(--accent-blue);
+        flex: 1;
+      }
+      .track-clip.video.broll-clip {
+        flex: 0 0 20%;
+        margin-left: 10%;
+      }
+      .track-clip.video.main-clip {
+        display: flex;
+        gap: 1px;
+        padding: 0;
+        flex: 1;
+      }
+      .clip-thumb {
+        flex: 1;
+        height: 100%;
+        background-image: var(--img-dance);
+        background-size: cover;
+        background-position: center 30%;
+        opacity: 0.85;
+      }
+      .audio-waveform {
         display: flex;
         align-items: center;
         gap: 1px;
-        height: 100%;
-        padding: 4px 5px;
+        width: 100%;
+        height: 60%;
       }
-      .wave i {
+      .audio-waveform span {
         flex: 1;
-        min-width: 1px;
-        background: currentColor;
+        background: rgba(56, 189, 248, 0.6);
         border-radius: 1px;
-        opacity: 0.85;
+      }
+      .track-clip.caption-clip {
+        flex: 0 0 24%;
+        margin-left: 5%;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: var(--text-main);
+        font-size: 7px;
+        font-weight: 700;
+        justify-content: center;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
       }
       .playhead {
         position: absolute;
-        top: 30px;
-        bottom: 12px;
-        width: 2px;
-        background: var(--teal-l);
-        box-shadow: 0 0 8px rgba(45, 212, 191, 0.8);
-        left: 8%;
-        animation: sweep 13s ease-in-out infinite alternate;
+        top: -14px;
+        bottom: -4px;
+        left: 35%;
+        width: 1px;
+        background: #ff5f56;
+        z-index: 10;
+        box-shadow: 0 0 4px rgba(255, 95, 86, 0.5);
+        pointer-events: none;
       }
       .playhead::before {
         content: "";
         position: absolute;
-        top: -3px;
-        left: 50%;
-        transform: translateX(-50%);
+        top: 0;
+        left: -4px;
         width: 9px;
         height: 9px;
-        background: var(--teal-l);
-        clip-path: polygon(0 0, 100% 0, 50% 100%);
-      }
-      @keyframes sweep {
-        from {
-          left: 8%;
-        }
-        to {
-          left: 90%;
-        }
+        background: #ff5f56;
+        border-radius: 2px;
       }
 
-      /* director side panel */
-      .mock-side {
-        display: none;
-        border-top: 1px solid var(--border);
-        background: #08080b;
-        padding: 12px;
-      }
-      .side-head {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        font-size: 11px;
-        font-weight: 700;
-        color: var(--text);
-        margin-bottom: 10px;
-      }
-      .side-head .model {
-        margin-left: auto;
-        font-family: var(--mono);
-        font-size: 9px;
-        color: var(--muted);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        padding: 2px 6px;
-      }
-      .side-chat {
-        display: flex;
-        flex-direction: column;
-        gap: 7px;
-      }
-      .msg {
-        font-size: 11px;
-        line-height: 1.4;
-        padding: 7px 10px;
-        border-radius: var(--radius-md);
-        max-width: 92%;
-      }
-      .msg-you {
-        align-self: flex-end;
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--text);
-      }
-      .msg-ai {
-        align-self: flex-start;
-        background: var(--teal-soft);
-        border: 1px solid var(--teal-line);
-        color: #e6faf6;
-      }
-      .msg-ai b {
-        color: var(--teal-l);
-      }
-      .side-input {
-        margin-top: 11px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        border: 1px solid var(--border-strong);
-        border-radius: var(--radius-md);
-        padding: 8px 12px;
-        font-size: 10.5px;
-        color: var(--muted);
-      }
-      .side-input kbd {
-        font-family: var(--mono);
-        background: rgba(255, 255, 255, 0.07);
-        border-radius: var(--radius-sm);
-        padding: 1px 5px;
-        font-weight: 600;
-        color: var(--text-2);
-      }
-      .caret {
-        width: 1.5px;
-        height: 12px;
-        background: var(--teal-l);
-        animation: blink 1.1s steps(1) infinite;
-      }
-      @keyframes blink {
-        50% {
-          opacity: 0;
-        }
-      }
-
-      /* floating chips */
-      .float-chip {
-        display: none;
-        position: absolute;
-        z-index: 3;
-        align-items: center;
-        gap: 8px;
-        background: rgba(10, 10, 13, 0.92);
-        border: 1px solid var(--border-strong);
-        backdrop-filter: blur(8px);
-        border-radius: var(--radius-md);
-        padding: 9px 13px;
-        font-size: 12px;
-        font-weight: 600;
-        box-shadow: 0 14px 40px -16px rgba(0, 0, 0, 0.8);
-      }
-      .float-chip kbd {
-        font-family: var(--mono);
-        color: var(--teal-l);
-        font-weight: 600;
-      }
-      .float-chip .ok {
-        color: var(--teal-l);
-      }
-      .float-chip .vthumb {
-        width: 22px;
-        height: 34px;
-        border-radius: var(--radius-sm);
-        background-image: var(--frame);
-        background-size: cover;
-        background-position: 50% 25%;
-        flex: none;
-      }
-      .fc-1 {
-        top: -16px;
-        right: 6%;
-        animation: floaty 7s ease-in-out infinite alternate;
-      }
-      .fc-2 {
-        bottom: -18px;
-        left: -14px;
-        animation: floaty 8s ease-in-out infinite alternate-reverse;
-      }
-      @keyframes floaty {
-        from {
-          transform: translateY(-6px);
-        }
-        to {
-          transform: translateY(6px);
-        }
-      }
-
-      /* ============================================================ PROBLEM */
-      .problem-stats {
-        display: grid;
-        gap: 18px;
-        margin: 34px 0;
-      }
-      .pstat {
-        padding: 26px;
-      }
-      .pstat .big {
-        font-size: clamp(34px, 6vw, 52px);
-        font-weight: 800;
-        letter-spacing: -0.03em;
-        line-height: 1;
-        background: linear-gradient(90deg, var(--teal-b), var(--teal-l));
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-      }
-      .pstat .lbl {
-        color: var(--text-2);
-        margin-top: 12px;
-        font-size: 14.5px;
-      }
-      .weekbar {
-        margin-top: 16px;
-      }
-      .weekbar .meter {
-        height: 10px;
-      }
-      .weekbar small {
-        display: block;
-        margin-top: 8px;
-        color: var(--muted);
-        font-size: 12px;
-      }
-      .barriers {
-        display: grid;
-        gap: 16px;
-      }
-      .barrier .ic {
-        width: 42px;
-        height: 42px;
-        border-radius: var(--radius-md);
-        display: grid;
-        place-items: center;
-        margin-bottom: 16px;
-        background: var(--teal-soft);
-        border: 1px solid var(--teal-line);
-        color: var(--teal-l);
-      }
-      .barrier .ic svg {
-        width: 21px;
-        height: 21px;
-      }
-      .barrier h3 {
-        font-size: 17px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
-      }
-      .barrier p {
-        color: var(--text-2);
-        font-size: 14px;
-        margin-top: 8px;
-      }
-      .closing {
-        margin-top: 34px;
-        padding: 20px 22px;
-        border-left: 2px solid var(--teal);
-        border-radius: 0 var(--radius-md) var(--radius-md) 0;
-        background: linear-gradient(90deg, var(--teal-soft), transparent 75%);
-        font-size: clamp(15px, 1.8vw, 18px);
-        font-weight: 600;
-        color: #e6faf6;
-      }
-
-      /* ============================================================ HOW */
-      .steps {
-        display: grid;
-        gap: 18px;
-        margin-top: 38px;
+      /* ===== Sections ===== */
+      section {
+        padding: 100px 0;
         position: relative;
       }
-      .step {
+      .section-eyebrow {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--accent-mint);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+      }
+      h2 {
+        font-size: 38px;
+        font-weight: 800;
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+        margin-bottom: 16px;
+        max-width: 660px;
+      }
+      .section-desc {
+        font-size: 16px;
+        color: var(--text-muted);
+        max-width: 540px;
+        line-height: 1.6;
+      }
+
+      /* Problem */
+      .problem-hero-stat {
         display: flex;
-        gap: 18px;
-        padding: 24px;
+        align-items: baseline;
+        gap: 24px;
+        margin-bottom: 56px;
+        padding-bottom: 48px;
+        border-bottom: 1px solid var(--border-subtle);
       }
-      .step .num {
-        flex: none;
-        width: 46px;
-        height: 46px;
-        border-radius: var(--radius-md);
+      .stat-mega {
+        font-size: 60px;
+        font-weight: 800;
+        color: var(--accent-mint);
+        line-height: 1;
+        letter-spacing: -0.04em;
+        flex-shrink: 0;
+      }
+      .stat-context {
+        font-size: 16px;
+        color: var(--text-secondary);
+        line-height: 1.55;
+      }
+      .stat-context .dim {
+        color: var(--text-muted);
+      }
+      .problem-grid {
         display: grid;
-        place-items: center;
-        font-family: var(--mono);
-        font-weight: 700;
-        font-size: 17px;
-        color: var(--teal-l);
-        background: var(--teal-soft);
-        border: 1px solid var(--teal-line);
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
       }
-      .step .ic {
+      .problem-card {
+        padding: 28px 24px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        transition: all var(--transition-fast);
+      }
+      .problem-card:hover {
+        border-color: var(--border-active);
+        transform: translateY(-3px);
+        background: var(--bg-hover);
+      }
+      .problem-card-icon {
         width: 38px;
         height: 38px;
         border-radius: var(--radius-md);
-        display: grid;
-        place-items: center;
-        margin-bottom: 12px;
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid var(--border);
-        color: var(--teal-l);
-      }
-      .step .ic svg {
-        width: 19px;
-        height: 19px;
-      }
-      .step h3 {
-        font-size: 18px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
-      }
-      .step p {
-        color: var(--text-2);
-        font-size: 14.5px;
-        margin-top: 8px;
-      }
-      .unlock {
-        margin-top: 22px;
-        display: grid;
-        gap: 26px;
-        align-items: center;
-        padding: 30px;
-      }
-      .unlock .eyebrow {
-        margin-bottom: 12px;
-      }
-      .unlock h3 {
-        font-size: clamp(20px, 2.6vw, 26px);
-        font-weight: 800;
-        letter-spacing: -0.02em;
-        line-height: 1.2;
-      }
-      .unlock p {
-        color: var(--text-2);
-        margin-top: 12px;
-        font-size: 14.5px;
-      }
-      .load-compare {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-      }
-      .load-row {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 10px 14px;
-        align-items: center;
-      }
-      .load-name {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--text-2);
-      }
-      .load-track {
-        grid-column: 1/-1;
-        height: 14px;
-        border-radius: 99px;
-        background: rgba(255, 255, 255, 0.06);
-        overflow: hidden;
-      }
-      .load-track i {
-        display: block;
-        height: 100%;
-        width: 0;
-        border-radius: 99px;
-        transition: width 1.3s var(--ease) 0.2s;
-      }
-      .load-track i.fast {
-        background: linear-gradient(90deg, var(--teal), var(--teal-l));
-      }
-      .load-track i.slow {
-        background: linear-gradient(
-          90deg,
-          rgba(255, 255, 255, 0.16),
-          rgba(255, 255, 255, 0.3)
-        );
-      }
-      .in-view .load-track i {
-        width: var(--w);
-      }
-      .load-val {
-        grid-column: 1/-1;
-        font-size: 12.5px;
-        color: var(--muted);
-      }
-      .load-val b {
-        color: var(--teal-l);
-      }
-      .load-cap {
-        font-size: 12px;
-        color: var(--muted);
-        margin-top: 4px;
-      }
-
-      /* ============================================================ FEATURES */
-      .feat-grid {
-        display: grid;
-        gap: 16px;
-        margin-top: 38px;
-      }
-      .feat .ic {
-        width: 44px;
-        height: 44px;
-        border-radius: var(--radius-md);
-        display: grid;
-        place-items: center;
-        margin-bottom: 16px;
-        background: var(--teal-soft);
-        border: 1px solid var(--teal-line);
-        color: var(--teal-l);
-      }
-      .feat .ic svg {
-        width: 21px;
-        height: 21px;
-      }
-      .feat h3 {
-        font-size: 17px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
+        background: rgba(157, 217, 209, 0.06);
+        border: 1px solid rgba(157, 217, 209, 0.12);
         display: flex;
         align-items: center;
-        gap: 9px;
-        flex-wrap: wrap;
+        justify-content: center;
+        margin-bottom: 18px;
+        color: var(--accent-mint);
       }
-      .feat p {
-        color: var(--text-2);
-        font-size: 14px;
-        margin-top: 8px;
-      }
-      .badge {
-        font-size: 9px;
-        font-weight: 800;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: #02231d;
-        background: var(--teal-b);
-        border-radius: var(--radius-sm);
-        padding: 3px 8px;
-      }
-      .feat-viz {
-        margin-top: 18px;
-        height: 54px;
-        border-radius: var(--radius-md);
-        background: rgba(0, 0, 0, 0.35);
-        border: 1px solid var(--border);
-        position: relative;
-        overflow: hidden;
-        display: flex;
-        align-items: center;
-        padding: 0 12px;
-      }
-      .feat-viz.tall {
-        height: 64px;
-      }
-      /* director mini pill viz */
-      .pill-viz {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        width: 100%;
-      }
-      .pill-viz .cmd {
-        font-family: var(--mono);
-        font-weight: 600;
-        color: var(--teal-l);
-        font-size: 12px;
-      }
-      .pill-viz .ok {
-        margin-left: auto;
-        font-size: 11px;
-        color: var(--text-2);
-        display: flex;
-        align-items: center;
-        gap: 5px;
-      }
-      .pill-viz .ok svg {
-        width: 13px;
-        height: 13px;
-        color: var(--teal-l);
-      }
-      /* trim viz */
-      .trim-viz {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        width: 100%;
-        height: 100%;
-      }
-      .trim-viz .wave {
-        flex: 1;
-        color: var(--teal-b);
-      }
-      .trim-viz .gap {
-        flex: none;
-        width: 46px;
-        height: 60%;
-        border: 1px dashed rgba(239, 107, 107, 0.5);
-        border-radius: var(--radius-sm);
-        display: grid;
-        place-items: center;
-        font-family: var(--mono);
-        font-size: 9px;
-        font-weight: 600;
-        color: #ef8a8a;
-        text-decoration: line-through;
-      }
-      /* beat viz */
-      .beat-viz {
-        position: relative;
-        width: 100%;
-        height: 100%;
-      }
-      .beat-viz .wave {
-        color: var(--teal-l);
-        height: 100%;
-      }
-      .beats {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        justify-content: space-evenly;
-        align-items: stretch;
-      }
-      .beats b {
-        position: relative;
-        width: 1.5px;
-        background: rgba(45, 212, 191, 0.55);
-      }
-      .beats b::before {
-        content: "";
-        position: absolute;
-        top: 6px;
-        left: 50%;
-        transform: translateX(-50%) rotate(45deg);
-        width: 7px;
-        height: 7px;
-        background: var(--teal-l);
-        box-shadow: 0 0 8px var(--teal-l);
-      }
-      /* score viz */
-      .score-viz {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        width: 100%;
-      }
-      .score-viz .num {
-        font-family: var(--mono);
-        font-size: 26px;
-        font-weight: 700;
-        color: var(--teal-l);
-        line-height: 1;
-      }
-      .score-viz .meta {
-        flex: 1;
-      }
-      .score-viz .meta small {
-        display: block;
-        color: var(--muted);
-        font-size: 10.5px;
-        margin-bottom: 5px;
-      }
-      .score-viz .hint {
-        font-size: 11px;
-        color: var(--text-2);
-        margin-top: 7px;
-      }
-      /* curves viz */
-      .curves-viz {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      .curves-viz svg {
-        height: 42px;
-        width: 64px;
-        flex: none;
-      }
-      .wheels {
-        display: flex;
-        gap: 8px;
-      }
-      .wheels span {
+      .problem-card-icon i {
         width: 18px;
         height: 18px;
-        border-radius: 50%;
-        border: 2px solid;
       }
-      /* caption viz */
-      .cap-viz {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-        justify-content: center;
-        width: 100%;
+      .problem-card-title {
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        letter-spacing: -0.01em;
       }
-      .cap-viz span {
-        align-self: flex-start;
-        font-size: 11px;
-        font-weight: 800;
-        padding: 3px 9px;
-        border-radius: var(--radius-sm);
-        background: rgba(0, 0, 0, 0.45);
+      .problem-card-desc {
+        font-size: 14px;
+        color: var(--text-muted);
+        line-height: 1.55;
       }
-      .cap-viz span:nth-child(2) {
-        color: var(--teal-l);
-        border: 1px solid var(--teal-line);
-      }
-      .roadmap {
-        margin-top: 18px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        padding: 16px 20px;
-        border: 1px dashed var(--border-strong);
-        border-radius: var(--radius-md);
-        background: var(--card);
-        font-size: 13.5px;
-        color: var(--text-2);
-      }
-      .roadmap b {
-        color: var(--text);
-      }
-      .roadmap .soon {
-        margin-left: auto;
-        font-family: var(--mono);
-        font-size: 10px;
+      .problem-card-stat {
+        margin-top: 14px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--accent-mint);
         font-weight: 600;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--teal-l);
-        border: 1px solid var(--teal-line);
-        border-radius: var(--radius-sm);
-        padding: 3px 9px;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .roadmap .soon .dot {
-        background: var(--teal-l);
-        box-shadow: 0 0 8px var(--teal-l);
       }
 
-      /* ============================================================ DIRECTOR */
-      .director-grid {
+      /* Solution */
+      .solution-steps {
         display: grid;
-        gap: 34px;
-        align-items: center;
-        margin-top: 36px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0;
+        margin-top: 48px;
       }
-      .quote {
-        margin: 22px 0;
-        padding: 18px 20px;
-        border-left: 2px solid var(--teal);
-        border-radius: 0 var(--radius-md) var(--radius-md) 0;
-        background: linear-gradient(90deg, var(--teal-soft), transparent 75%);
-        font-size: clamp(15px, 1.8vw, 18px);
-        font-weight: 600;
-        color: #e6faf6;
-        line-height: 1.5;
+      .solution-step {
+        padding: 32px 28px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        position: relative;
+        transition: background var(--transition-fast);
       }
-      .cmds {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 18px;
+      .solution-step:hover {
+        background: var(--bg-hover);
       }
-      .cmds span {
-        font-family: var(--mono);
-        font-weight: 600;
+      .solution-step:first-child {
+        border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+      }
+      .solution-step:last-child {
+        border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+        border-left: none;
+      }
+      .solution-step:not(:first-child):not(:last-child) {
+        border-left: none;
+      }
+      .step-num {
+        font-family: var(--font-mono);
         font-size: 12px;
-        color: var(--teal-l);
-        border: 1px solid var(--teal-line);
-        background: var(--teal-soft);
+        font-weight: 600;
+        color: var(--accent-mint);
+        margin-bottom: 14px;
+      }
+      .solution-step h3 {
+        font-size: 17px;
+        font-weight: 700;
+        margin-bottom: 10px;
+        letter-spacing: -0.015em;
+      }
+      .solution-step p {
+        font-size: 14px;
+        color: var(--text-muted);
+        line-height: 1.6;
+        margin-bottom: 18px;
+      }
+      .step-benefit {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        background: rgba(157, 217, 209, 0.06);
+        border: 1px solid rgba(157, 217, 209, 0.15);
         border-radius: var(--radius-sm);
-        padding: 6px 11px;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--accent-mint);
+        font-family: var(--font-mono);
       }
-      .chat {
-        background: #0a0a0c;
-        border: 1px solid var(--border-strong);
+      .step-benefit i {
+        width: 12px;
+        height: 12px;
+      }
+      .tech-unlock {
+        margin-top: 32px;
+        padding: 24px 32px;
+        background: linear-gradient(
+          90deg,
+          rgba(13, 148, 136, 0.08),
+          rgba(157, 217, 209, 0.03)
+        );
+        border: 1px solid var(--border-subtle);
         border-radius: var(--radius-lg);
-        overflow: hidden;
-        box-shadow:
-          0 30px 80px -34px rgba(0, 0, 0, 0.8),
-          0 0 90px -44px rgba(13, 148, 136, 0.28);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        flex-wrap: wrap;
       }
-      .chat-head {
+      .unlock-text h3 {
+        font-size: 17px;
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .unlock-text p {
+        font-size: 14px;
+        color: var(--text-muted);
+      }
+      .unlock-stat {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .unlock-num {
+        font-size: 38px;
+        font-weight: 800;
+        color: var(--accent-mint);
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+      .unlock-label {
+        font-size: 13px;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+      }
+
+      /* Features Bento */
+      .features-bento {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: auto auto;
+        gap: 14px;
+        margin-top: 48px;
+      }
+      .feature-card {
+        padding: 24px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        transition: all var(--transition-fast);
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .feature-card:hover {
+        border-color: var(--border-active);
+        background: var(--bg-hover);
+        transform: translateY(-3px);
+      }
+      .feature-large {
+        grid-column: span 2;
+        min-height: 210px;
+      }
+      .feature-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: var(--radius-md);
+        background: rgba(157, 217, 209, 0.06);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 16px;
+        color: var(--accent-mint);
+      }
+      .feature-icon i {
+        width: 20px;
+        height: 20px;
+      }
+      .feature-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        gap: 8px;
+      }
+      .feature-title {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .coming-soon-badge {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 600;
+        color: var(--accent-mint);
+        background: rgba(157, 217, 209, 0.1);
+        border: 1px solid rgba(157, 217, 209, 0.2);
+        padding: 3px 7px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .feature-desc {
+        font-size: 13.5px;
+        color: var(--text-muted);
+        line-height: 1.55;
+      }
+      .feature-visual {
+        margin-top: auto;
+        padding-top: 16px;
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 54px;
+      }
+      .beat-bar {
+        flex: 1;
+        background: rgba(13, 148, 136, 0.22);
+        border-radius: 2px;
+        min-height: 6px;
+        transition: height 0.12s ease;
+      }
+      .beat-bar.highlight {
+        background: var(--accent-mint);
+        box-shadow: 0 0 8px rgba(157, 217, 209, 0.35);
+      }
+      .feature-score {
+        margin-top: 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .mini-score-bar {
+        flex: 1;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .mini-score-fill {
+        height: 100%;
+        width: 82%;
+        background: linear-gradient(
+          90deg,
+          var(--accent-primary),
+          var(--accent-mint)
+        );
+        border-radius: 2px;
+      }
+      .mini-score-val {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--accent-mint);
+      }
+
+      /* AI Director Spotlight */
+      .director-spotlight {
+        background: var(--bg-panel);
+        border: 1px solid var(--border-subtle);
+        border-radius: 18px;
+        padding: 48px;
+        display: grid;
+        grid-template-columns: 1fr 1.1fr;
+        gap: 48px;
+        align-items: center;
+        position: relative;
+        overflow: hidden;
+      }
+      .director-spotlight::before {
+        content: "";
+        position: absolute;
+        top: -80px;
+        right: -80px;
+        width: 360px;
+        height: 360px;
+        background: radial-gradient(
+          circle,
+          var(--accent-glow) 0%,
+          transparent 70%
+        );
+        pointer-events: none;
+      }
+      .spotlight-content {
+        position: relative;
+        z-index: 1;
+      }
+      .spotlight-content h2 {
+        font-size: 32px;
+      }
+      .spotlight-content p {
+        font-size: 15px;
+        color: var(--text-muted);
+        line-height: 1.65;
+        margin-bottom: 20px;
+      }
+      .positioning-line {
+        padding: 14px 16px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        font-size: 13.5px;
+        color: var(--text-secondary);
+        border-left: 3px solid var(--accent-mint);
+      }
+      .positioning-line strong {
+        color: var(--accent-mint);
+      }
+
+      .chat-mockup {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        min-height: 360px;
+        position: relative;
+        z-index: 1;
+      }
+      .chat-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .chat-header-title {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 14px 18px;
-        border-bottom: 1px solid var(--border);
-        background: rgba(255, 255, 255, 0.02);
         font-size: 13px;
         font-weight: 700;
       }
-      .chat-head .model {
-        margin-left: 6px;
-        font-family: var(--mono);
-        font-size: 10px;
-        color: var(--muted);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        padding: 2px 7px;
+      .chat-header-title i {
+        width: 14px;
+        height: 14px;
+        color: var(--accent-mint);
       }
-      .chat-head .live {
-        margin-left: auto;
-        font-size: 10px;
-        color: var(--teal-l);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-weight: 600;
+      .chat-header-model {
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        color: var(--text-muted);
       }
-      .chatlog {
-        padding: 18px;
+      .chat-msg {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        max-width: 82%;
       }
-      .msg-row {
-        display: flex;
-        gap: 10px;
-        opacity: 0;
-        transform: translateY(12px);
-        transition:
-          opacity 0.5s ease,
-          transform 0.6s var(--ease);
-        transition-delay: var(--d, 0s);
+      .chat-msg.user {
+        align-self: flex-end;
+        align-items: flex-end;
       }
-      .chatlog.in-view .msg-row {
-        opacity: 1;
-        transform: none;
-      }
-      .msg-row .av {
-        flex: none;
-        width: 24px;
-        height: 24px;
-        border-radius: var(--radius-sm);
-        display: grid;
-        place-items: center;
-        font-family: var(--mono);
-        font-size: 9px;
-        font-weight: 700;
-      }
-      .msg-row.you .av {
-        background: rgba(255, 255, 255, 0.07);
-        color: var(--text-2);
-      }
-      .msg-row.ai .av {
-        background: var(--teal-soft);
-        color: var(--teal-l);
-        border: 1px solid var(--teal-line);
-      }
-      .bubble {
-        font-size: 13.5px;
-        line-height: 1.5;
-        padding: 10px 13px;
+      .chat-bubble {
+        padding: 10px 14px;
         border-radius: var(--radius-md);
-        max-width: 88%;
+        font-size: 13.5px;
+        line-height: 1.45;
       }
-      .msg-row.you .bubble {
-        background: rgba(255, 255, 255, 0.05);
+      .chat-msg.user .chat-bubble {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
       }
-      .msg-row.ai .bubble {
-        background: var(--teal-soft);
-        border: 1px solid var(--teal-line);
-        color: #e6faf6;
+      .chat-msg.ai .chat-bubble {
+        background: rgba(157, 217, 209, 0.06);
+        border: 1px solid rgba(157, 217, 209, 0.15);
       }
-      .bubble .act {
+      .chat-meta {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-muted);
+        margin-top: 4px;
+        padding: 0 2px;
+      }
+      .chat-action {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        margin-top: 9px;
-        font-family: var(--mono);
-        font-size: 10px;
-        font-weight: 600;
-        color: var(--teal-l);
-        background: rgba(0, 0, 0, 0.25);
-        border: 1px solid var(--teal-line);
+        padding: 6px 10px;
+        background: rgba(157, 217, 209, 0.06);
+        border: 1px solid rgba(157, 217, 209, 0.15);
         border-radius: var(--radius-sm);
-        padding: 4px 9px;
+        font-size: 11.5px;
+        color: var(--accent-mint);
+        font-weight: 600;
+        font-family: var(--font-mono);
+        align-self: flex-start;
       }
-      .bubble .act svg {
+      .chat-action i {
         width: 12px;
         height: 12px;
       }
       .chat-input {
-        margin: 0 18px 18px;
+        margin-top: auto;
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: 10px 14px;
+        font-size: 13px;
+        color: var(--text-muted);
         display: flex;
         align-items: center;
-        gap: 8px;
-        border: 1px solid var(--border-strong);
-        border-radius: var(--radius-md);
-        padding: 11px 16px;
-        font-size: 13px;
-        color: var(--muted);
-        background: rgba(0, 0, 0, 0.3);
+        justify-content: space-between;
+        transition: border-color var(--transition-fast);
       }
-      .chat-input kbd {
-        font-family: var(--mono);
-        background: rgba(255, 255, 255, 0.07);
-        border-radius: var(--radius-sm);
-        padding: 1px 6px;
+      .chat-input:hover {
+        border-color: var(--border-active);
+      }
+      .slash-cmd {
+        color: var(--accent-mint);
         font-weight: 600;
-        color: var(--text-2);
+        font-family: var(--font-mono);
+      }
+      .chat-send {
+        color: var(--accent-mint);
+        display: flex;
+        align-items: center;
+      }
+      .chat-send i {
+        width: 16px;
+        height: 16px;
       }
 
-      /* ============================================================ STATS STRIP */
-      .stats-sec {
-        padding: 64px 0;
-      }
-      .stats-head {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: 14px;
-        margin-bottom: 28px;
-      }
-      .stats-head h3 {
-        font-size: clamp(20px, 2.6vw, 26px);
-        font-weight: 800;
-        letter-spacing: -0.02em;
-      }
-      .stats-head p {
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .stats {
+      /* Stats Strip */
+      .stats-strip {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        overflow: hidden;
-        background: var(--card);
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0;
+        padding: 36px 0;
+        border-top: 1px solid var(--border-subtle);
+        border-bottom: 1px solid var(--border-subtle);
       }
-      .stat {
-        padding: 28px 24px;
-        border-top: 1px solid var(--border);
+      .strip-item {
+        text-align: center;
+        border-right: 1px solid var(--border-subtle);
+        padding: 0 16px;
       }
-      .stat .n {
-        font-size: clamp(30px, 4.4vw, 42px);
+      .strip-item:last-child {
+        border-right: none;
+      }
+      .strip-num {
+        font-size: 34px;
         font-weight: 800;
+        color: var(--text-main);
+        margin-bottom: 4px;
         letter-spacing: -0.03em;
         line-height: 1;
-        background: linear-gradient(90deg, var(--teal-b), var(--teal-xl));
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
       }
-      .stat .t {
-        color: var(--text-2);
-        font-size: 14px;
-        margin-top: 10px;
+      .strip-num .accent {
+        color: var(--accent-mint);
       }
-      .stat .t b {
-        color: var(--text);
+      .strip-label {
+        font-size: 12px;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
       }
 
-      /* ============================================================ PRICING */
-      .price-card {
-        max-width: 560px;
-        margin: 34px auto 0;
-        padding: 32px;
-        text-align: left;
+      /* CTA */
+      .cta-section {
+        text-align: center;
+        padding: 100px 0 120px;
+        position: relative;
       }
-      .price-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
+      .cta-glow {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 700px;
+        height: 400px;
+        background: radial-gradient(
+          ellipse,
+          var(--accent-glow) 0%,
+          transparent 65%
+        );
+        pointer-events: none;
       }
-      .price-top h3 {
-        font-size: 22px;
-        font-weight: 800;
+      .cta-card {
+        max-width: 480px;
+        margin: 0 auto;
+        padding: 40px;
+        background: var(--bg-panel);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        position: relative;
+        z-index: 1;
+        backdrop-filter: blur(10px);
       }
-      .tbd {
-        font-family: var(--mono);
+      .cta-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: 20px;
+        font-family: var(--font-mono);
         font-size: 11px;
         font-weight: 600;
-        letter-spacing: 0.1em;
-        color: var(--teal-l);
-        border: 1px dashed var(--teal-line);
-        border-radius: var(--radius-sm);
-        padding: 6px 12px;
-        background: var(--teal-soft);
+        color: var(--text-muted);
+        margin-bottom: 20px;
       }
-      .price-sub {
-        color: var(--text-2);
-        margin: 8px 0 22px;
-        font-size: 14px;
+      .cta-card h3 {
+        font-size: 24px;
+        font-weight: 800;
+        margin-bottom: 10px;
+        letter-spacing: -0.02em;
       }
-      .price-list {
-        list-style: none;
+      .cta-card .tagline-repeat {
+        color: var(--accent-mint);
+      }
+      .cta-card p {
+        color: var(--text-muted);
+        font-size: 14.5px;
+        margin-bottom: 28px;
+        line-height: 1.6;
+      }
+      #waitlist-form {
         display: flex;
         flex-direction: column;
-        gap: 13px;
+        gap: 10px;
       }
-      .price-list li {
-        display: flex;
-        gap: 11px;
-        align-items: flex-start;
-        font-size: 14.5px;
-        color: var(--text-2);
+      #waitlist-form input {
+        padding: 14px 16px;
+        border-radius: var(--radius-md);
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-main);
+        font-family: var(--font-sans);
+        font-size: 14px;
+        outline: none;
+        transition: border-color var(--transition-fast);
       }
-      .price-list svg {
-        width: 18px;
-        height: 18px;
-        color: var(--teal-l);
-        flex: none;
-        margin-top: 2px;
+      #waitlist-form input:focus {
+        border-color: var(--accent-mint);
+        box-shadow: 0 0 0 3px rgba(157, 217, 209, 0.12);
       }
-      .price-list li b {
-        color: var(--text);
-        font-weight: 600;
+      #waitlist-form input::placeholder {
+        color: var(--text-muted);
       }
-      .price-card .btn {
+      .cta-btn-full {
         width: 100%;
-        margin-top: 26px;
+        padding: 14px;
+        font-size: 15px;
       }
-      .klippa-note {
-        max-width: 560px;
-        margin: 18px auto 0;
-        text-align: center;
-        color: var(--muted);
+      .preview-access {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border-subtle);
+      }
+      .preview-access p {
+        margin-bottom: 12px;
         font-size: 13px;
       }
-      .klippa-note em {
-        color: var(--text-2);
-        font-style: normal;
-        font-weight: 600;
-      }
-
-      /* ============================================================ CTA */
-      .cta-sec {
-        text-align: center;
-        padding: 90px 0;
-      }
-      .cta-sec h2 {
-        font-size: clamp(30px, 5vw, 50px);
-        font-weight: 800;
-        letter-spacing: -0.03em;
-        line-height: 1.08;
-      }
-      .cta-sec p {
-        color: var(--text-2);
-        max-width: 54ch;
-        margin: 16px auto 0;
-        font-size: clamp(15px, 1.7vw, 17px);
-      }
-      .cta-form {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        max-width: 440px;
-        margin: 30px auto 0;
-      }
-      .cta-form input {
-        width: 100%;
-        background: var(--card);
-        border: 1px solid var(--border-strong);
-        border-radius: 8px;
-        padding: 14px 16px;
-        color: var(--text);
-        font-family: inherit;
-        font-size: 15px;
-        transition:
-          border-color 150ms var(--ease),
-          box-shadow 150ms var(--ease);
-      }
-      .cta-form input::placeholder {
-        color: var(--muted);
-      }
-      .cta-form input:focus {
-        outline: none;
-        border-color: var(--border-active);
-        box-shadow: 0 0 0 3px var(--teal-soft);
-      }
-      .cta-form .btn {
-        width: 100%;
-      }
-      .fine {
-        color: var(--muted);
-        font-size: 12.5px;
-        margin-top: 14px;
-      }
-      .form-success {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        border: 1px solid var(--teal-line);
-        background: var(--teal-soft);
-        border-radius: var(--radius-md);
-        padding: 18px 22px;
-        font-weight: 600;
-        color: #e6faf6;
-        animation: pop 0.4s var(--ease);
-      }
-      @keyframes pop {
-        from {
-          opacity: 0;
-          transform: scale(0.96);
-        }
-        to {
-          opacity: 1;
-          transform: none;
-        }
-      }
-
-      /* ============================================================ FOOTER */
-      footer {
-        border-top: 1px solid var(--border);
-        padding: 48px 0 36px;
-      }
-      .foot-grid {
-        display: grid;
-        gap: 28px;
-      }
-      .foot-brand p {
-        color: var(--text-2);
-        font-size: 14px;
-        margin-top: 12px;
-        max-width: 34ch;
-      }
-      .foot-brand .logo-img {
-        height: 26px;
-      }
-      .foot-links {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px 22px;
-      }
-      .foot-links a {
-        color: var(--text-2);
-        font-size: 14px;
-        font-weight: 500;
-      }
-      .foot-links a:hover {
-        color: var(--teal-l);
-      }
-      .foot-status {
+      .preview-btn {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        font-family: var(--mono);
-        font-size: 11px;
+        padding: 10px 20px;
+        background: transparent;
+        border: 1px solid var(--accent-mint);
+        color: var(--accent-mint);
+        text-decoration: none;
+        border-radius: var(--radius-md);
         font-weight: 600;
-        color: var(--text-2);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        padding: 7px 13px;
+        font-size: 14px;
+        transition: all var(--transition-fast);
       }
-      .foot-bottom {
-        margin-top: 34px;
-        padding-top: 22px;
-        border-top: 1px solid var(--border);
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: space-between;
-        color: var(--muted);
-        font-size: 12.5px;
+      .preview-btn:hover {
+        background: rgba(157, 217, 209, 0.1);
+        box-shadow: 0 0 18px rgba(157, 217, 209, 0.2);
+      }
+      .preview-btn i {
+        width: 14px;
+        height: 14px;
+      }
+      .cta-note {
+        margin-top: 14px;
+        font-size: 12px;
+        color: var(--text-muted);
       }
 
-      /* ============================================================ BREAKPOINTS */
-      @media (min-width: 560px) {
-        .cta-form {
-          flex-direction: row;
-        }
-        .cta-form .btn {
-          width: auto;
-          white-space: nowrap;
-        }
-        .feat-grid {
-          grid-template-columns: 1fr 1fr;
-        }
-        .barriers {
-          grid-template-columns: 1fr 1fr;
-        }
-        .problem-stats {
-          grid-template-columns: 1fr 1fr;
-        }
-        .stats {
-          grid-template-columns: repeat(4, 1fr);
-        }
-        .stat {
-          border-top: none;
-          border-left: 1px solid var(--border);
-        }
-        .stat:nth-child(1) {
-          border-left: none;
-        }
-        .stat:nth-child(3) {
-          border-top: 1px solid var(--border);
-        }
-        .stat:nth-child(4) {
-          border-top: 1px solid var(--border);
-        }
+      /* Footer */
+      footer {
+        padding: 32px 0;
+        border-top: 1px solid var(--border-subtle);
+        position: relative;
+        z-index: 1;
       }
-      @media (min-width: 760px) {
-        .section {
-          padding: 96px 0;
-        }
-        .mock-side {
-          display: block;
-          border-top: none;
-          border-left: 1px solid var(--border);
-        }
-        .mock-body {
-          grid-template-columns: 1fr 210px;
-        }
-        .float-chip {
-          display: inline-flex;
-        }
-        .barriers {
-          grid-template-columns: repeat(3, 1fr);
-        }
-        .feat-grid {
-          grid-template-columns: repeat(3, 1fr);
-        }
-        .unlock {
-          grid-template-columns: 1.05fr 0.95fr;
-          gap: 40px;
-        }
-        .director-grid {
-          grid-template-columns: 1fr 1fr;
+      .footer-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      .footer-logo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-main);
+        font-weight: 800;
+        font-size: 15px;
+        letter-spacing: -0.02em;
+      }
+      .footer-logo svg {
+        display: block;
+      }
+      .footer-meta {
+        font-size: 12px;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+      }
+
+      /* Responsive */
+      @media (max-width: 968px) {
+        .hero-grid {
+          grid-template-columns: 1fr;
           gap: 48px;
         }
-        .foot-grid {
-          grid-template-columns: 1.4fr 1fr auto;
-          align-items: start;
+        .director-spotlight {
+          grid-template-columns: 1fr;
+          gap: 36px;
+          padding: 32px;
         }
-      }
-      @media (min-width: 900px) {
-        .burger {
+        .problem-grid,
+        .solution-steps,
+        .features-bento {
+          grid-template-columns: 1fr;
+        }
+        .solution-step:first-child {
+          border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        }
+        .solution-step:last-child {
+          border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+          border-left: 1px solid var(--border-subtle);
+          border-top: none;
+        }
+        .solution-step:not(:first-child):not(:last-child) {
+          border-left: 1px solid var(--border-subtle);
+          border-top: none;
+        }
+        .feature-large {
+          grid-column: span 1;
+        }
+        .stats-strip {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 24px 0;
+        }
+        .strip-item:nth-child(2) {
+          border-right: none;
+        }
+        .problem-hero-stat {
+          flex-direction: column;
+          gap: 12px;
+        }
+        .stat-mega {
+          font-size: 46px;
+        }
+        .nav-links a:not(.btn) {
           display: none;
         }
-        .nav-links {
-          display: flex;
-          flex-direction: row;
-          position: static;
-          transform: none;
-          opacity: 1;
-          pointer-events: auto;
-          background: none;
-          backdrop-filter: none;
-          border: 0;
-          padding: 0;
-          gap: 6px;
-          align-items: center;
+        h1 {
+          font-size: 40px;
         }
-        .nav-links a {
-          padding: 8px 12px;
-          font-size: 14px;
+        h2 {
+          font-size: 30px;
         }
-        .nav-links .btn {
-          margin: 0 0 0 8px;
-          padding: 9px 18px;
-        }
-        .hero-grid {
-          grid-template-columns: 1.05fr 0.95fr;
-          gap: 54px;
-        }
-        .hero {
-          padding: 148px 0 90px;
+        .editor-mockup {
+          max-width: 620px;
+          margin: 0 auto;
+          height: 580px;
         }
       }
-      @media (min-width: 1024px) {
-        .mock-body {
-          grid-template-columns: 1fr 230px;
+      @media (max-width: 600px) {
+        .container {
+          padding: 0 20px;
+        }
+        .nav-content {
+          padding: 12px 20px;
+        }
+        .tech-unlock {
+          flex-direction: column;
+          text-align: center;
+          gap: 16px;
+        }
+        .editor-body {
+          grid-template-columns: 104px minmax(0, 1fr) 150px;
+        }
+        .panel-left,
+        .panel-right {
+          padding: 7px 5px;
+        }
+        h1 {
+          font-size: 34px;
         }
       }
 
-      /* reduced motion */
-      @media (prefers-reduced-motion: reduce) {
-        * {
-          animation: none !important;
-          transition-duration: 0.001s !important;
-        }
-        .reveal,
-        .msg-row {
-          opacity: 1 !important;
-          transform: none !important;
-        }
-        .in-view .meter i,
-        .in-view .load-track i {
-          width: var(--w);
-        }
-        .playhead {
-          left: 42%;
-        }
+      /* Scroll Reveal */
+      .reveal {
+        opacity: 0;
+        transform: translateY(24px);
+        transition:
+          opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+          transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .reveal.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .reveal-delay-1 {
+        transition-delay: 0.08s;
+      }
+      .reveal-delay-2 {
+        transition-delay: 0.16s;
+      }
+      .reveal-delay-3 {
+        transition-delay: 0.24s;
       }
     </style>
   </head>
   <body>
-    <div class="bg-glow" aria-hidden="true"></div>
-
-    <!-- ============ NAV ============ -->
-    <header class="nav" id="top">
-      <div class="wrap nav-inner">
-        <a href="#top" class="logo" aria-label="iKlippa home">
-          <img
-            class="logo-img"
-            src="https://i.ibb.co/WvhnzQ0v/logo.png"
-            alt="iKlippa"
-          />
+    <!-- Navigation -->
+    <nav>
+      <div class="nav-content">
+        <a href="#" class="nav-logo" aria-label="iKlippa home">
+          <svg
+            width="30"
+            height="24"
+            viewBox="0 0 30 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <rect x="1" y="8" width="20" height="13" rx="2.6" fill="#ffffff" />
+            <rect
+              x="1"
+              y="3.4"
+              width="20"
+              height="4.4"
+              rx="1.3"
+              fill="#ffffff"
+            />
+            <path
+              d="M3.2 7.8 L5.6 3.4"
+              stroke="#060608"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+            <path
+              d="M7.2 7.8 L9.6 3.4"
+              stroke="#060608"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+            <path
+              d="M11.2 7.8 L13.6 3.4"
+              stroke="#060608"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+            <path
+              d="M15.2 7.8 L17.6 3.4"
+              stroke="#060608"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+            <path d="M9 12.2 L9 17.2 L13.6 14.7 Z" fill="#060608" />
+            <path
+              d="M24 1.4 l1.05 2.3 2.3 1.05 -2.3 1.05 -1.05 2.3 -1.05 -2.3 -2.3 -1.05 2.3 -1.05 z"
+              fill="#9DD9D1"
+            />
+            <path
+              d="M27.6 7.2 l0.6 1.35 1.35 0.6 -1.35 0.6 -0.6 1.35 -0.6 -1.35 -1.35 -0.6 1.35 -0.6 z"
+              fill="#9DD9D1"
+            />
+          </svg>
+          <span>iKlippa</span>
         </a>
-        <nav class="nav-links" id="navlinks" aria-label="Primary">
-          <a href="#problem">Why iKlippa</a>
-          <a href="#how">How it works</a>
+        <div class="nav-links">
+          <a href="#problem">Problem</a>
+          <a href="#solution">Solution</a>
           <a href="#features">Features</a>
-          <a href="#director">Director</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#cta" class="btn btn-primary">Join the waitlist</a>
-        </nav>
-        <button
-          class="burger"
-          id="burger"
-          aria-label="Toggle menu"
-          aria-controls="navlinks"
-          aria-expanded="false"
-        >
-          <span></span><span></span><span></span>
-        </button>
+          <a href="#director">AI Director</a>
+          <a href="#waitlist" class="btn btn-primary">Join Waitlist</a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Hero -->
+    <header class="hero">
+      <div class="hero-glow"></div>
+      <div class="container">
+        <div class="hero-grid">
+          <div class="reveal">
+            <div class="hero-eyebrow">
+              <i data-lucide="globe"></i>
+              Built for African creators
+            </div>
+            <h1>
+              Pro-level video editing on a basic laptop<span class="dot"
+                >.</span
+              >
+            </h1>
+            <p class="hero-tagline">
+              For the price of a
+              <span class="klippa-tooltip"
+                >Klippa<span class="tooltip-content"
+                  >R100, or ~$6 USD</span
+                ></span
+              >
+              a month.
+            </p>
+            <p class="hero-desc">
+              Edit videos directly in your browser. No downloads, no cloud
+              rendering, no heavy specs. Just professional editing on the laptop
+              you already own.
+            </p>
+
+            <div class="hero-ctas">
+              <a href="#waitlist" class="btn btn-primary">Join Waitlist</a>
+              <a href="#waitlist" class="btn btn-ghost">Try Early Preview</a>
+            </div>
+
+            <div class="hero-meta">
+              <div class="hero-meta-item">
+                <i data-lucide="check"></i> No installs
+              </div>
+              <div class="hero-meta-item">
+                <i data-lucide="check"></i> Runs on 8GB RAM
+              </div>
+              <div class="hero-meta-item">
+                <i data-lucide="check"></i> Offline capable
+              </div>
+            </div>
+          </div>
+
+          <!-- Editor Mockup -->
+          <div class="reveal reveal-delay-1">
+            <div class="editor-mockup">
+              <div class="editor-topbar">
+                <div class="topbar-left">
+                  <div class="topbar-controls">
+                    <div class="mac-dot red"></div>
+                    <div class="mac-dot yellow"></div>
+                    <div class="mac-dot green"></div>
+                  </div>
+                  <span class="topbar-title">iKlippa Studio — dance.mp4</span>
+                </div>
+                <div class="topbar-right">
+                  <i data-lucide="settings" class="topbar-icon"></i>
+                </div>
+              </div>
+
+              <div class="editor-body">
+                <!-- Left Panel -->
+                <div class="panel-left">
+                  <div class="panel-tabs">
+                    <div class="panel-tab active">Media</div>
+                    <div class="panel-tab">Audio</div>
+                    <div class="panel-tab">FX</div>
+                  </div>
+
+                  <div class="panel-header-mono">Project Files</div>
+                  <div class="media-item">
+                    <div class="media-thumb main"></div>
+                    <div class="media-info">
+                      <div class="media-name">dance.mp4</div>
+                      <div class="media-meta">02:22 · 1080p</div>
+                    </div>
+                  </div>
+                  <div class="media-item">
+                    <div class="media-thumb audio">
+                      <i data-lucide="music"></i>
+                    </div>
+                    <div class="media-info">
+                      <div class="media-name">calm_down.mp3</div>
+                      <div class="media-meta">Rema · 03:28</div>
+                    </div>
+                  </div>
+                  <div class="media-item">
+                    <div
+                      class="media-thumb main"
+                      style="background-position: center 70%"
+                    ></div>
+                    <div class="media-info">
+                      <div class="media-name">crowd.mp4</div>
+                      <div class="media-meta">00:15 · 720p</div>
+                    </div>
+                  </div>
+
+                  <div class="panel-header-mono" style="margin-top: 6px">
+                    Stock <span class="coming-soon-tag">Soon</span>
+                  </div>
+                  <!-- African Stock Library — contemporary creators & young professionals in modern urban settings -->
+                  <div class="stock-grid">
+                    <div
+                      class="stock-thumb"
+                      style="
+                        background-image: url(&quot;https://image.qwenlm.ai/public_source/273c39b9-160c-455a-89aa-149561a9d9bf/1691a1e0d-0ea3-4b13-9008-0f6d24304174.png&quot;);
+                        background-position: center 42%;
+                      "
+                      title="Selfie shoot · Lagos"
+                    >
+                      <span class="stock-add">+</span>
+                    </div>
+                    <div
+                      class="stock-thumb"
+                      style="
+                        background-image: url(&quot;https://image.qwenlm.ai/public_source/273c39b9-160c-455a-89aa-149561a9d9bf/119dbcd33-f986-4b4e-9d1d-f5b5e4bea199.png&quot;);
+                        background-position: center 45%;
+                      "
+                      title="Editing on the go · Nairobi"
+                    >
+                      <span class="stock-add">+</span>
+                    </div>
+                    <div
+                      class="stock-thumb"
+                      style="
+                        background-image: url(&quot;https://image.qwenlm.ai/public_source/273c39b9-160c-455a-89aa-149561a9d9bf/1efd63ca8-009b-4461-a9f0-9af3301f8e8d.png&quot;);
+                        background-position: center 32%;
+                      "
+                      title="Review session · Joburg"
+                    >
+                      <span class="stock-add">+</span>
+                    </div>
+                    <div
+                      class="stock-thumb"
+                      style="
+                        background-image: url(&quot;https://image.qwenlm.ai/public_source/273c39b9-160c-455a-89aa-149561a9d9bf/132b5d756-b583-478b-ac36-da8f3cac249c.png&quot;);
+                        background-position: center 38%;
+                      "
+                      title="Podcast day · Accra"
+                    >
+                      <span class="stock-add">+</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Center Preview -->
+                <div class="panel-center">
+                  <div class="preview-area">
+                    <div class="preview-frame">
+                      <div class="preview-overlay"></div>
+                      <!-- Static icon badge (no blinking light) -->
+                      <div class="preview-corner">
+                        <i
+                          data-lucide="clapperboard"
+                          style="color: #ff7b72"
+                        ></i>
+                        4K · 60FPS
+                      </div>
+                      <div class="preview-play-btn">
+                        <i data-lucide="play"></i>
+                      </div>
+                      <div class="preview-caption">AFROBEAT VIBES</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right Panel -->
+                <div class="panel-right">
+                  <div class="director-header">
+                    <i data-lucide="bot"></i>
+                    AI Director
+                    <span class="director-model">Granite</span>
+                  </div>
+
+                  <div class="score-box">
+                    <div class="score-label">Script &amp; Pacing</div>
+                    <div class="score-row">
+                      <span class="score-num">76</span>
+                      <span class="score-max">/ 100</span>
+                      <span class="score-trend"
+                        ><i data-lucide="trending-up"></i> +12</span
+                      >
+                    </div>
+                    <div class="score-bar"><div class="score-fill"></div></div>
+                  </div>
+
+                  <div class="actions-label">Suggested Actions</div>
+                  <div class="actions-scroll">
+                    <div class="action-item">
+                      <i data-lucide="scissors"></i> Smart Trim Silences
+                    </div>
+                    <div class="action-item">
+                      <i data-lucide="music"></i> Afro-Beat Sync
+                    </div>
+                    <div class="action-item">
+                      <i data-lucide="image"></i> Auto B-Roll
+                    </div>
+                    <div class="action-item">
+                      <i data-lucide="type"></i> Add Captions
+                    </div>
+                  </div>
+
+                  <div class="director-bottom">
+                    <!-- Icon-based status, no blinking -->
+                    <div class="director-status">
+                      <i data-lucide="sparkles"></i> Director ready
+                    </div>
+                    <div class="mini-chat">
+                      <div class="chat-msg user">
+                        <div class="chat-bubble">Add captions to the beat</div>
+                      </div>
+                      <div class="chat-msg ai">
+                        <div class="chat-bubble">
+                          Generating 8 kinetic captions…
+                        </div>
+                        <div class="chat-action">
+                          <i data-lucide="check"></i> Applied
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Timeline -->
+              <div class="editor-timeline">
+                <div class="timeline-toolbar">
+                  <div class="tl-btn active">
+                    <i data-lucide="mouse-pointer-2"></i>
+                  </div>
+                  <div class="tl-btn"><i data-lucide="scissors"></i></div>
+                  <div class="tl-btn"><i data-lucide="trash-2"></i></div>
+                  <div class="tl-btn active"><i data-lucide="magnet"></i></div>
+                  <div class="timeline-zoom">
+                    <i
+                      data-lucide="minus"
+                      style="
+                        width: 10px;
+                        height: 10px;
+                        color: var(--text-muted);
+                      "
+                    ></i>
+                    <div class="zoom-track">
+                      <div class="zoom-handle"></div>
+                    </div>
+                    <i
+                      data-lucide="plus"
+                      style="
+                        width: 10px;
+                        height: 10px;
+                        color: var(--text-muted);
+                      "
+                    ></i>
+                  </div>
+                </div>
+                <div class="timeline-ruler">
+                  <span>00:00</span><span>00:10</span><span>00:20</span
+                  ><span>00:30</span><span>00:40</span><span>00:50</span>
+                </div>
+                <div class="timeline-tracks">
+                  <div class="timeline-track">
+                    <div class="track-label">V2</div>
+                    <div class="track-clip video broll-clip"></div>
+                  </div>
+                  <div class="timeline-track">
+                    <div class="track-label">V1</div>
+                    <div class="track-clip video main-clip">
+                      <div class="clip-thumb"></div>
+                      <div class="clip-thumb"></div>
+                      <div class="clip-thumb"></div>
+                      <div class="clip-thumb"></div>
+                    </div>
+                    <div
+                      class="track-clip video main-clip"
+                      style="flex: 0 0 30%"
+                    >
+                      <div class="clip-thumb"></div>
+                      <div class="clip-thumb"></div>
+                    </div>
+                  </div>
+                  <div class="timeline-track">
+                    <div class="track-label">A1</div>
+                    <div class="track-clip audio">
+                      <div class="audio-waveform" id="audio-waveform"></div>
+                    </div>
+                  </div>
+                  <div class="timeline-track">
+                    <div class="track-label">T1</div>
+                    <div class="track-clip caption-clip">AFROBEAT VIBES</div>
+                  </div>
+                  <div class="playhead"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 
-    <main>
-      <!-- ============ HERO ============ -->
-      <section class="hero">
-        <div class="wrap hero-grid">
-          <div class="hero-copy reveal">
-            <span class="eyebrow"
-              ><span class="dot"></span> Pre-launch · built in South Africa, for
-              the continent</span
-            >
-            <h1>
-              The editing suite that runs on the laptop you
-              <em class="grad">already own.</em>
-            </h1>
-            <p class="tagline">
-              Pro-level video editing on a basic laptop, for the price of a
-              Klippa a month.
-            </p>
-            <p class="sub">
-              iKlippa is a browser-native editor with a Rust engine, a pro
-              timeline and an AI Director at your side — fast on a dual-core,
-              8GB machine, with nothing to install and nothing ever uploaded.
-            </p>
-            <div class="hero-cta">
-              <a href="#cta" class="btn btn-primary"
-                >Join the waitlist
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M5 12h14M13 6l6 6-6 6" />
-                </svg>
-              </a>
-              <a href="#how" class="btn btn-ghost">See how it works</a>
-            </div>
-            <div class="proof">
-              <span
-                ><svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.6"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M20 6L9 17l-5-5" /></svg
-                >Under 2MB to load</span
-              >
-              <span
-                ><svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.6"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M20 6L9 17l-5-5" /></svg
-                >Runs on 8GB RAM · dual-core</span
-              >
-              <span
-                ><svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.6"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M20 6L9 17l-5-5" /></svg
-                >Footage never leaves your device</span
-              >
-            </div>
-          </div>
+    <!-- Problem Section -->
+    <section id="problem">
+      <div class="container">
+        <div class="reveal">
+          <div class="section-eyebrow">The Problem</div>
+          <h2>
+            Existing tools are built for hardware, bandwidth, and budgets you
+            don't have.
+          </h2>
+        </div>
 
-          <!-- editor mock -->
-          <div class="mock-wrap reveal" style="--d: 0.12s">
-            <div class="editor-mock">
-              <div class="mock-top">
-                <div class="mock-dots" aria-hidden="true">
-                  <i></i><i></i><i></i>
-                </div>
-                <div class="mock-title">untitled_amapiano_edit.ikp</div>
-                <div class="mock-status">
-                  <span class="chip chip-score"
-                    >Pacing <b>82</b
-                    ><span class="meter"><i style="--w: 82%"></i></span
-                  ></span>
-                  <span class="chip chip-granite"
-                    ><span class="dot"></span>GRANITE</span
-                  >
-                </div>
-              </div>
-              <div class="mock-body">
-                <div class="mock-main">
-                  <div class="preview">
-                    <img
-                      src="https://image.qwenlm.ai/public_source/4ac2c8ab-0401-404a-a38a-eeb80a365f39/128861268-f6a8-47a8-8d33-d2c27f0b0594.png"
-                      alt="A creator filming a talking-head video, shown in the iKlippa preview window"
-                    />
-                    <span class="res">16:9 · 1080p</span>
-                    <span class="tc">00:32.14</span>
-                    <span class="cap">and <em>THAT'S</em> the drop</span>
-                  </div>
-                  <div class="timeline" aria-hidden="true">
-                    <div class="tl-ruler">
-                      <span>0:00</span><span>0:15</span><span>0:30</span
-                      ><span>0:45</span><span>1:00</span>
-                    </div>
-                    <div class="tl-track">
-                      <span class="tl-label">V2</span>
-                      <div class="tl-clips">
-                        <span
-                          class="clip clip-cap"
-                          style="left: 18%; width: 13%"
-                          >CAPTION</span
-                        >
-                        <span
-                          class="clip clip-cap"
-                          style="left: 50%; width: 15%"
-                          >CAPTION</span
-                        >
-                        <span
-                          class="clip clip-cap"
-                          style="left: 78%; width: 12%"
-                          >CAPTION</span
-                        >
-                      </div>
-                    </div>
-                    <div class="tl-track v1">
-                      <span class="tl-label">V1</span>
-                      <div class="tl-clips">
-                        <span
-                          class="clip clip-vid"
-                          style="
-                            left: 1%;
-                            width: 27%;
-                            background-position: 30% 30%;
-                          "
-                        ></span>
-                        <span
-                          class="clip clip-vid"
-                          style="
-                            left: 29.5%;
-                            width: 19%;
-                            background-position: 60% 40%;
-                          "
-                        ></span>
-                        <span
-                          class="clip clip-vid"
-                          style="
-                            left: 50%;
-                            width: 22%;
-                            background-position: 45% 35%;
-                          "
-                        ></span>
-                        <span
-                          class="clip clip-vid"
-                          style="
-                            left: 73.5%;
-                            width: 24%;
-                            background-position: 70% 45%;
-                          "
-                        ></span>
-                      </div>
-                    </div>
-                    <div class="tl-track">
-                      <span class="tl-label">A1</span>
-                      <div class="tl-clips">
-                        <span class="clip clip-aud" style="left: 1%; width: 70%"
-                          ><i class="wave" data-bars="46"></i
-                        ></span>
-                      </div>
-                    </div>
-                    <div class="tl-track">
-                      <span class="tl-label">A2</span>
-                      <div class="tl-clips">
-                        <span class="clip clip-mus" style="left: 0; width: 98%"
-                          ><i class="wave" data-bars="64"></i
-                        ></span>
-                      </div>
-                    </div>
-                    <div class="playhead"></div>
-                  </div>
-                </div>
-                <aside class="mock-side">
-                  <div class="side-head">
-                    <span class="dot"></span> Director
-                    <span class="model">Granite</span>
-                  </div>
-                  <div class="side-chat">
-                    <div class="msg msg-you">sync my cuts to the drop</div>
-                    <div class="msg msg-ai">
-                      <b>Done</b> — 14 cuts snapped to the beat at 0:32.
-                    </div>
-                    <div class="msg msg-you">/trim-silence</div>
-                    <div class="msg msg-ai">
-                      6 silences removed · 4.2s recovered
-                    </div>
-                  </div>
-                  <div class="side-input">
-                    <span class="caret"></span> Ask Granite or type
-                    <kbd>/</kbd> …
-                  </div>
-                </aside>
-              </div>
-            </div>
-            <div class="float-chip fc-1">
-              <kbd>/sync-audio</kbd> <span class="ok">✓ 14 cuts</span>
-            </div>
-            <div class="float-chip fc-2">
-              <span class="vthumb"></span> 9:16 exported · 0 uploads
-            </div>
+        <div class="reveal problem-hero-stat">
+          <div class="stat-mega">3.5 to 5.5 hrs</div>
+          <div class="stat-context">
+            The real cost to produce a single 60-second short-form video with
+            current tools: scripting, filming, rough cut, colour grade,
+            captions, audio mix, and exporting three aspect ratios.
+            <span class="dim"
+              >A creator posting 5x/week burns 17 to 27 hours a week on
+              production before an audience ever sees it.</span
+            >
           </div>
         </div>
-      </section>
 
-      <!-- ============ PROBLEM ============ -->
-      <section class="section" id="problem">
-        <div class="wrap">
-          <div class="reveal">
-            <span class="eyebrow"><span class="dot"></span> The problem</span>
-            <h2 class="title">
-              Short-form is cheap to watch.<br />It's
-              <em>brutally expensive</em> to make.
-            </h2>
-            <p class="lead">
-              The mainstream tools were built for someone else's laptop, someone
-              else's bandwidth and someone else's currency. The math breaks the
-              moment you're the one making the videos.
+        <div class="problem-grid">
+          <div class="reveal problem-card">
+            <div class="problem-card-icon"><i data-lucide="wifi"></i></div>
+            <h3 class="problem-card-title">Data Cost</h3>
+            <p class="problem-card-desc">
+              A 1GB bundle can cost 1 to 3 hours of minimum-wage labour in South
+              Africa. Competing browser tools ship 20 to 30MB of WASM codec
+              libraries before they can even process a frame.
             </p>
+            <div class="problem-card-stat">20 to 30MB just to load</div>
           </div>
-
-          <div class="problem-stats">
-            <div class="card pstat reveal" style="--d: 0.05s">
-              <div class="big">3.5–5.5 hrs</div>
-              <p class="lbl">
-                to take one polished 60-second video from script to export —
-                scripting, filming, rough cut, colour grade, captions, audio
-                mix, and three separate aspect-ratio exports.
-              </p>
-            </div>
-            <div class="card pstat reveal" style="--d: 0.12s">
-              <div class="big">17–27 hrs/wk</div>
-              <p class="lbl">
-                burned on production by a creator posting 5× a week — before an
-                audience ever sees a frame.
-              </p>
-              <div class="weekbar">
-                <div class="meter"><i style="--w: 67%"></i></div>
-                <small
-                  >Up to two-thirds of a full-time week — before a single view,
-                  comment or rand comes back.</small
-                >
-              </div>
-            </div>
+          <div class="reveal reveal-delay-1 problem-card">
+            <div class="problem-card-icon"><i data-lucide="laptop"></i></div>
+            <h3 class="problem-card-title">Hardware</h3>
+            <p class="problem-card-desc">
+              The common local laptop is a dual-core i3-class machine with 8GB
+              RAM, the R4,000 to R8,000 price point actually sold in SA retail.
+              Software video decode chokes this hardware.
+            </p>
+            <div class="problem-card-stat">R4,000 to R8,000 machines</div>
           </div>
-
-          <div class="barriers">
-            <div class="card barrier reveal" style="--d: 0.05s">
-              <div class="ic" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M5 12.55a11 11 0 0 1 14.08 0" />
-                  <path d="M1.42 9a16 16 0 0 1 21.16 0" />
-                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
-                  <line x1="12" y1="20" x2="12.01" y2="20" />
-                </svg>
-              </div>
-              <h3>Data you can't afford to burn</h3>
-              <p>
-                A 1GB bundle costs 1–3 hours of minimum-wage work in South
-                Africa. Rival browser editors ship 20–30MB of codec libraries
-                before they can process a single frame — your data, gone before
-                you've started.
-              </p>
+          <div class="reveal reveal-delay-2 problem-card">
+            <div class="problem-card-icon">
+              <i data-lucide="dollar-sign"></i>
             </div>
-            <div class="card barrier reveal" style="--d: 0.12s">
-              <div class="ic" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <rect x="3" y="4" width="18" height="12" rx="2" />
-                  <line x1="2" y1="20" x2="22" y2="20" />
-                </svg>
-              </div>
-              <h3>Hardware they never designed for</h3>
-              <p>
-                The laptop most creators actually own is a dual-core i3 with 8GB
-                RAM — the R4,000–R8,000 shelf at every SA retailer. Software
-                video decoding chokes on exactly that machine.
-              </p>
-            </div>
-            <div class="card barrier reveal" style="--d: 0.19s">
-              <div class="ic" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="2" y1="12" x2="22" y2="12" />
-                  <path
-                    d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
-                  />
-                </svg>
-              </div>
-              <h3>Priced in someone else's currency</h3>
-              <p>
-                Desktop pro tools run $20–$60 a month — R360–R1,100 — billed in
-                dollars to creators earning rands. An early-stage independent
-                creator simply can't pay that.
-              </p>
-            </div>
+            <h3 class="problem-card-title">Pricing</h3>
+            <p class="problem-card-desc">
+              Desktop-native tools run $20 to $60/month (R360 to R1,100).
+              Unaffordable for an early-stage independent creator, especially
+              when priced in foreign currency they can't easily pay.
+            </p>
+            <div class="problem-card-stat">$20 to $60/month in USD</div>
           </div>
+        </div>
+      </div>
+    </section>
 
-          <p class="closing reveal">
-            Three walls between you and "posted." iKlippa was built to walk
-            through all three — at the architecture level, not as an
-            afterthought.
+    <!-- Solution Section -->
+    <section id="solution">
+      <div class="container">
+        <div class="reveal">
+          <div class="section-eyebrow">The Solution</div>
+          <h2>Architecture choices that level the playing field.</h2>
+          <p class="section-desc">
+            iKlippa solves hardware, bandwidth, and pricing barriers at the
+            architecture level, not as an afterthought.
           </p>
         </div>
-      </section>
 
-      <!-- ============ HOW IT WORKS ============ -->
-      <section
-        class="section"
-        id="how"
-        style="background: var(--bg-2); border-block: 1px solid var(--border)"
-      >
-        <div class="wrap">
-          <div class="reveal">
-            <span class="eyebrow"
-              ><span class="dot"></span> The architecture</span
-            >
-            <h2 class="title">
-              Three layers, built for <em>your reality.</em>
-            </h2>
-            <p class="lead">
-              No jargon. Just the three reasons iKlippa runs where other tools
-              can't.
-            </p>
-          </div>
-
-          <div class="steps">
-            <div class="card step reveal" style="--d: 0.05s">
-              <div class="num">01</div>
-              <div>
-                <div class="ic" aria-hidden="true">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <rect x="4" y="4" width="16" height="16" rx="2" />
-                    <rect x="9" y="9" width="6" height="6" />
-                    <path
-                      d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"
-                    />
-                  </svg>
-                </div>
-                <h3>A pro engine, compiled for your browser</h3>
-                <p>
-                  A custom Rust engine, compiled to WebAssembly, handles
-                  compositing, colour and effects at near-native speed —
-                  entirely on your machine. Fast on modest hardware, and your
-                  footage never leaves your device.
-                </p>
-              </div>
-            </div>
-            <div class="card step reveal" style="--d: 0.12s">
-              <div class="num">02</div>
-              <div>
-                <div class="ic" aria-hidden="true">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <line x1="3" y1="6" x2="21" y2="6" />
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <line x1="3" y1="18" x2="21" y2="18" />
-                    <circle cx="8" cy="6" r="2" fill="currentColor" />
-                    <circle cx="15" cy="12" r="2" fill="currentColor" />
-                    <circle cx="10" cy="18" r="2" fill="currentColor" />
-                  </svg>
-                </div>
-                <h3>An editor built for the hardware you have</h3>
-                <p>
-                  A fully custom timeline, colour panel, audio mixer and caption
-                  editor — engineered for buttery scrubbing on weak machines,
-                  with exports that render locally. What you see is what
-                  renders. Instantly, privately.
-                </p>
-              </div>
-            </div>
-            <div class="card step reveal" style="--d: 0.19s">
-              <div class="num">03</div>
-              <div>
-                <div class="ic" aria-hidden="true">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path
-                      d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-                    />
-                  </svg>
-                </div>
-                <h3>iKlippa Director — your AI co-pilot</h3>
-                <p>
-                  Powered by IBM Granite. Tell it in plain language — "remove
-                  the dead air", "add a caption here", "match this grade" — and
-                  it executes on your timeline in real time. A creative partner,
-                  not a content generator.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div class="card unlock reveal">
-            <div>
-              <span class="eyebrow"><span class="dot"></span> The unlock</span>
-              <h3>
-                Your browser already ships a hardware video decoder. We use it.
-              </h3>
-              <p>
-                Instead of shipping 20–30MB of downloadable codec libraries like
-                every other browser editor, iKlippa talks directly to WebCodecs
-                — the hardware decoder already inside your browser. The whole
-                app loads in under 2MB. That's not a marketing number; it's the
-                architecture.
-              </p>
-            </div>
-            <div class="load-compare">
-              <div class="load-row">
-                <span class="load-name">iKlippa</span>
-                <div class="load-track">
-                  <i class="fast" style="--w: 7%"></i>
-                </div>
-                <span class="load-val"
-                  ><b>Under 2MB</b> — full app, ready to edit</span
-                >
-              </div>
-              <div class="load-row">
-                <span class="load-name">Typical browser editor</span>
-                <div class="load-track">
-                  <i class="slow" style="--w: 100%"></i>
-                </div>
-                <span class="load-val"
-                  >20–30MB of WASM codec libraries — downloaded before a single
-                  frame</span
-                >
-              </div>
-              <p class="load-cap">
-                First-load size — everything you download before you can touch a
-                clip.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============ FEATURES ============ -->
-      <section class="section" id="features">
-        <div class="wrap">
-          <div class="reveal">
-            <span class="eyebrow"><span class="dot"></span> Features</span>
-            <h2 class="title">Everything between you and <em>"posted."</em></h2>
-            <p class="lead">
-              Not a toy with AI bolted on. A real editor — with AI where it
-              actually saves you time.
-            </p>
-          </div>
-
-          <div class="feat-grid">
-            <div class="card feat reveal" style="--d: 0.04s">
-              <div class="ic" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path
-                    d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-                  />
-                </svg>
-              </div>
-              <h3>Say it. Watch it happen.</h3>
-              <p>
-                Trim silences, sync cuts to music, grade footage — in plain
-                language, or slash commands when you're in flow.
-              </p>
-              <div class="feat-viz">
-                <div class="pill-viz">
-                  <span class="cmd">/sync-audio</span
-                  ><span class="ok"
-                    ><svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.6"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M20 6L9 17l-5-5" /></svg
-                    >14 cuts synced</span
-                  >
-                </div>
-              </div>
-            </div>
-
-            <div class="card feat reveal" style="--d: 0.1s">
-              <div class="ic" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <circle cx="6" cy="6" r="3" />
-                  <circle cx="6" cy="18" r="3" />
-                  <line x1="20" y1="4" x2="8.12" y2="15.88" />
-                  <line x1="14.47" y1="14.48" x2="20" y2="20" />
-                  <line x1="8.12" y1="8.12" x2="12" y2="12" />
-                </svg>
-              </div>
-              <h3>Dead air, deleted.</h3>
-              <p>
-                iKlippa finds the gaps where viewers leave and cuts them out.
-                You approve every snip.
-              </p>
-              <div class="feat-viz">
-                <div class="trim-viz">
-                  <i class="wave" data-bars="14"></i
-                  ><span class="gap">4.2s</span
-                  ><i class="wave" data-bars="18"></i>
-                </div>
-              </div>
-            </div>
-
-            <div class="card feat reveal" style="--d: 0.16s">
-              <div class="ic" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M9 18V5l12-2v13" />
-                  <circle cx="6" cy="18" r="3" />
-                  <circle cx="18" cy="16" r="3" />
-                </svg>
-              </div>
-              <h3>
-                Cuts that land on the drop <span class="badge">Signature</span>
-              </h3>
-              <p>
-                Snaps your edits to Amapiano and Afrobeat drops automatically.
-                Built here, for the sound that raised us.
-              </p>
-              <div class="feat-viz">
-                <div class="beat-viz">
-                  <i class="wave" data-bars="40"></i>
-                  <div class="beats" aria-hidden="true">
-                    <b></b><b></b><b></b><b></b><b></b>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card feat reveal" style="--d: 0.04s">
-              <div class="ic" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M4 14a8 8 0 1 1 16 0" />
-                  <path d="M12 14l4-4" />
-                  <circle cx="12" cy="14" r="1.4" fill="currentColor" />
-                </svg>
-              </div>
-              <h3>Know if your edit flows.</h3>
-              <p>
-                An AI score — like 76/100 — grades your pacing and flow, with
-                concrete fixes instead of vibes.
-              </p>
-              <div class="feat-viz tall">
-                <div class="score-viz">
-                  <span class="num">76</span>
-                  <div class="meta">
-                    <small>Pacing score / 100</small>
-                    <div class="meter"><i style="--w: 76%"></i></div>
-                    <span class="hint">→ tighten the intro by 2s</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card feat reveal" style="--d: 0.1s">
-              <div class="ic" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <line x1="4" y1="21" x2="4" y2="14" />
-                  <line x1="4" y1="10" x2="4" y2="3" />
-                  <line x1="12" y1="21" x2="12" y2="12" />
-                  <line x1="12" y1="8" x2="12" y2="3" />
-                  <line x1="20" y1="21" x2="20" y2="16" />
-                  <line x1="20" y1="12" x2="20" y2="3" />
-                  <line x1="1" y1="14" x2="7" y2="14" />
-                  <line x1="9" y1="8" x2="15" y2="8" />
-                  <line x1="17" y1="16" x2="23" y2="16" />
-                </svg>
-              </div>
-              <h3>Real grading. Real curves.</h3>
-              <p>
-                A multi-track timeline with real-time colour, a curves editor
-                and LUT import — no "lite" mode hiding behind the AI.
-              </p>
-              <div class="feat-viz">
-                <div class="curves-viz">
-                  <svg viewBox="0 0 64 42" fill="none" aria-hidden="true">
-                    <rect
-                      x="0"
-                      y="0"
-                      width="64"
-                      height="42"
-                      rx="4"
-                      fill="rgba(255,255,255,.03)"
-                    />
-                    <path
-                      d="M2 40 L20 38 L40 12 L62 4"
-                      stroke="#2dd4bf"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                    />
-                    <circle cx="20" cy="38" r="2.4" fill="#2dd4bf" />
-                    <circle cx="40" cy="12" r="2.4" fill="#2dd4bf" />
-                  </svg>
-                  <div class="wheels" aria-hidden="true">
-                    <span style="border-color: #0d9488"></span
-                    ><span style="border-color: #14b8a6"></span
-                    ><span style="border-color: #5eead4"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card feat reveal" style="--d: 0.16s">
-              <div class="ic" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <rect x="3" y="5" width="18" height="14" rx="2" />
-                  <line x1="7" y1="11" x2="11" y2="11" />
-                  <line x1="13" y1="11" x2="17" y2="11" />
-                  <line x1="7" y1="15" x2="17" y2="15" />
-                </svg>
-              </div>
-              <h3>Every word, on brand.</h3>
-              <p>
-                A full caption editor — font, size, colour, position, CASE —
-                with AI suggestions you can take or leave.
-              </p>
-              <div class="feat-viz tall">
-                <div class="cap-viz">
-                  <span>that's the drop.</span><span>THAT'S THE DROP.</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="roadmap reveal">
-            <span class="dot"></span>
-            <span
-              ><b>On the roadmap — Brand Kit:</b> paste your script and brand
-              guidelines; fonts and colours apply themselves.</span
-            >
-            <span class="soon"><span class="dot"></span> Coming soon</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============ DIRECTOR ============ -->
-      <section
-        class="section"
-        id="director"
-        style="background: var(--bg-2); border-block: 1px solid var(--border)"
-      >
-        <div class="wrap">
-          <div class="director-grid">
-            <div class="reveal">
-              <span class="eyebrow"
-                ><span class="dot"></span> iKlippa Director · powered by IBM
-                Granite</span
-              >
-              <h2 class="title">
-                An AI that edits <em>with you.</em><br />Never over you.
-              </h2>
-              <p class="lead">
-                The Director lives beside your timeline and speaks plain
-                language. Ask it to remove dead air, add a caption, match a
-                grade — or type <b style="color: var(--teal-l)">/</b> and let
-                the commands fly. Every change lands on your timeline in real
-                time, and every one is yours to undo.
-              </p>
-              <p class="quote">
-                AI as a creative partner, not a replacement — it removes the
-                drudgery, it doesn't make creative decisions for you.
-              </p>
-              <div class="cmds" aria-label="Example slash commands">
-                <span>/trim-silence</span><span>/sync-audio</span
-                ><span>/auto-broll</span><span>/add-captions</span>
-              </div>
-            </div>
-
-            <div class="chat reveal" style="--d: 0.12s">
-              <div class="chat-head">
-                <span class="dot"></span> Director
-                <span class="model">Granite</span
-                ><span class="live"
-                  ><span class="dot"></span> on your timeline</span
-                >
-              </div>
-              <div class="chatlog" id="chatlog">
-                <div class="msg-row you" style="--d: 0.1s">
-                  <span class="av">YOU</span>
-                  <div class="bubble">sync my cuts to the beat</div>
-                </div>
-                <div class="msg-row ai" style="--d: 0.45s">
-                  <span class="av">AI</span>
-                  <div class="bubble">
-                    Done — 14 cuts snapped to the Amapiano drop at 0:32. Want
-                    the chorus tighter?<br /><span class="act"
-                      ><svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.4"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path d="M20 6L9 17l-5-5" /></svg
-                      >Timeline updated · 14 cuts</span
-                    >
-                  </div>
-                </div>
-                <div class="msg-row you" style="--d: 0.8s">
-                  <span class="av">YOU</span>
-                  <div class="bubble">/trim-silence</div>
-                </div>
-                <div class="msg-row ai" style="--d: 1.1s">
-                  <span class="av">AI</span>
-                  <div class="bubble">
-                    6 silences removed — 4.2s of dead air gone. Undo anytime.<br /><span
-                      class="act"
-                      ><svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.4"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path d="M20 6L9 17l-5-5" /></svg
-                      >−4.2s recovered</span
-                    >
-                  </div>
-                </div>
-                <div class="msg-row you" style="--d: 1.4s">
-                  <span class="av">YOU</span>
-                  <div class="bubble">match this grade to clip 2</div>
-                </div>
-                <div class="msg-row ai" style="--d: 1.7s">
-                  <span class="av">AI</span>
-                  <div class="bubble">
-                    Grade matched across 3 clips. Preview updated.<br /><span
-                      class="act"
-                      ><svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.4"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path d="M20 6L9 17l-5-5" /></svg
-                      >3 clips graded</span
-                    >
-                  </div>
-                </div>
-              </div>
-              <div class="chat-input">
-                <span class="caret"></span> Ask Granite or type <kbd>/</kbd> for
-                commands…
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============ STATS STRIP ============ -->
-      <section class="stats-sec">
-        <div class="wrap">
-          <div class="stats-head reveal">
-            <h3>The honest numbers.</h3>
-            <p>No user counts. No testimonials. Just the spec sheet.</p>
-          </div>
-          <div class="stats reveal">
-            <div class="stat">
-              <div class="n">&lt;2MB</div>
-              <p class="t">
-                Full app load — others ship <b>20–30MB</b> of codecs first.
-              </p>
-            </div>
-            <div class="stat">
-              <div class="n">8GB</div>
-              <p class="t">
-                <b>Dual-core</b> RAM — the laptops SA actually sells.
-              </p>
-            </div>
-            <div class="stat">
-              <div class="n">3</div>
-              <p class="t">
-                Aspect ratios — <b>16:9 · 9:16 · 1:1</b>, one export pass.
-              </p>
-            </div>
-            <div class="stat">
-              <div class="n">0</div>
-              <p class="t">
-                Uploads — your footage <b>renders on your device</b>.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============ PRICING ============ -->
-      <section class="section" id="pricing">
-        <div class="wrap">
-          <div class="reveal" style="text-align: center">
-            <span class="eyebrow" style="justify-content: center"
-              ><span class="dot"></span> Pricing · pre-launch</span
-            >
-            <h2 class="title">The price of a <em>Klippa</em> a month.</h2>
-            <p class="lead" style="margin-left: auto; margin-right: auto">
-              No dollar billing. No cloud-render meter running while you sleep.
-              No paywall around the good parts. One honest rand price at launch.
-            </p>
-          </div>
-
-          <div class="card price-card reveal" style="--d: 0.1s">
-            <div class="price-top">
-              <h3>Founder plan</h3>
-              <span class="tbd">PRICE TBD</span>
-            </div>
-            <p class="price-sub">
-              Everything, for everyone. At launch you get:
-            </p>
-            <ul class="price-list">
-              <li>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M20 6L9 17l-5-5" /></svg
-                ><span
-                  ><b>Full editor</b> — timeline, colour, audio mixer,
-                  captions.</span
-                >
-              </li>
-              <li>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M20 6L9 17l-5-5" /></svg
-                ><span><b>iKlippa Director</b>, powered by IBM Granite.</span>
-              </li>
-              <li>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M20 6L9 17l-5-5" /></svg
-                ><span
-                  ><b>Offline exports</b> — 16:9 · 9:16 · 1:1 in one pass.</span
-                >
-              </li>
-              <li>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M20 6L9 17l-5-5" /></svg
-                ><span><b>Under 2MB load</b> — kind to your data bundle.</span>
-              </li>
-              <li>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M20 6L9 17l-5-5" /></svg
-                ><span><b>No foreign-currency billing.</b> Ever.</span>
-              </li>
-            </ul>
-            <a href="#cta" class="btn btn-primary"
-              >Join the waitlist
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M5 12h14M13 6l6 6-6 6" />
-              </svg>
-            </a>
-          </div>
-          <p class="klippa-note reveal">
-            A <em>klippa</em> is a paperclip — the cheapest tool that holds
-            everything together. That's the whole pricing philosophy: small,
-            local, enough.
-          </p>
-        </div>
-      </section>
-
-      <!-- ============ FINAL CTA ============ -->
-      <section class="cta-sec" id="cta">
-        <div class="wrap reveal">
-          <span class="eyebrow" style="justify-content: center"
-            ><span class="dot"></span> Pre-launch</span
-          >
-          <h2>Be first in line.</h2>
-          <p>
-            iKlippa is in pre-launch, built on and for the laptops South Africa
-            actually uses. Drop your email — we'll send exactly one when it's
-            ready.
-          </p>
-          <div id="form-wrap">
-            <form class="cta-form" id="waitlist-form" novalidate>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                placeholder="you@example.com"
-                aria-label="Email address"
-                required
-              />
-              <button type="submit" class="btn btn-primary">
-                Join the waitlist
-              </button>
-            </form>
-            <p class="fine">One email at launch. No drip campaign, no spam.</p>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <!-- ============ FOOTER ============ -->
-    <footer>
-      <div class="wrap">
-        <div class="foot-grid">
-          <div class="foot-brand">
-            <a href="#top" class="logo"
-              ><img
-                class="logo-img"
-                src="https://i.ibb.co/WvhnzQ0v/logo.png"
-                alt="iKlippa"
-            /></a>
+        <div class="solution-steps">
+          <div class="reveal solution-step">
+            <div class="step-num">01 / Engine</div>
+            <h3>Rust + WebAssembly</h3>
             <p>
-              Pro-level video editing on a basic laptop — built in &amp; for
-              South Africa, for the hardware you actually have.
+              A custom Rust engine compiled to WebAssembly runs entirely
+              in-browser. It handles all video compositing, colour grading, and
+              effects at near-native speed.
+            </p>
+            <div class="step-benefit">
+              <i data-lucide="check"></i> Fast on modest hardware
+            </div>
+          </div>
+          <div class="reveal reveal-delay-1 solution-step">
+            <div class="step-num">02 / Editor</div>
+            <h3>Custom Browser Editor</h3>
+            <p>
+              A fully custom editor, timeline, colour panel, audio mixer,
+              caption editor, built for buttery-smooth scrubbing on weak
+              hardware. Export never touches a server.
+            </p>
+            <div class="step-benefit">
+              <i data-lucide="check"></i> WYSIWYG · instant · private
+            </div>
+          </div>
+          <div class="reveal reveal-delay-2 solution-step">
+            <div class="step-num">03 / Director</div>
+            <h3>iKlippa Director (Granite)</h3>
+            <p>
+              A conversational AI co-pilot powered by IBM Granite. Takes
+              plain-language instructions and executes them directly on your
+              timeline in real time.
+            </p>
+            <div class="step-benefit">
+              <i data-lucide="check"></i> Creative partner, not a replacement
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal tech-unlock">
+          <div class="unlock-text">
+            <h3>The technical unlock</h3>
+            <p>
+              iKlippa uses the device's own built-in hardware video decoder
+              (WebCodecs, already in every modern browser) instead of shipping a
+              heavy downloadable codec library.
             </p>
           </div>
-          <nav class="foot-links" aria-label="Footer">
-            <a href="#problem">Why iKlippa</a>
-            <a href="#how">How it works</a>
-            <a href="#features">Features</a>
-            <a href="#director">Director</a>
-            <a href="#pricing">Pricing</a>
-          </nav>
-          <span class="foot-status"
-            ><span class="dot"></span> Pre-launch — waitlist open</span
-          >
+          <div class="unlock-stat">
+            <div class="unlock-num">&lt;2MB</div>
+            <div class="unlock-label">to load<br />vs. 20 to 30MB</div>
+          </div>
         </div>
-        <div class="foot-bottom">
-          <span>© 2026 iKlippa. Built for the hardware you actually have.</span>
-          <span>Browser-native · AI-powered · Open web standards</span>
+      </div>
+    </section>
+
+    <!-- Features Bento -->
+    <section id="features">
+      <div class="container">
+        <div class="reveal">
+          <div class="section-eyebrow">Features</div>
+          <h2>Built for the reality of short-form creation.</h2>
+          <p class="section-desc">
+            Every feature is designed to speed up the boring parts of editing
+            without taking over your creative decisions.
+          </p>
+        </div>
+
+        <div class="features-bento">
+          <div class="reveal feature-card feature-large">
+            <div class="feature-icon"><i data-lucide="music"></i></div>
+            <h3 class="feature-title">Afro-Beat Sync</h3>
+            <p class="feature-desc">
+              A genuine, culturally-specific differentiator. Snaps cuts to
+              Amapiano and Afrobeat drops automatically, matching the rhythm of
+              the content your audience actually listens to.
+            </p>
+            <div class="feature-visual" id="beat-visual"></div>
+          </div>
+
+          <div class="reveal reveal-delay-1 feature-card">
+            <div class="feature-icon"><i data-lucide="images"></i></div>
+            <div class="feature-header">
+              <h3 class="feature-title">African Stock Library</h3>
+              <span class="coming-soon-badge">Coming Soon</span>
+            </div>
+            <p class="feature-desc">
+              A curated library of high-quality, culturally relevant stock
+              photos and videos to elevate your edits.
+            </p>
+          </div>
+
+          <div class="reveal feature-card">
+            <div class="feature-icon"><i data-lucide="scissors"></i></div>
+            <h3 class="feature-title">Smart Trim Silences</h3>
+            <p class="feature-desc">
+              Automatically detects and removes dead air. Keeps your pacing
+              tight without manual micro-edits.
+            </p>
+          </div>
+
+          <div class="reveal reveal-delay-1 feature-card">
+            <div class="feature-icon"><i data-lucide="gauge"></i></div>
+            <h3 class="feature-title">Script &amp; Pacing Score</h3>
+            <p class="feature-desc">
+              AI-generated score that grades your edit's pacing and flow, with
+              actionable suggestions.
+            </p>
+            <div class="feature-score">
+              <div class="mini-score-bar">
+                <div class="mini-score-fill"></div>
+              </div>
+              <span class="mini-score-val">82</span>
+            </div>
+          </div>
+
+          <div class="reveal feature-card">
+            <div class="feature-icon"><i data-lucide="type"></i></div>
+            <h3 class="feature-title">Caption Editor</h3>
+            <p class="feature-desc">
+              Full control over font, size, colour, position, and case
+              treatment. All AI-suggestable to match your brand style in
+              seconds.
+            </p>
+          </div>
+
+          <div class="reveal reveal-delay-1 feature-card">
+            <div class="feature-icon"><i data-lucide="download"></i></div>
+            <h3 class="feature-title">One-Pass Exports</h3>
+            <p class="feature-desc">
+              Export 16:9, 9:16, and 1:1 simultaneously without separate render
+              passes. Runs fully offline in-browser.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI Director Spotlight -->
+    <section id="director">
+      <div class="container">
+        <div class="reveal director-spotlight">
+          <div class="spotlight-content">
+            <div class="section-eyebrow">AI Director</div>
+            <h2>Meet your creative partner.</h2>
+            <p>
+              Powered by IBM Granite, iKlippa Director takes plain-language
+              instructions and executes them directly on your timeline in real
+              time. "Remove the dead air." "Add a caption here." "Match this
+              colour grade." Just ask, via chat or slash commands like
+              <span class="mono" style="color: var(--accent-mint)"
+                >/trim-silence</span
+              >,
+              <span class="mono" style="color: var(--accent-mint)"
+                >/sync-audio</span
+              >,
+              <span class="mono" style="color: var(--accent-mint)"
+                >/auto-broll</span
+              >.
+            </p>
+            <div class="positioning-line">
+              <strong>AI as a creative partner, not a replacement.</strong> It
+              removes drudgery, it doesn't make creative decisions for you.
+            </div>
+          </div>
+
+          <div class="chat-mockup">
+            <div class="chat-header">
+              <div class="chat-header-title">
+                <i data-lucide="bot"></i> Director
+              </div>
+              <span class="chat-header-model">granite-3.0</span>
+            </div>
+            <div class="chat-msg user">
+              <div class="chat-bubble">sync my cuts to the beat</div>
+              <div class="chat-meta">user · just now</div>
+            </div>
+            <div class="chat-msg ai">
+              <div class="chat-bubble">
+                Analyzing audio track... Detected Amapiano drop at 0:14.
+                Snapping 12 B-roll cuts to the beat.
+              </div>
+              <div class="chat-meta">director · just now</div>
+            </div>
+            <div class="chat-action">
+              <i data-lucide="check"></i> Applied 12 cuts to timeline
+            </div>
+            <div class="chat-input">
+              <span
+                >Ask Granite or type <span class="slash-cmd">/</span> for
+                commands...</span
+              >
+              <div class="chat-send"><i data-lucide="send"></i></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats Strip -->
+    <section style="padding: 0">
+      <div class="container">
+        <div class="reveal stats-strip">
+          <div class="strip-item">
+            <div class="strip-num"><span class="accent">&lt;</span>2MB</div>
+            <div class="strip-label">initial load</div>
+          </div>
+          <div class="strip-item">
+            <div class="strip-num">8<span class="accent">GB</span></div>
+            <div class="strip-label">runs on dual-core i3</div>
+          </div>
+          <div class="strip-item">
+            <div class="strip-num">3<span class="accent">×</span></div>
+            <div class="strip-label">aspect ratios, one pass</div>
+          </div>
+          <div class="strip-item">
+            <div class="strip-num">0<span class="accent"> servers</span></div>
+            <div class="strip-label">fully offline-capable</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA / Pricing -->
+    <section id="waitlist" class="cta-section">
+      <div class="cta-glow"></div>
+      <div class="container">
+        <div class="reveal cta-card">
+          <div class="cta-badge">[ PRICE TBD ]</div>
+          <h3>
+            For the price of a <span class="tagline-repeat">Klippa</span> a
+            month.
+          </h3>
+          <p>
+            Built for local creators, not foreign exchange rates. No cloud
+            rendering subscriptions, no heavy binary downloads. Just
+            professional editing on the hardware you already own.
+          </p>
+          <form id="waitlist-form">
+            <input type="email" placeholder="you@email.com" required />
+            <button type="submit" class="btn btn-primary cta-btn-full">
+              Join Waitlist
+            </button>
+          </form>
+
+          <div class="preview-access">
+            <p>Want to try it right now?</p>
+            <a href="#" class="preview-btn"
+              ><i data-lucide="play-circle"></i> Try Early Preview</a
+            >
+          </div>
+
+          <p class="cta-note">
+            Be first to know when we launch. No spam, ever.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-logo">
+            <svg
+              width="24"
+              height="19"
+              viewBox="0 0 30 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <rect
+                x="1"
+                y="8"
+                width="20"
+                height="13"
+                rx="2.6"
+                fill="#ffffff"
+              />
+              <rect
+                x="1"
+                y="3.4"
+                width="20"
+                height="4.4"
+                rx="1.3"
+                fill="#ffffff"
+              />
+              <path
+                d="M3.2 7.8 L5.6 3.4"
+                stroke="#060608"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+              <path
+                d="M7.2 7.8 L9.6 3.4"
+                stroke="#060608"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+              <path
+                d="M11.2 7.8 L13.6 3.4"
+                stroke="#060608"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+              <path
+                d="M15.2 7.8 L17.6 3.4"
+                stroke="#060608"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+              <path d="M9 12.2 L9 17.2 L13.6 14.7 Z" fill="#060608" />
+              <path
+                d="M24 1.4 l1.05 2.3 2.3 1.05 -2.3 1.05 -1.05 2.3 -1.05 -2.3 -2.3 -1.05 2.3 -1.05 z"
+                fill="#9DD9D1"
+              />
+            </svg>
+            <span>iKlippa</span>
+          </div>
+          <div class="footer-meta">
+            © 2026 iKlippa. Built for sub-Saharan creators.
+          </div>
         </div>
       </div>
     </footer>
 
     <script>
-      /* ---------- build waveforms ---------- */
-      (function buildWaves() {
-        document.querySelectorAll(".wave").forEach(function (w) {
-          var n = parseInt(w.getAttribute("data-bars") || "40", 10);
-          var html = "";
-          for (var i = 0; i < n; i++) {
-            var h =
-              16 +
-              Math.abs(Math.sin(i * 0.7 + 1.3)) * 60 +
-              (Math.sin(i * 2.1) * 0.5 + 0.5) * 22;
-            html +=
-              '<i style="height:' +
-              Math.min(Math.max(h, 12), 96).toFixed(0) +
-              '%"></i>';
-          }
-          w.innerHTML = html;
-        });
-      })();
+      lucide.createIcons();
 
-      /* ---------- mobile nav ---------- */
-      (function navToggle() {
-        var burger = document.getElementById("burger");
-        var links = document.getElementById("navlinks");
-        if (!burger || !links) return;
-        burger.addEventListener("click", function () {
-          var open = links.classList.toggle("open");
-          burger.classList.toggle("active", open);
-          burger.setAttribute("aria-expanded", open ? "true" : "false");
-        });
-        links.querySelectorAll("a").forEach(function (a) {
-          a.addEventListener("click", function () {
-            links.classList.remove("open");
-            burger.classList.remove("active");
-            burger.setAttribute("aria-expanded", "false");
-          });
-        });
-      })();
-
-      /* ---------- nav shadow on scroll ---------- */
-      (function navScroll() {
-        var nav = document.querySelector(".nav");
-        var onScroll = function () {
-          nav.classList.toggle("scrolled", window.scrollY > 8);
-        };
-        window.addEventListener("scroll", onScroll, { passive: true });
-        onScroll();
-      })();
-
-      /* ---------- reveal on scroll ---------- */
-      (function reveal() {
-        var els = document.querySelectorAll(".reveal");
-        if (!("IntersectionObserver" in window)) {
-          els.forEach(function (el) {
-            el.classList.add("in-view");
-          });
-          var cl = document.getElementById("chatlog");
-          if (cl) cl.classList.add("in-view");
-          return;
-        }
-        var io = new IntersectionObserver(
-          function (entries) {
-            entries.forEach(function (e) {
-              if (e.isIntersecting) {
-                e.target.classList.add("in-view");
-                io.unobserve(e.target);
+      document.addEventListener("DOMContentLoaded", () => {
+        const reveals = document.querySelectorAll(".reveal");
+        const observer = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add("visible");
+                observer.unobserve(entry.target);
               }
             });
           },
-          { threshold: 0.15, rootMargin: "0px 0px -40px 0px" },
+          { threshold: 0.08, rootMargin: "0px 0px -40px 0px" },
         );
-        els.forEach(function (el) {
-          io.observe(el);
-        });
+        reveals.forEach((el) => observer.observe(el));
 
-        /* chat log staggered reveal */
-        var chat = document.getElementById("chatlog");
-        if (chat) {
-          var cio = new IntersectionObserver(
-            function (entries) {
-              entries.forEach(function (e) {
-                if (e.isIntersecting) {
-                  chat.classList.add("in-view");
-                  cio.unobserve(chat);
-                }
-              });
-            },
-            { threshold: 0.25 },
-          );
-          cio.observe(chat);
+        const form = document.getElementById("waitlist-form");
+        if (form) {
+          form.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const btn = form.querySelector("button");
+            const input = form.querySelector("input");
+            btn.innerText = "You're on the list 🎬";
+            btn.style.background = "var(--accent-hover)";
+            input.value = "";
+            input.disabled = true;
+            input.style.opacity = "0.5";
+          });
         }
-      })();
 
-      /* ---------- waitlist form ---------- */
-      (function form() {
-        var form = document.getElementById("waitlist-form");
-        var wrap = document.getElementById("form-wrap");
-        if (!form || !wrap) return;
-        form.addEventListener("submit", function (e) {
-          e.preventDefault();
-          var input = document.getElementById("email");
-          if (!input.value || !input.checkValidity()) {
-            input.reportValidity();
-            input.focus();
-            return;
+        const beatContainer = document.getElementById("beat-visual");
+        if (beatContainer) {
+          const barCount = 28;
+          const heights = [];
+          for (let i = 0; i < barCount; i++) {
+            const bar = document.createElement("div");
+            bar.className = "beat-bar";
+            let h;
+            if (
+              i === 7 ||
+              i === 8 ||
+              i === 15 ||
+              i === 16 ||
+              i === 23 ||
+              i === 24
+            ) {
+              h = 85 + Math.random() * 15;
+              bar.classList.add("highlight");
+            } else {
+              h = 20 + Math.random() * 50;
+            }
+            heights.push(h);
+            bar.style.height = h + "%";
+            beatContainer.appendChild(bar);
           }
-          wrap.innerHTML =
-            '<div class="form-success" role="status"><span class="dot"></span> You\'re on the list. One email when it launches — that\'s a promise.</div>';
-        });
-      })();
+          let frame = 0;
+          setInterval(() => {
+            const bars = beatContainer.querySelectorAll(".beat-bar");
+            bars.forEach((bar, i) => {
+              if (!bar.classList.contains("highlight")) {
+                const baseH = heights[i];
+                const wobble = Math.sin(frame * 0.1 + i * 0.5) * 8;
+                bar.style.height = Math.max(6, baseH + wobble) + "%";
+              }
+            });
+            frame++;
+          }, 80);
+        }
+
+        const audioWaveform = document.getElementById("audio-waveform");
+        if (audioWaveform) {
+          const waveBars = 64;
+          for (let i = 0; i < waveBars; i++) {
+            const span = document.createElement("span");
+            const baseHeight = 40 + Math.sin(i * 0.5) * 30 + Math.random() * 30;
+            const height = Math.min(100, Math.max(10, baseHeight));
+            span.style.height = height + "%";
+            audioWaveform.appendChild(span);
+          }
+        }
+      });
     </script>
   </body>
 </html>

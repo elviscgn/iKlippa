@@ -220,6 +220,12 @@ window.onPlaybackPaused = (): void => {
   window.lucide.createIcons();
 };
 
+// ── Buffering Spinner ──────────────────────────────────────────────────
+window.onBuffering = (buffering: boolean): void => {
+  const el = document.getElementById('buffering-spinner');
+  if (el) el.style.display = buffering ? 'flex' : 'none';
+};
+
 // ── Timeline Scrub: Throttled ───────────────────────────────────────────
 let lastSeekMs = -1;
 window.onPlayheadScrub = (timeSec: number, force?: boolean): void => {
