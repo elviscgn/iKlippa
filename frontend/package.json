@@ -20,6 +20,6 @@
     "vitest": "^3.2.1"
   },
   "dependencies": {
-    "mp4-muxer": "^5.2.2"
+    "mp4-muxer": "^4.3.3"
   }
 }

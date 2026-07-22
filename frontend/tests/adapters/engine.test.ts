@@ -369,6 +369,8 @@ describe('engine frame/audio message handling (Tier 2)', () => {
   it('handleWorkerFrame adds to exportFrames when isExporting', () => {
     __TEST_HOOKS__.isExporting = true;
     __TEST_HOOKS__.exportFrames = [];
+    __TEST_HOOKS__.sourceVideoWidth = 5;
+    __TEST_HOOKS__.sourceVideoHeight = 5;
 
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
