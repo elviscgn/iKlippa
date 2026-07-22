@@ -25,8 +25,7 @@
 
 ## 2. Phase 1 gaps (what's still missing)
 
-1. **No undo/redo.**
-2. **No Phase 1 QA pass on reference hardware.**
+1. **No Phase 1 QA pass on reference hardware.**
 
 ## 3. Architecture decisions
 
@@ -146,5 +145,5 @@ Update this section as tasks complete. Mark `[x]` when a task's acceptance crite
 - [x] Task 6 — Multi-track timeline UI rework
 - [x] Task 7 — Web Audio mixer
 - [x] Task 8 — Export: audio + watermark + resolution gating
-- [ ] Task 9 — Undo/redo command stack
+- [x] Task 9 — Undo/redo command stack
 - [ ] Task 10 — Phase 1 QA pass
