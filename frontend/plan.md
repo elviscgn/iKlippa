@@ -25,9 +25,8 @@
 
 ## 2. Phase 1 gaps (what's still missing)
 
-1. **No caption editor.** Only a mock "captions generated" action.
-2. **No undo/redo.**
-3. **No Phase 1 QA pass on reference hardware.**
+1. **No undo/redo.**
+2. **No Phase 1 QA pass on reference hardware.**
 
 ## 3. Architecture decisions
 
@@ -142,7 +141,7 @@ Update this section as tasks complete. Mark `[x]` when a task's acceptance crite
 - [~] Task 1 — Rust data model refactor (1.1 Rust model ✓, 1.2 JS migration ✓, pending user QA)
 - [x] Task 2 — Multi-track compositing in Rust
 - [x] Task 3 — Per-clip colour grading (incl. `.cube` LUT import — Rust parser in `lut.rs`, WASM `load_lut`, UI import btn + dropdown + intensity slider)
-- [ ] Task 4 — Caption editor
+- [x] Task 4 — Caption editor
 - [x] Task 5 — Project persistence
 - [x] Task 6 — Multi-track timeline UI rework
 - [x] Task 7 — Web Audio mixer
