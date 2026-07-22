@@ -343,7 +343,10 @@ function handleDecodeAll(msg: { sourceId: string }) {
   decodeAllFrames(sid).catch((e) => wwarn('worker', 'decode_all failed', String(e)));
 }
 
+let isDecodeAll = false;
+
 async function decodeAllFrames(sourceId: string) {
+  isDecodeAll = true;
   const state = sourceStates.get(sourceId);
   if (!state || !state.decoder) return;
   if (state.decoder.state === 'closed') { await setupDecoder(sourceId, state); }
@@ -383,6 +386,7 @@ async function decodeAllFrames(sourceId: string) {
     i = batchEnd;
   }
   state.decoderSeeded = true;
+  isDecodeAll = false;
   wlog('worker', `decode_all [${sourceId}] — done, ${samples.length} samples decoded`);
 }
 
@@ -435,6 +439,7 @@ async function routeMessage(msg: any): Promise<void> {
   else if (msg.type === 'get_project_json') handleGetProjectJson();
   else if (msg.type === 'composite') handleComposite(msg);
   else if (msg.type === 'decode_all') handleDecodeAll(msg);
+  else if (msg.type === 'reset_grade') { if (wasmModule) { wasmModule.set_exposure(0); wasmModule.set_contrast(0); wasmModule.set_saturation(0); wasmModule.set_temperature(0); wasmModule.set_highlights(0); wasmModule.set_shadows(0); wasmModule.set_vignette(0); wasmModule.set_grain(0); wasmModule.set_lut(0); } }
 }
 
 self.onmessage = (e: MessageEvent<any>) => {
@@ -566,7 +571,7 @@ async function setupDecoder(sourceId: string, state: SourceState) {
       }
 
       let gradeMs = 0;
-      if (!isWorkerPlaying) {
+      if (!isWorkerPlaying && !isDecodeAll) {
         const gradeStart = performance.now();
         try {
           wasmModule!.process_frame();

@@ -1251,6 +1251,9 @@ export async function exportVideo(
   logStatus(`Export: collecting frames (${exportW}×${exportH})…`);
   if (onProgress) onProgress(0);
 
+  // Reset global grade so exported frames are unaltered
+  worker!.postMessage({ type: 'reset_grade' });
+
   // One message to decode ALL frames in a single pass
   const initMap = mapTimelineToSource(0);
   worker!.postMessage({ type: 'decode_all', sourceId: initMap?.sourceId });
@@ -1308,6 +1311,10 @@ export async function exportVideo(
   const expCtx = expCanvas.getContext('2d', { willReadFrequently: true })!;
 
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
+  if (sortedFrames.length > 0) {
+    const first = sortedFrames[0]!.imageData.data;
+    console.log(`[export] first frame: ${first.length} bytes, pixel[0-3]=${first[0]},${first[1]},${first[2]},${first[3]}`);
+  }
   for (let i = 0; i < sortedFrames.length; i++) {
     const { ms, imageData } = sortedFrames[i]!;
     expCtx.putImageData(imageData, 0, 0, 0, 0, sourceVideoWidth, sourceVideoHeight);
@@ -1338,6 +1345,12 @@ export async function exportVideo(
       codedHeight: exportH,
       timestamp: ms * 1000,
       duration: frameMs * 1000,
+      colorSpace: {
+        primaries: 'bt709',
+        transfer: 'bt709',
+        matrix: 'bt709',
+        fullRange: true,
+      },
     });
     encoder.encode(frame, { keyFrame: i % 60 === 0 });
     frame.close();
