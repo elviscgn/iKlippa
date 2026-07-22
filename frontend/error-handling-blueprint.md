@@ -19,14 +19,14 @@ This document captures the audit findings, the four-part architecture, and the r
 - ✅→fixed: the queue catch swallowed *all* handler errors (`worker.ts` old line 198) — bug #4 was still in the code.
 - ✅→fixed: decoder error callbacks were `console.error('[Worker Decoder]', e)` / `('[AudioDecoder]', e)` — bug #5 was still in the code.
 - ✅→fixed: a failed `load` (e.g. unreadable file) posted **no message at all** — the main thread waited forever with zero feedback (verified empirically: only a `status` message was posted).
-- **Open (step 4):** `exportVideo` busy-waits `while (!pendingFrames.has(sourceMs))` with no timeout — one dropped frame hangs it forever, and a mid-export throw leaves `isExporting = true` permanently.
-- **Open (step 4):** `setTimeline`/`getProjectJson` resolve via `addEventListener('message')` filtered on type only — concurrent calls cross-resolve, failed calls hang forever.
-- **Open (step 3):** `seekAndDecodeFrame`'s abort path `break`s out of the decode loop but then *falls through* to the audio reseed and sets `decoderSeeded = true` on a half-fed decoder.
-- **Open (step 3):** the decoder output callback reads `currentSeekId` at post time, so a frame from seek N−1 still awaiting `copyTo` when seek N starts gets tagged as seek N and passes the `seekGeneration` filter (one-frame wrong-position flicker).
-- **Open (step 4):** `sync` messages (60/s, each awaiting file I/O) are never coalesced — a large share of the scrub-freeze queue debt that the `seekId` fix didn't remove.
+- ✅→fixed: `sync` messages (60/s, each awaiting file I/O) are now coalesced latest-wins in the worker `enqueueMessage` queue — a newer `sync` replaces any pending one. Main thread throttles to material changes only (playhead delta ≥100ms, state flip, or buffer threshold). Fixed alongside the audio-dies bug below.
+- **Open (step 3):** `exportVideo` no longer busy-waits `while (!pendingFrames.has(sourceMs))`, but the replacement polling loop has **no `finally` guard on `isExporting`** — if the function throws (encoder error), `isExporting = true` stays set permanently, locking out future exports.
+- **Open (step 3):** `setTimeline`/`getProjectJson` resolve via `addEventListener('message')` filtered on type only — concurrent calls cross-resolve, failed calls hang forever.
+- **Open (step 4):** `seekAndDecodeFrame`'s abort path `break`s out of the decode loop but control falls through past audio reseed (which ran before the loop) and sets `decoderSeeded = true` on a half-fed decoder.
+- **Open (step 4):** the decoder output callback reads `currentSeekId` at post time, so a frame from seek N−1 still awaiting `copyTo` when seek N starts gets tagged as seek N and passes the `seekGeneration` filter (one-frame wrong-position flicker).
 - **Open (step 2):** no heartbeat/watchdog — a truly wedged worker is indistinguishable from a busy one.
 - ✅→fixed (pause→play silence): the audio decoder ran unthrottled ahead of the playhead; pause discarded all scheduled/cached audio and resume never rewound the worker's decode front, so audio at the playhead was never re-sent. Fixed via `AUDIO_LOOKAHEAD_MS` throttle + `resync_audio` on playback start + `onended` node cleanup. **Lesson:** this bug threw *no exception*, so the step-1 funnel could not see it — logic bugs need the step-2 watchdogs (e.g. a scheduled-audio-vs-playhead mismatch detector) to become visible automatically.
-- ✅→fixed (audio dies a few seconds into playback): the 60/s `sync` firehose buried the worker's serial queue — each sync handler awaited up to 16 serial file reads, so the queue went seconds into debt and decoded audio/frames arrived late enough to be dropped as stale. Previously masked by unbounded audio-ahead decoding; exposed when the lookahead cap landed. Fixed via sync coalescing (latest-wins) in the worker scheduler, main-thread sync throttling (≥100ms playhead delta / state flip / buffer threshold), and `MAX_READS_PER_PUMP` caps per pump. This partially implements Part 4 below.
+- ✅→fixed (audio dies a few seconds into playback): the 60/s `sync` firehose buried the worker's serial queue — each sync handler awaited up to 16 serial file reads, so the queue went seconds into debt and decoded audio/frames arrived late enough to be dropped as stale. Previously masked by unbounded audio-ahead decoding; exposed when the lookahead cap landed. Fixed via sync coalescing (latest-wins) in the worker scheduler, main-thread sync throttling, and `MAX_READS_PER_PUMP` caps per pump. See Part 3 below.
 
 ### Root pattern
 All of the above are three failures in costume:
@@ -96,31 +96,36 @@ Policy: **a decoder that fired its error callback is dead — never `reset()`-an
 
 ---
 
-## 5. Part 4 — Worker message queueing (step 3, not started)
+## 5. Part 4 — Worker message queueing (step 3, partial)
 
 One serialized chain for everything is wrong: message types need different policies.
 
-- **Serial lane**: `init`, `load` — strict FIFO (this preserves the init-race fix).
-- **Replaceable lane**: `seek`, `sync`, `set_grade`, `set_audio_version` — latest-wins coalescing *in the queue* (a newer message replaces the pending one of the same kind). The state machine's `pendingSeek` covers the in-flight case; both layers are needed.
-- **Request/response lane**: `set_timeline`, `get_project_json`, export seeks — correlation IDs (`reqId`) + timeouts via a `callWorker(msg, timeoutMs)` helper. Kills the `addEventListener`-filtered-on-type pattern, cross-resolution, and the export busy-wait hang (seek gets a `seek_done` ack with a 5s timeout; export resets `isExporting` in `finally`).
-- Error isolation per message: each handler runs in its own try/catch → `reportError`, so one bad message never corrupts or blocks the next.
-- Cut the sync flood at the source: only post `sync` when playhead moved >40ms, play state flipped, or the frames-ahead threshold crossed (~10× less traffic).
-- Wrap outgoing `postMessage(msg, transfer)` in try/catch — a detached ArrayBuffer in the transfer list throws `DataCloneError` synchronously.
+### What's done
+- **Sync coalescing in queue** (`enqueueMessage`): a pending `sync` is replaced latest-wins by a newer one. Main thread throttles to material changes only (playhead delta ≥100ms, state flip, or buffer threshold). This eliminated the scrub-freeze queue debt that was the root of the "audio dies after a few seconds" bug.
+- **Error isolation per message**: each handler runs in its own try/catch → `reportError` (line ~490 in `worker.ts`), so one bad message never corrupts or blocks the next.
+- **Sync flood cut at source**: only posted when playhead moved >40ms, play state flipped, or frames-ahead threshold crossed (~10× less traffic than 60/s raw).
 
-**Watchdogs** (with step 2): worker heartbeat every 1s (`{ type:'heartbeat', state, queueDepth }`); missing 3s while playing → `WORKER_WEDGED` → respawn. Seek paint timeout escalates from `warn` to a reported `SEEK_TIMEOUT`. Playback starvation detector: no frame for 500ms with <2 frames ahead → `PLAYBACK_STARVATION`. Load handshake timeout: no `ready` in 15s → `LOAD_TIMEOUT`.
+### Not done
+- **Serial lane**: `init`, `load` still share the FIFO queue — no dedicated serial lane.
+- **Replaceable lane**: only `sync` coalesces; `seek`, `set_grade`, `set_audio_version` are still enqueued raw with no dedup.
+- **Request/response lane**: `set_timeline` and `get_project_json` still resolve via `addEventListener('message')` filtered on type only — concurrent calls cross-resolve, failed calls hang forever. No `callWorker(msg, timeoutMs)` helper.
+- **Export `finally` guard**: `isExporting = true` is not reset in a `finally` block — an encoder error mid-export locks it permanently.
+- **Wrap `postMessage(msg, transfer)`** in try/catch: not done — a detached ArrayBuffer in the transfer list will throw `DataCloneError` synchronously.
 
-**Recovery snapshot + respawn**: main thread keeps `{ file, playheadMs, grade, timelineJson }`; `resetEngine()` = `worker.terminate()` → fresh worker → re-import → re-seek. ~100ms, always works, zero lost work — the universal recovery for any fatal worker state.
+**Watchdogs** (with step 2): worker heartbeat every 1s (`{ type:'heartbeat', state, queueDepth }`); missing 3s while playing → `WORKER_WEDGED` → respawn. Seek paint timeout escalates from `warn` to a reported `SEEK_TIMEOUT`. Playback starvation detector: no frame for 500ms with <2 frames ahead → `PLAYBACK_STARVATION`. Load handshake timeout: no `ready` in 15s → `LOAD_TIMEOUT`. None of these are implemented — the error codes exist in `types.ts` but are never emitted.
+
+**Recovery snapshot + respawn**: main thread keeps `{ file, playheadMs, grade, timelineJson }`; `resetEngine()` = `worker.terminate()` → fresh worker → re-import → re-seek. ~100ms, always works, zero lost work — the universal recovery for any fatal worker state. **Not implemented.**
 
 ---
 
 ## 6. Rollout status
 
 | Step | Scope | Status |
-|---|---|---|
+|---|---|---|---|
 | 1 | Error protocol + funnels + toast bridge | ✅ **Done** (types.ts, errors.ts, worker.ts, engine.ts, main.ts + 19 tests) |
 | 1.5 | Pause→play audio fix + sync coalescing/throttling + read caps | ✅ **Done** (pulled forward from step 3 after live diagnosis) |
 | 2 | Watchdogs, heartbeat, recovery snapshot/respawn | ⬜ Not started |
-| 3 | Scheduler lanes + `callWorker` + remaining queue policies | 🔶 Partial (sync coalescing done; seek lanes, req/response IDs, export busy-wait remain) |
+| 3 | Scheduler lanes + `callWorker` + remaining queue policies | 🔶 **Partial** — sync coalescing done (both worker queue + main-thread throttle), error isolation per message done. **Not done:** serial/replaceable/request-response lanes, `callWorker` helper, correlation IDs, `finally` guard on `isExporting`, `postMessage` try/catch wrap. |
 | 4 | Worker state machine (absorb guards, entry/exit cleanup) | ⬜ Not started |
 | 5 | Decoder hardening + chaos/fault-injection tests | ⬜ Not started |
 
