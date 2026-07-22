@@ -1427,11 +1427,26 @@ export async function exportVideo(
   }
 
   const muxer = new Muxer(muxerConfig);
-  for (const { buf, timestamp, type } of encodedVideo) {
-    muxer.addVideoChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, frameMs * 1000);
+  for (let i = 0; i < encodedVideo.length; i++) {
+    const { buf, timestamp, type } = encodedVideo[i]!;
+    const meta: any = {};
+    if (i === 0) {
+      meta.decoderConfig = {
+        codec: 'avc1.64001f',
+        codedWidth: exportW,
+        codedHeight: exportH,
+        colorSpace: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false },
+      };
+    }
+    muxer.addVideoChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, frameMs * 1000, meta);
   }
-  for (const { buf, timestamp, type } of encodedAudio) {
-    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024);
+  for (let i = 0; i < encodedAudio.length; i++) {
+    const { buf, timestamp, type } = encodedAudio[i]!;
+    const meta: any = {};
+    if (i === 0) {
+      meta.decoderConfig = { codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 48000 };
+    }
+    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024, meta);
   }
   if (onProgress) onProgress(0.95);
 
