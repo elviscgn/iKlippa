@@ -448,7 +448,7 @@ function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'aud
     audioBuffer.copyToChannel(new Float32Array(msg.buffers[c]!), c);
   }
   pendingAudio.set(msg.ms, audioBuffer);
-  if (isPlaying) {
+  if (isPlaying && !isBuffering) {
     scheduleAudioNode(msg.ms, audioBuffer);
   }
 }
@@ -835,6 +835,12 @@ export function renderLoop(ts: number): void {
       audioPlayStartCtxTime = audioCtx!.currentTime;
       audioPlayStartMs = playheadMs;
       nextAudioStartTime = 0;
+      // Re-schedule any pending audio chunks that are at or after the playhead
+      for (const [chunkMs, buf] of pendingAudio) {
+        if (chunkMs >= playheadMs) {
+          scheduleAudioNode(chunkMs, buf);
+        }
+      }
       if (window.onBuffering) window.onBuffering(false);
     }
   }
