@@ -393,9 +393,13 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
   }
   sourceFrames.set(msg.ms, img);
 
-  if (msg.ms === 0 && isExporting) {
-    console.log(`[export] handleWorkerFrame ms=0, buffer.byteLength=${msg.buffer.byteLength}, first pixels: ${arr[0]},${arr[1]},${arr[2]},${arr[3]}`);
+  if (isExporting && exportFrames.length === 0) {
+    const mid = Math.floor(arr.length / 2);
+    console.log(`[export] first frame ms=${msg.ms}, corner[0]=${arr[0]}, center[${mid}]=${arr[mid]},${arr[mid+1]},${arr[mid+2]}`);
   }
+
+  if (isExporting)
+    exportFrames.push({ ms: msg.ms, imageData: img });
 
   // Fire pending thumbnail capture
   if (_pendingThumbCapture) {
@@ -1259,6 +1263,14 @@ export async function exportVideo(
   const initMap = mapTimelineToSource(0);
   worker!.postMessage({ type: 'decode_all', sourceId: initMap?.sourceId });
 
+  // Merge frames decoded before export (from normal playback) into exportFrames
+  for (const [ms, img] of pendingFrames) {
+    if (!exportFrames.some((f) => f.ms === ms)) {
+      exportFrames.push({ ms, imageData: img });
+    }
+  }
+  console.log(`[export] ${exportFrames.length} frames after merge`);
+
   // Wait for all frames to arrive from the worker's continuous decode.
   // Stop when no new frames for 3s (actual frame count may differ from 30fps estimate).
   let waited = 0;
@@ -1426,13 +1438,8 @@ export async function exportVideo(
     }
     muxer.addVideoChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, frameMs * 1000, meta);
   }
-  for (let i = 0; i < encodedAudio.length; i++) {
-    const { buf, timestamp, type } = encodedAudio[i]!;
-    const meta: any = {};
-    if (i === 0) {
-      meta.decoderConfig = { codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 48000 };
-    }
-    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024, meta);
+  for (const { buf, timestamp, type } of encodedAudio) {
+    muxer.addAudioChunkRaw(new Uint8Array(buf), type as 'key' | 'delta', timestamp, 1024);
   }
   if (onProgress) onProgress(0.95);
 
