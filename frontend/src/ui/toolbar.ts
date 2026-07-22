@@ -11,8 +11,9 @@ export function initToolbar() {
     btnText.onclick = () => {
       isTextActive = !isTextActive;
       btnText.classList.toggle('active');
-      $('#canvas-text')?.classList.toggle('active');
-      showToast(isTextActive ? 'Text Overlay Enabled' : 'Text Overlay Disabled', 'type');
+      const capOverlay = $('#caption-overlay');
+      if (capOverlay) capOverlay.style.display = capOverlay.style.display === 'block' ? 'none' : 'block';
+      showToast(isTextActive ? 'Caption Overlay Enabled' : 'Caption Overlay Disabled', 'type');
     };
   }
 

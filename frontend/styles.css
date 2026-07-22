@@ -573,24 +573,13 @@ textarea {
   z-index: 10;
   pointer-events: none;
 }
-.canvas-text-overlay {
+.canvas-caption-overlay {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 4vw;
-  font-weight: 800;
-  color: white;
-  text-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
-  opacity: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  transition: opacity 0.3s;
-  letter-spacing: -0.02em;
-  text-align: center;
-}
-.canvas-text-overlay.active {
-  opacity: 1;
+  z-index: 5;
 }
 
 /* Score Badge */
@@ -1597,6 +1586,14 @@ textarea {
   box-shadow: inset 0 0 0 1px rgba(4, 120, 87, 0.5);
   border: none;
 }
+.tl-clip-caption {
+  background: linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(6,6,8,0.8) 100%);
+  box-shadow: inset 0 0 0 1px rgba(245,158,11,0.25);
+  border: none;
+}
+.tl-clip-caption .tl-clip-label {
+  color: rgba(251, 191, 36, 0.9);
+}
 .waveform {
   position: absolute;
   inset: 0;
@@ -1853,3 +1850,110 @@ textarea {
 }
 .export-modal-close:hover { color: var(--text-primary); background: var(--bg-hover); }
 .export-modal { position: relative; }
+
+/* ── Caption Editor Panel ─────────────────────────────────────────────── */
+.caption-editor {
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 8px;
+}
+.caption-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.caption-editor-header h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--accent-primary);
+}
+.caption-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.caption-close:hover { color: var(--text-primary); }
+.caption-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+.caption-text-input {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 8px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.caption-text-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+.caption-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.caption-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.caption-control-row label {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.caption-control-row select,
+.caption-control-row input[type="color"] {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 2px 4px;
+  width: 100px;
+}
+.caption-control-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--accent-primary);
+}
+.caption-control-row input[type="color"] {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+}
+.caption-delete-btn {
+  width: 100%;
+  padding: 6px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #ef4444;
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.caption-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.22);
+}

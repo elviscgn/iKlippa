@@ -70,7 +70,7 @@ const FIXTURE = `
   <div id="insight-bar" style="width:0%"></div>
   <div id="insight-box"></div>
   <div id="toast-box"></div>
-  <div id="canvas-text"></div>
+  <div id="caption-overlay"></div>
 `;
 
 // ── calculateTimelineDuration ───────────────────────────────────────────────

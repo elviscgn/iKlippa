@@ -25,6 +25,7 @@ import {
 
 import type { EngineError, GradeParams } from './engine/types';
 import { USER_ERROR_MESSAGES, emitLocal } from './engine/errors';
+import { initCaptionOverlay, renderCaptionOverlay } from './ui/captions';
 
 // Import CSS so Vite bundles it
 import '../styles.css';
@@ -64,6 +65,7 @@ window.onEngineError = (e: EngineError): void => {
 window.onPlayheadUpdate = (ms: number): void => {
   window.S.time = ms / 1000;
   window.updatePlayhead();
+  renderCaptionOverlay(ms);
 };
 
 // ── Thumbnail updates: debounced re-render ──────────────────────────────
@@ -179,6 +181,7 @@ window.addEventListener('ikl:reRender', () => {
   syncTimelineToRust();
   syncAllTrackAudio();
   autoSave();
+  renderCaptionOverlay(window.S?.time ? window.S.time * 1000 : 0);
 });
 
 // ── Trim applied: update duration ───────────────────────────────────────

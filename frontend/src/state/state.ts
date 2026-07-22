@@ -110,10 +110,22 @@ function createEmptyProject(width: number, height: number): Project {
         pan: 0.0,
         clips: [],
       },
+      {
+        id: 2,
+        order: 2,
+        track_type: 'caption',
+        name: 'Captions',
+        muted: false,
+        locked: false,
+        visible: true,
+        volume: 1.0,
+        pan: 0.0,
+        clips: [],
+      },
     ],
     duration_us: 0,
     next_clip_id: 1,
-    next_track_id: 2,
+    next_track_id: 3,
     next_effect_id: 1,
   };
 }
