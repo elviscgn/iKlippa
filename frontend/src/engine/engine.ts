@@ -1254,23 +1254,30 @@ export async function exportVideo(
   const initMap = mapTimelineToSource(0);
   worker!.postMessage({ type: 'decode_all', sourceId: initMap?.sourceId });
 
-  // Wait for all frames to arrive from the worker's continuous decode
+  // Wait for all frames to arrive from the worker's continuous decode.
+  // Stop when no new frames for 3s (actual frame count may differ from 30fps estimate).
   let waited = 0;
   let _lastLogLen = 0;
-  while (exportFrames.length < totalFrames * 0.95 && waited < 120000) {
+  let staleCount = 0;
+  while (staleCount < 30 && waited < 120000) {
     await new Promise((r) => setTimeout(r, 100));
     waited += 100;
     if (exportFrames.length !== _lastLogLen) {
       console.log(`[export] ${exportFrames.length}/${totalFrames} frames after ${(waited/1000).toFixed(0)}s`);
       _lastLogLen = exportFrames.length;
+      staleCount = 0;
+    } else {
+      staleCount++;
     }
-    if (onProgress && waited % 300 === 0) {
-      onProgress(Math.min(0.4, exportFrames.length / totalFrames * 0.4));
+    if (onProgress && waited % 500 === 0) {
+      onProgress(Math.min(0.4, (exportFrames.length / Math.max(totalFrames, exportFrames.length + 1)) * 0.4));
     }
   }
-
-  // Add empty frames for any missing positions so we always have totalFrames count
-  console.log(`[export] collected ${exportFrames.length}/${totalFrames} frames in ${(waited / 1000).toFixed(1)}s`);
+  if (exportFrames.length === 0 && waited >= 120000) {
+    console.warn('[export] no frames collected — aborting');
+    isExporting = false;
+    return;
+  }
 
   logStatus('Export: encoding…');
   const ports = getPorts();
@@ -1297,7 +1304,7 @@ export async function exportVideo(
   const expCanvas = ports.canvasFactory.createCanvas() as unknown as HTMLCanvasElement;
   expCanvas.width = exportW;
   expCanvas.height = exportH;
-  const expCtx = expCanvas.getContext('2d')!;
+  const expCtx = expCanvas.getContext('2d', { willReadFrequently: true })!;
 
   const sortedFrames = exportFrames.slice().sort((a, b) => a.ms - b.ms);
   for (let i = 0; i < sortedFrames.length; i++) {
