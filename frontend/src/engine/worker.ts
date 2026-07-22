@@ -381,9 +381,13 @@ async function decodeAllFrames(sourceId: string) {
           data: dataArray[j]!,
         })
       );
+      // Give the decoder time to process each chunk
+      if (j < batch.length - 1) await new Promise((r) => setTimeout(r, 5));
     }
     state.lastDecodedSampleIdx = batchEnd - 1;
     i = batchEnd;
+    // Let decoder drain between batches
+    await new Promise((r) => setTimeout(r, 10));
   }
   state.decoderSeeded = true;
   isDecodeAll = false;
@@ -553,14 +557,13 @@ async function setupDecoder(sourceId: string, state: SourceState) {
 
       refreshFrameView();
 
-      if (videoFrame.format === null) {
-        offscreenCtx!.drawImage(videoFrame, 0, 0);
-        videoFrame.close();
-        const imgData = offscreenCtx!.getImageData(0, 0, width, height);
-        frameView!.set(imgData.data);
-      } else {
-        await videoFrame.copyTo(frameView!, { format: 'RGBA' });
-        videoFrame.close();
+      // Always use offscreen canvas — copyTo can produce wrong colors
+      offscreenCtx!.drawImage(videoFrame, 0, 0);
+      videoFrame.close();
+      const imgData = offscreenCtx!.getImageData(0, 0, width, height);
+      frameView!.set(imgData.data);
+      if (isDecodeAll && normalizedTsUs === 0) {
+        wlog('decode', `canvas frame: pixel[0]=${imgData.data[0]},${imgData.data[1]},${imgData.data[2]}`);
       }
 
       try {
