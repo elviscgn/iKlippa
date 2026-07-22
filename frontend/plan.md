@@ -13,27 +13,21 @@
 
 ## 1. Current state (already working — do not redo)
 
-- WebCodecs video decode (H.264), `mp4box.js` demux, `VideoDecoder` in `worker.js`, hardware-accelerated, with audio decode (`AudioDecoder`) and A/V sync baseline.
-- Canvas2D preview loop (`engine.js` `renderLoop`), `rAF` + `putImageData`, ~60fps target, with performance monitor (`PerformanceMonitor`).
-- Basic timeline UI (`ui.js`): ruler, clip blocks, playhead, drag-scrub, media pool, import via drag-drop + file picker.
-- Clip trim + split (`engine.js` `trimClip`/`splitClip`, `ui.js` `performSplit`), `onTrimApplied`/`onSplitResult` callbacks.
-- Colour grading: global sliders (exposure/contrast/saturation/temperature/highlights/shadows/vignette/grain) + 4 analytic LUTs, applied in Rust `apply_color_grade`.
-- Export pipeline (`engine.js` `exportVideo`): `VideoEncoder` (H.264, hardware-preferred) + `mp4-muxer` → Blob download. **Video only, no audio, no watermark, no gating.**
-- Web Audio: decode + schedule `AudioBufferSourceNode`s against playhead. No per-track gain/pan/mute/master compressor UI.
-- Mock Director (`ui.js` `submitCmd`/`applyAiAction`): keyword matching only. **Out of scope this phase** — real Director is Phase 2.
+- **Engine:** WebCodecs video decode (H.264), `mp4box.js` demux, `VideoDecoder` in `worker.ts`, hardware-accelerated, with audio decode (`AudioDecoder`) and A/V sync. Rust/WASM compositing engine — `compositing.rs` with multi-track alpha blend, affine transforms, per-clip colour grade, and LUT support. All JS code migrated from `.js` to `.ts`.
+- **Preview:** Canvas2D preview loop (`engine.ts` `renderLoop`), `rAF` + `putImageData`, ~60fps target, with performance monitor (`PerformanceMonitor`).
+- **Timeline UI:** Multi-track timeline with track lanes, headers with mute/lock/visible toggles, volume slider; ruler, clip blocks, playhead, drag-scrub, media pool, import via drag-drop + file picker; clip trim + split.
+- **Colour grading:** Per-clip colour settings (exposure/contrast/saturation/temperature/highlights/shadows/tint/lift/gamma/gain/vignette/grain) applied in Rust `colour_grade.rs`. `.cube` LUT import: Rust parser + trilinear interpolation + UI (file picker, dropdown, intensity slider).
+- **Export pipeline:** `exportVideo` — `VideoEncoder` (H.264) + `AudioEncoder` (AAC) → `mp4-muxer` → Blob download. Free-tier watermark (bottom-right overlay). Resolution gating (Free 720p, Klippa 1080p, Pro 4K).
+- **Web Audio mixer:** Per-track `GainNode` + `StereoPannerNode` + mute, master `DynamicsCompressorNode`. Mixer panel UI.
+- **Project persistence:** JSON save/load via `.iklippa` file download/upload, debounced auto-save to `localStorage`.
+- **Error handling:** Typed `EngineError` protocol, worker `reportError()` funnel, main-thread `errorBus` pub/sub, UI toast bridge. Sync coalescing (latest-wins in worker queue + main-thread throttle).
+- **Mock Director:** keyword matching only. **Out of scope this phase** — real Director is Phase 2.
 
-## 2. Phase 1 gaps (what's missing)
+## 2. Phase 1 gaps (what's still missing)
 
-1. **Rust data model is too thin.** `Clip` has only `id/track/start_ms/end_ms/source_offset_ms`. No per-clip `ColourSettings`, `ClipTransform`, `Effect[]`, `CaptionStyle`. No `Project`/`Track` structs. No `serde_json` serialize/load. Timestamps are `u32` ms; spec uses `i64` microseconds.
-2. **No multi-track compositing.** Engine composites track 0 only (per `lib.rs` comment). No premultiplied-alpha blend, no per-layer 2D affine transforms, no overlay tracks in the UI model.
-3. **Colour grade is global, not per-clip.** Missing tint, lift/gamma/gain wheels, per-channel curves, `.cube` LUT import.
-4. **No caption editor.** Only a mock "captions generated" action.
-5. **No project persistence.** No JSON save/load, no localStorage, no `.iklippa` file.
-6. **Export is video-only.** No audio mux, no free-tier watermark, no resolution gating.
-7. **Audio mixer is missing.** No per-track volume/pan/mute, no master compressor, no mixer UI.
-8. **Timeline UI is single-track-oriented.** `videoClips`/`audioClips` arrays, no general multi-track lane model with track headers.
-9. **No undo/redo.**
-10. **No Phase 1 QA pass on reference hardware.**
+1. **No caption editor.** Only a mock "captions generated" action.
+2. **No undo/redo.**
+3. **No Phase 1 QA pass on reference hardware.**
 
 ## 3. Architecture decisions
 
@@ -58,12 +52,10 @@ Each task lists dependencies. Order is a recommendation — some tasks can run i
 | 6 | Multi-track timeline UI rework (track lanes, headers w/ mute/lock/vis/vol, overlays, thumbnails) | 1, 2 |
 | 7 | Web Audio mixer (per-track GainNode/StereoPannerNode/mute + master DynamicsCompressorNode + UI) | 6 |
 | 8 | Export: audio mux + free-tier watermark + resolution gating | 7 |
-| 9 | LUT `.cube` import (Rust parser → 3D LUT, file picker UI) | 3 |
-| 10 | RGB curves editor (Rust per-channel bezier, SVG + draggable points + live histogram) | 3 |
-| 11 | Undo/redo command stack (JS history over `project` mutations) | 1, 5 |
-| 12 | Phase 1 QA pass + perf profiling on reference hardware | all |
+| 9 | Undo/redo command stack (JS history over `project` mutations) | 1, 5 |
+| 10 | Phase 1 QA pass + perf profiling on reference hardware | all |
 
-**Stretch / defer to Phase 2-or-later:** full `EffectType` list (Blur/Sharpen/Vignette/FilmGrain/ChromaticAberration/Glitch/Mirror) beyond what's already in the colour grade; keyframes. These are in the spec's enum but not required for a compelling Phase 1 demo.
+**Stretch / defer to Phase 2-or-later:** full `EffectType` list (Blur/Sharpen/Vignette/FilmGrain/ChromaticAberration/Glitch/Mirror) beyond what's already in the colour grade; RGB curves editor; keyframes. These are in the spec's enum but not required for a compelling Phase 1 demo.
 
 ## 5. Per-task detail
 
@@ -113,24 +105,12 @@ Each task lists dependencies. Order is a recommendation — some tasks can run i
 - **JS (`engine.js` `exportVideo`):** add an `OfflineAudioContext` render of the full mixed audio → encode to AAC (MP4) or Opus (WebM) → interleave into the muxer alongside video chunks. Add free-tier watermark: if `tier === 'free'`, composite a watermark RGBA (bottom-right, 20% width, 5% margin) into each exported frame (do it in Rust `export_prep::apply_watermark` or in JS via a second Canvas2D pass before `VideoFrame` construction — pick whichever is faster on target hardware). Resolution gating: clamp `outputWidth/Height` to tier max (Free 1280×720, Klippa 1920×1080, Pro/Agency 3840×2160) and max duration (Free 60s) in the export panel UI; reject with an upgrade prompt if the project exceeds the limit.
 - **Acceptance:** exported MP4 has synced audio; free-tier exports are watermarked and capped at 720p/60s; higher tiers (via `tier.js` mock) export clean at 1080p+.
 
-### Task 9 — LUT `.cube` import
-
-- **Rust:** `.cube` parser → 33×33×33 float 3D LUT with trilinear interpolation, applied per-clip in `colour_grade.rs` (`EffectParams::LUT { lut_id, intensity }`). Cache loaded LUTs by id in `ENGINE`.
-- **JS/UI:** "Import LUT" button → file picker (`.cube`) → read as `ArrayBuffer` → pass to Rust via `wasm_alloc`/`load_lut`/`wasm_free`. LUT appears in the LUT dropdown with intensity slider.
-- **Acceptance:** loading a known `.cube` (e.g. a public Teal&Orange LUT) visibly changes the grade; intensity slider blends 0→1.
-
-### Task 10 — RGB curves editor
-
-- **Rust:** per-channel (R/G/B) + luma bezier curve evaluation in `colour_grade.rs` applied after the existing grade. Curve = ordered control points → bezier interpolation → per-pixel LUT of 256 entries (computed once per curve change, not per pixel).
-- **UI:** SVG overlay on a live histogram of the active frame (histogram computed in JS from the composited frame or in Rust as a side output). Draggable bezier control points per channel; channel toggle (R/G/B/Luma). Curve change → re-composite.
-- **Acceptance:** dragging a curve point visibly remaps the channel; histogram updates live; curve state saves with the project.
-
-### Task 11 — Undo/redo command stack
+### Task 9 — Undo/redo command stack
 
 - **JS (`state.js`):** every mutating action (add/remove/trim/split/move clip, set colour/transform/effects, add/remove caption, reorder tracks) pushes a command `{type, before, after}` onto a history stack. `Ctrl/Cmd+Z` pops and reverts; `Ctrl/Cmd+Shift+Z` redoes. Cap stack at 50 entries. Snapshots are shallow clip diffs (not full project clones) to stay cheap.
 - **Acceptance:** perform a sequence of edits, undo/redo through them, timeline + canvas reflect each state correctly.
 
-### Task 12 — Phase 1 QA pass
+### Task 10 — Phase 1 QA pass
 
 - **Test matrix on the slowest available machine (target: dual-core, 8 GB RAM if accessible, else dev machine with throttling):** import 1080p MP4, multi-track edit, per-clip grade, caption, save/load, export with audio at 720p + 1080p. Measure with `performance.mark/measure` (already partially instrumented via `PerformanceMonitor`): `compose_at`, `putImageData`, export frame loop, cold-start-to-first-frame.
 - **Targets (per Tech Spec §10):** cold start to first editable frame < 5s; single-clip `compose_at` < 4ms; two-track < 10ms; `putImageData` < 2ms; 1080p/30fps export < 0.5× realtime (GPU) / < 1.5× (CPU).
@@ -161,13 +141,11 @@ Update this section as tasks complete. Mark `[x]` when a task's acceptance crite
 
 - [~] Task 1 — Rust data model refactor (1.1 Rust model ✓, 1.2 JS migration ✓, pending user QA)
 - [x] Task 2 — Multi-track compositing in Rust
-- [x] Task 3 — Per-clip colour grading
+- [x] Task 3 — Per-clip colour grading (incl. `.cube` LUT import — Rust parser in `lut.rs`, WASM `load_lut`, UI import btn + dropdown + intensity slider)
 - [ ] Task 4 — Caption editor
 - [x] Task 5 — Project persistence
 - [x] Task 6 — Multi-track timeline UI rework
 - [x] Task 7 — Web Audio mixer
 - [x] Task 8 — Export: audio + watermark + resolution gating
-- [ ] Task 9 — LUT `.cube` import
-- [ ] Task 10 — RGB curves editor
-- [ ] Task 11 — Undo/redo command stack
-- [ ] Task 12 — Phase 1 QA pass
+- [ ] Task 9 — Undo/redo command stack
+- [ ] Task 10 — Phase 1 QA pass
