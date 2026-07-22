@@ -126,6 +126,7 @@ let isExporting = false;
 let exportFrames: Array<{ ms: number; imageData: ImageData }> = [];
 
 let isBuffering = false;
+let pendingResumeAfterSeek = false;
 
 // ── Web Audio State ─────────────────────────────────────────────────────
 let audioCtx: AudioContextPort | null = null;
@@ -419,8 +420,13 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
     log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
     if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
     seekTargetMs = -1;
+    if (window.onBuffering) window.onBuffering(false);
     if (!isPlaying) {
       paintFrameAtTime(playheadMs);
+    }
+    if (pendingResumeAfterSeek) {
+      pendingResumeAfterSeek = false;
+      startPlayback({ fromSeek: true }).catch((e) => emitLocal('UNHANDLED_REJECTION', e, { fatal: false }));
     }
   }
 }
@@ -1169,6 +1175,7 @@ function pausePlayback(): void {
   log('play', `pausePlayback @ ${playheadMs.toFixed(0)}ms`);
   isPlaying = false;
   isBuffering = false;
+  pendingResumeAfterSeek = false;
   lastRafTs = null;
   if (rafHandle) {
     getPorts().rafScheduler.cancelAnimationFrame(rafHandle);
@@ -1202,18 +1209,24 @@ export async function seekTo(ms: number): Promise<void> {
     stopAllAudioNodes();
   }
 
+  // Store resume intent — playback will restart from handleWorkerFrame
+  // once the first frame at the target actually arrives.
+  // Preserve across rapid seeks (scrubbing): once set, stays true until frame arrives or pause.
+  pendingResumeAfterSeek = pendingResumeAfterSeek || wasPlaying;
+
   seekTargetMs = ms;
   if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
   seekPaintTimeout = setTimeout(() => {
     if (seekTargetMs >= 0) {
       warn(
         'seek',
-        `fallback timeout fired — no frame reached ${ms.toFixed(0)}ms within 300ms`,
+        `fallback timeout fired — no frame reached ${ms.toFixed(0)}ms within 2000ms`,
       );
       seekTargetMs = -1;
+      pendingResumeAfterSeek = false;
       paintFrameAtTime(playheadMs);
     }
-  }, 300);
+  }, 2000);
 
   playheadMs = ms;
   audioPlayStartMs = ms;
@@ -1234,7 +1247,10 @@ export async function seekTo(ms: number): Promise<void> {
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
-  if (wasPlaying) startPlayback({ fromSeek: true });
+  // Show spinner while waiting for the first decoded frame
+  if (pendingResumeAfterSeek && window.onBuffering) window.onBuffering(true);
+  // Don't start playback immediately — wait for the first frame to arrive
+  // (handled by handleWorkerFrame when seekTargetMs is cleared).
 }
 
 function syncWorkerState(): void {

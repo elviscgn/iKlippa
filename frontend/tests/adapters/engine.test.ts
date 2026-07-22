@@ -1405,7 +1405,7 @@ describe('seekTo fallback timeout (Tier 2)', () => {
   it('fires fallback timeout and paints black frame when no frame arrives', () => {
     seekTo(1000);
 
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(2000);
 
     const ctx = __TEST_HOOKS__.ctx as any;
     expect(ctx.fillRect).toHaveBeenCalled();
