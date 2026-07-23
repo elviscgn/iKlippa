@@ -1,9 +1,11 @@
 import { $, $$, S, aiNodes } from './state';
-import { showToast, resizeCanvas } from './utils';
+import { showToast, resizeCanvas, toggleOfflineMode } from './utils';
 import { calculateTimelineDuration, renderRuler, renderClips, updatePlayhead, applyAiAction } from './timeline';
+import { sendGranitePrompt, warmGraniteModel } from '../ai/granite';
 
 let isTextActive = false;
 let isEffectActive = false;
+let isGraniteBusy = false;
 
 export function initToolbar() {
   const btnText = $('#t-text');
@@ -66,6 +68,7 @@ export function initToolbar() {
 
   initChat();
   initAspectRatio();
+  initModeToggle();
 }
 
 function initChat() {
@@ -73,6 +76,16 @@ function initChat() {
   const acMenu = $('#ac-menu');
 
   if (!cmdInput || !acMenu) return;
+
+  cmdInput.addEventListener(
+    'focus',
+    () => {
+      void warmGraniteModel().catch(() => {
+        // Lazy fallback still works on submit.
+      });
+    },
+    { once: true },
+  );
 
   cmdInput.addEventListener('input', (e) => {
     const lastWord = (e.target as HTMLInputElement).value.split(' ').pop() || '';
@@ -109,30 +122,56 @@ function initChat() {
 
   (window as any).submitCmd = function () {
     const val = cmdInput.value.trim();
-    if (!val) return;
-    if (val.startsWith('/') || val.includes('@')) {
-      appendChat(val, true);
-      cmdInput.value = '';
+    if (!val || isGraniteBusy) return;
+
+    appendChat(val, true);
+    cmdInput.value = '';
+
+    if (val.startsWith('/')) {
+      const command = val.toLowerCase();
       setTimeout(() => {
-        if (val.includes('/trim-silence')) applyAiAction('silence');
-        else if (val.includes('/sync-audio')) applyAiAction('sync');
-        else if (val.includes('/add-captions')) applyAiAction('captions');
-        else appendChat('Command processed.');
-      }, 600);
+        if (command.includes('/trim-silence')) {
+          applyAiAction('silence');
+          appendChat('Trimmed the silences locally.');
+        } else if (command.includes('/sync-audio')) {
+          applyAiAction('sync');
+          appendChat('Matched the cut timing to the beat.');
+        } else if (command.includes('/add-captions')) {
+          applyAiAction('captions');
+          appendChat('Generated captions on the timeline.');
+        } else if (command.includes('/auto-broll')) {
+          appendChat('Auto b-roll is not wired yet, but I can still help plan it.');
+        } else {
+          appendChat('Try /trim-silence, /sync-audio, or /add-captions.');
+        }
+      }, 300);
       return;
     }
-    cmdInput.value = '';
-    appendChat(val, true);
-    setTimeout(() => {
-      if (val.toLowerCase().includes('silence') || val.toLowerCase().includes('trim'))
-        applyAiAction('silence');
-      else if (val.toLowerCase().includes('caption') || val.toLowerCase().includes('text'))
-        applyAiAction('captions');
-      else if (val.toLowerCase().includes('sync') || val.toLowerCase().includes('beat'))
-        applyAiAction('sync');
-      else
-        appendChat("I can help with that. Try asking me to 'Trim silences', 'Sync to beat', or 'Add captions'.");
-    }, 600);
+
+    const aiBody = appendChat('Loading Granite locally...', false);
+    isGraniteBusy = true;
+    cmdInput.disabled = true;
+    void sendGranitePrompt(val, {
+      onChunk: (chunk) => {
+        if (aiBody.textContent === 'Loading Granite locally...') {
+          aiBody.textContent = '';
+        }
+        aiBody.textContent += chunk;
+      },
+    })
+      .then((response) => {
+        aiBody.textContent = response || 'Granite did not return a response.';
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        aiBody.textContent = message;
+        showToast(message, 'alert-triangle');
+      })
+      .finally(() => {
+        isGraniteBusy = false;
+        cmdInput.disabled = false;
+        cmdInput.focus();
+      });
   };
 
   cmdInput.onkeypress = (e) => {
@@ -143,17 +182,31 @@ function initChat() {
 function appendChat(text: string, isUser = false) {
   const el = document.createElement('div');
   el.className = 'chat-msg ' + (isUser ? 'user' : 'ai');
-  el.innerHTML = isUser
-    ? text
-    : `<div class="msg-sender"><i data-lucide="bot"></i> Granite</div>${text}`;
+  const sender = document.createElement('div');
+  sender.className = 'msg-sender';
+  if (isUser) {
+    sender.textContent = 'You';
+  } else {
+    const icon = document.createElement('i');
+    icon.dataset.lucide = 'bot';
+    sender.append(icon, document.createTextNode(' Granite'));
+  }
+  const body = document.createElement('div');
+  body.className = 'chat-body';
+  body.textContent = text;
+  if (!isUser) {
+    el.appendChild(sender);
+  }
+  el.appendChild(body);
   const log = $('#chat-log');
   if (log) {
     log.appendChild(el);
-    window.lucide.createIcons({ nodes: [el] });
+    window.lucide?.createIcons({ nodes: [el] });
     if (log.parentElement) {
       log.parentElement.scrollTop = log.parentElement.scrollHeight;
     }
   }
+  return body;
 }
 
 function initAspectRatio() {
@@ -188,4 +241,47 @@ function initAspectRatio() {
       showToast('Canvas set to ' + (opt as HTMLElement).dataset.label, 'monitor');
     };
   });
+}
+
+function initModeToggle() {
+  const btn = $('#mode-toggle');
+  const label = $('#mode-label');
+  const icon = $('#mode-icon');
+  if (!btn || !label || !icon) return;
+
+  const refreshActiveView = () => {
+    const activeMediaTab = document.querySelector('.media-tab.active') as HTMLElement | null;
+    if (!activeMediaTab) return;
+    const activeType = activeMediaTab.dataset.tab as 'footage' | 'audio' | 'stock' | undefined;
+    if (activeType === 'stock') {
+      const activeSub = document.querySelector('.stock-subtab.active') as HTMLElement | null;
+      window.renderMedia('stock', (activeSub?.dataset.sub as 'video' | 'image' | 'music') || 'video');
+    } else if (activeType) {
+      window.renderMedia(activeType);
+    }
+    window.renderClips();
+  };
+
+  const sync = () => {
+    const offline = !!window.appMode?.offline;
+    btn.classList.toggle('active', offline);
+    btn.setAttribute('aria-pressed', offline ? 'true' : 'false');
+    label.textContent = offline ? 'Offline' : 'Online';
+    icon.setAttribute('data-lucide', offline ? 'cloud-off' : 'cloud');
+    window.lucide?.createIcons({ nodes: [btn] });
+  };
+
+  btn.onclick = () => {
+    toggleOfflineMode();
+    sync();
+    showToast(window.appMode?.offline ? 'Offline mode enabled' : 'Online mode enabled', window.appMode?.offline ? 'cloud-off' : 'cloud');
+    refreshActiveView();
+  };
+
+  window.addEventListener('ikl:modeChanged', () => {
+    sync();
+    refreshActiveView();
+  });
+
+  sync();
 }

@@ -5,13 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>iKlippa Studio — Professional NLE</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <!-- CSS is imported by main.ts via Vite, but keep this for dev fallback -->
     <link rel="stylesheet" href="styles.css" />
 <<<<<<< HEAD
@@ -66,6 +59,16 @@
           <span class="status-badge"
             ><i data-lucide="cloud-lightning"></i> All changes saved</span
           >
+          <button
+            class="mode-toggle"
+            id="mode-toggle"
+            onclick="toggleOfflineMode()"
+            title="Toggle offline mode"
+            aria-pressed="false"
+          >
+            <i data-lucide="cloud" id="mode-icon"></i>
+            <span id="mode-label">Online</span>
+          </button>
           <button class="nav-btn" onclick="saveProject()" title="Save Project (.iklippa)">
             <i data-lucide="save"></i>
           </button>
@@ -265,7 +268,7 @@
                       type="text"
                       class="fcb-input"
                       id="ai-cmd"
-                      placeholder="Ask Granite or type / for commands..."
+                      placeholder="Chat Granite or type / for commands..."
                       autocomplete="off"
                     />
                     <div class="ac-menu" id="ac-menu"></div>
@@ -479,8 +482,11 @@
                     <div class="msg-sender">
                       <i data-lucide="bot"></i> Granite
                     </div>
-                    I've analyzed your timeline. The pacing looks okay, but
-                    there are some silent gaps. Want me to tighten the cut?
+                    <div class="chat-body">
+                      Granite is ready in the browser. Use the mode toggle for
+                      online assets or offline local loading, then ask me
+                      about the cut, captions, sync, or export.
+                    </div>
                     <div class="chat-btns">
                       <button
                         class="chat-btn"
