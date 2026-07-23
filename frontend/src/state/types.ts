@@ -44,14 +44,11 @@ export interface ColourSettings {
 }
 
 export interface CaptionStyle {
-  font: string;
+  font_family: string;
   size: number;
-  colour: string;
+  colour: [number, number, number, number];
   bg_opacity: number;
-  position: 'lower-third' | 'center' | 'top';
-  start_us: number;
-  end_us: number;
-  text: string;
+  position: 'lowerthird' | 'center' | 'top';
 }
 
 export interface Effect {

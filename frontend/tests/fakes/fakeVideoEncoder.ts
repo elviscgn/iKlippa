@@ -12,12 +12,15 @@ import {
 
 class FakeVideoEncoder implements VideoEncoderPort {
   private _state: CodecState = 'unconfigured';
-  private _output: ((chunk: EncodedVideoChunkOutput) => void) | null;
+  private _output:
+    | ((chunk: EncodedVideoChunkOutput, metadata?: EncodedVideoChunkMetadata) => void)
+    | null;
   private _error: ((err: Error) => void) | null;
   private _config: VideoEncoderConfig | null = null;
+  private _sentMetadata = false;
 
   constructor(
-    output: (chunk: EncodedVideoChunkOutput) => void,
+    output: (chunk: EncodedVideoChunkOutput, metadata?: EncodedVideoChunkMetadata) => void,
     error: (err: Error) => void,
   ) {
     this._output = output;
@@ -29,6 +32,7 @@ class FakeVideoEncoder implements VideoEncoderPort {
     assertNotClosed(this);
     this._config = config;
     this._state = 'configured';
+    this._sentMetadata = false;
   }
 
   encode(frame: VideoFrame, options?: VideoEncoderEncodeOptions): void {
@@ -58,7 +62,22 @@ class FakeVideoEncoder implements VideoEncoderPort {
       duration: dur,
     };
 
-    this._output?.(fakeChunk);
+    // Real encoders deliver decoderConfig (with the avcC description) once,
+    // alongside the first chunk.
+    let metadata: EncodedVideoChunkMetadata | undefined;
+    if (!this._sentMetadata) {
+      this._sentMetadata = true;
+      metadata = {
+        decoderConfig: {
+          codec: this._config?.codec ?? 'avc1.42001f',
+          codedWidth: this._config?.width ?? 0,
+          codedHeight: this._config?.height ?? 0,
+          description: new ArrayBuffer(8),
+        },
+      };
+    }
+
+    this._output?.(fakeChunk, metadata);
   }
 
   async flush(): Promise<void> {

@@ -23,8 +23,7 @@ use std::collections::HashMap;
 
 mod timeline_state;
 mod compositing;
-
-mod timeline_state;
+mod lut;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -390,19 +389,13 @@ fn clamp_u8(v: f32) -> u8 {
 /// deleted along with the legacy `Clip`/`Timeline`/`ColorGrade` above.
 #[wasm_bindgen]
 pub struct IklippaEngine {
-<<<<<<< HEAD
-    timeline: Timeline,
-    pool:     FramePool,
-    grade:    ColorGrade,
-    project:  timeline_state::Project,
-=======
     timeline:       Timeline,
     pool:           FramePool,
     grade:          ColorGrade,
     project:        timeline_state::Project,
     composite_pool: FramePool,
     frame_cache:    HashMap<u32, (u32, u32, Vec<u8>)>,
->>>>>>> refs/rewritten/merge-sync-frontend-changes-from-teammate
+    lut_cache:      lut::LutCache,
 }
 
 #[wasm_bindgen]
@@ -425,11 +418,9 @@ impl IklippaEngine {
                 height,
                 timeline_state::Rational::fps(30),
             ),
-<<<<<<< HEAD
-=======
             composite_pool: FramePool::new(width, height),
             frame_cache:    HashMap::new(),
->>>>>>> refs/rewritten/merge-sync-frontend-changes-from-teammate
+            lut_cache:      lut::LutCache::new(),
         }
     }
 
@@ -529,8 +520,6 @@ impl IklippaEngine {
         self.timeline.clip_count.iter().filter(|&&c| c > 0).count() as u32
     }
 
-<<<<<<< HEAD
-=======
     // ── Compositing (Phase 1 Task 2 — multi-track alpha blend) ──────────────
 
     /// Copy the current pool buffer into the frame cache for `clip_id`.
@@ -586,8 +575,9 @@ impl IklippaEngine {
             &self.project,
             ts_us,
             &self.frame_cache,
-            &mut self.pool,       // reused as temp buffer for per-pixel ops
+            &mut self.pool,
             &mut self.composite_pool,
+            &self.lut_cache,
         );
     }
 
@@ -610,7 +600,21 @@ impl IklippaEngine {
         self.frame_cache.clear();
     }
 
->>>>>>> refs/rewritten/merge-sync-frontend-changes-from-teammate
+    // ── LUT (3D Look-Up Table) API ────────────────────────────────────────
+
+    /// Parse a .cube LUT from raw bytes and store it under the given id.
+    /// Returns true on success, false if the file is not a valid .cube LUT.
+    #[wasm_bindgen]
+    pub fn load_lut(&mut self, id: u32, data: &[u8]) -> bool {
+        self.lut_cache.load(id, data)
+    }
+
+    /// Return the number of currently cached 3D LUTs.
+    #[wasm_bindgen]
+    pub fn lut_count(&self) -> u32 {
+        self.lut_cache.count()
+    }
+
     // ── Project API (Phase 1 Task 1 — new canonical model) ───────────────────
     //
     // All timestamps in this API are i64 microseconds. JSON shapes match the

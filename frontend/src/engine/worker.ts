@@ -285,6 +285,26 @@ function handleSetClipGrade(msg: { clipId: number; grade: Record<string, number>
   }
 }
 
+function handleLoadLut(msg: { id: number; data: ArrayBuffer }) {
+  if (!wasmModule) return;
+  try {
+    const ok = wasmModule.load_lut(msg.id, new Uint8Array(msg.data));
+    wlog('lut', `load_lut id=${msg.id} — ${ok ? 'OK' : 'FAIL'}`);
+  } catch (e) {
+    wwarn('lut', 'load_lut failed', String(e));
+  }
+}
+
+function handleSetClipEffects(msg: { clip_id: number; json: string }) {
+  if (!wasmModule) return;
+  try {
+    wasmModule.set_clip_effects(msg.clip_id, msg.json);
+    wlog('effects', `set_clip_effects clip ${msg.clip_id}`);
+  } catch (e) {
+    wwarn('effects', `set_clip_effects failed for clip ${msg.clip_id}`, String(e));
+  }
+}
+
 function handleSetTimeline(msg: WorkerSetTimelineCmd) {
   if (!wasmModule) {
     wwarn('worker', 'set_timeline received but WASM not ready');
@@ -356,6 +376,10 @@ async function decodeAllFrames(sourceId: string) {
   state.globalStartOffsetUs = -1;
   state.lastDecodedSampleIdx = -1;
   state.decoderSeeded = false;
+  // Decode the full audio track in parallel — export needs it for the AAC mix.
+  // Audio is far cheaper than video, so it finishes well within the export's
+  // frame-wait window on the main thread.
+  decodeAllAudio(sourceId).catch((e: unknown) => wwarn('worker', 'decode_all audio failed', String(e)));
   const { samples, file } = state;
   let startIdx = state.lastDecodedSampleIdx + 1;
   if (startIdx <= 0) {
@@ -391,6 +415,42 @@ async function decodeAllFrames(sourceId: string) {
   state.decoderSeeded = true;
   isDecodeAll = false;
   wlog('worker', `decode_all [${sourceId}] — done, ${samples.length} samples decoded`);
+}
+
+// ── Decode entire audio track (for export) ──────────────────────────────
+async function decodeAllAudio(sourceId: string) {
+  const state = sourceStates.get(sourceId);
+  if (!state || !state.audioConfig || state.audioSamples.length === 0) return;
+  // Fresh decoder so it starts from the very first sample
+  if (state.audioDecoder && state.audioDecoder.state !== 'closed') state.audioDecoder.close();
+  await setupAudioDecoder(sourceId, state);
+  if (!state.audioDecoder || state.audioDecoder.state !== 'configured') return;
+  state.lastDecodedAudioIdx = -1;
+  const { audioSamples, file } = state;
+  let i = 0;
+  while (i < audioSamples.length) {
+    if (latestSeekId !== currentSeekId) { wwarn('worker', 'decode_all audio interrupted by seek'); break; }
+    const batchEnd = Math.min(i + MAX_READS_PER_PUMP * 4, audioSamples.length);
+    const batch = audioSamples.slice(i, batchEnd);
+    const dataArray = await Promise.all(batch.map((s) => readSampleData(file, s)));
+    for (let j = 0; j < batch.length; j++) {
+      const s = batch[j]!;
+      state.audioDecoder.decode(
+        new EncodedAudioChunk({
+          type: s.is_sync ? 'key' : 'delta',
+          timestamp: (s.cts * 1_000_000) / s.timescale,
+          duration: (s.duration * 1_000_000) / s.timescale,
+          data: dataArray[j]!,
+        })
+      );
+      state.lastDecodedAudioIdx = i + j;
+    }
+    i = batchEnd;
+    // Let the decoder drain between batches
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  try { await state.audioDecoder.flush(); } catch { /* decoder may already be closed */ }
+  wlog('worker', `decode_all audio [${sourceId}] — done, ${audioSamples.length} samples decoded`);
 }
 
 // ── Message scheduler ─────────────────────────────────────────────────────────
@@ -442,6 +502,8 @@ async function routeMessage(msg: any): Promise<void> {
   else if (msg.type === 'get_project_json') handleGetProjectJson();
   else if (msg.type === 'composite') handleComposite(msg);
   else if (msg.type === 'decode_all') handleDecodeAll(msg);
+  else if (msg.type === 'load_lut') handleLoadLut(msg);
+  else if (msg.type === 'set_clip_effects') handleSetClipEffects(msg);
   else if (msg.type === 'reset_grade') { if (wasmModule) { wasmModule.set_exposure(0); wasmModule.set_contrast(0); wasmModule.set_saturation(0); wasmModule.set_temperature(0); wasmModule.set_highlights(0); wasmModule.set_shadows(0); wasmModule.set_vignette(0); wasmModule.set_grain(0); wasmModule.set_lut(0); } }
 }
 
@@ -565,11 +627,13 @@ async function setupDecoder(sourceId: string, state: SourceState) {
         wlog('decode', `canvas frame: pixel[0]=${imgData.data[0]},${imgData.data[1]},${imgData.data[2]}`);
       }
 
-      try {
-        wasmModule!.stage_frame_broadcast(BigInt(Math.round(normalizedTsUs)), width, height);
-        refreshFrameView();
-      } catch (e) {
-        wwarn('worker', `stage_frame_broadcast failed @ ${normalizedTsUs}us`, String(e));
+      if (!isDecodeAll) {
+        try {
+          wasmModule!.stage_frame_broadcast(BigInt(Math.round(normalizedTsUs)), width, height);
+          refreshFrameView();
+        } catch (e) {
+          wwarn('worker', `stage_frame_broadcast failed @ ${normalizedTsUs}us`, String(e));
+        }
       }
 
       let gradeMs = 0;

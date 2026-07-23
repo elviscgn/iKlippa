@@ -36,7 +36,7 @@ vi.mock('../../src/ui/timeline', () => ({
 const FIXTURE = `
   <button id="t-text"></button>
   <button id="t-effects"></button>
-  <div id="canvas-text"></div>
+  <div id="caption-overlay"></div>
   <div id="canvas-frame" style="filter:none;aspect-ratio:16/9;"></div>
   <div id="fcb" class="collapsed"></div>
   <div id="editor-color-picker">
@@ -90,13 +90,13 @@ describe('initToolbar – text button', () => {
     expect(btn.classList.contains('active')).toBe(false);
   });
 
-  it('toggles canvas-text active class', () => {
+  it('toggles caption-overlay display', () => {
     const btn = document.getElementById('t-text')!;
-    const ct = document.getElementById('canvas-text')!;
+    const ct = document.getElementById('caption-overlay')!;
     btn.click();
-    expect(ct.classList.contains('active')).toBe(true);
+    expect(ct.style.display).toBe('block');
     btn.click();
-    expect(ct.classList.contains('active')).toBe(false);
+    expect(ct.style.display).toBe('none');
   });
 });
 
