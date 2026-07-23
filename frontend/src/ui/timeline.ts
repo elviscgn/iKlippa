@@ -15,7 +15,7 @@ function setClipDimensions(el: HTMLElement, clip: any, dur: number, tw: number) 
   return w;
 }
 import { $, $$, S, us2s, aiNodes } from './state';
-import { picUrl, showToast } from './utils';
+import { escapeHtml, picUrl, showToast } from './utils';
 import { applyDragLogic, selectedClipIds, saveSnapshot } from './dragDrop';
 
 declare global {
@@ -175,7 +175,7 @@ export function renderClips() {
         <i data-lucide="${track.visible ? 'eye' : 'eye-off'}" class="track-visibility${!track.visible ? ' active' : ''}"></i>
         ${!isCaption ? `<i data-lucide="${track.muted ? 'volume-x' : 'volume-2'}" class="track-volume-icon${track.muted ? ' active' : ''}"></i>` : ''}
       </div>
-      <span style="font-size:9px;color:var(--text-muted);white-space:nowrap;overflow:hidden;">${track.name}</span>
+      <span style="font-size:9px;color:var(--text-muted);white-space:nowrap;overflow:hidden;">${escapeHtml(track.name)}</span>
     `;
 
     const lane = document.createElement('div');
@@ -185,6 +185,7 @@ export function renderClips() {
     for (const clip of track.clips) {
       const meta = IKState.getClipMeta ? IKState.getClipMeta(clip.id) : null;
       const displayName = meta?.name || clip.source_id || `Clip ${clip.id}`;
+      const safeDisplayName = escapeHtml(displayName);
       const el = document.createElement('div');
       const clipClass = track.track_type === 'audio' ? ' tl-clip-audio' : track.track_type === 'caption' ? ' tl-clip-caption' : ' tl-clip-video';
       el.className = `tl-clip${clipClass}`;
@@ -193,7 +194,7 @@ export function renderClips() {
 
       if (track.track_type === 'caption') {
         const txt = (clip.caption_text || '').slice(0, 60);
-        el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:4px;overflow:hidden;"><i data-lucide="type" style="width:10px;height:10px;flex-shrink:0;"></i> ${txt || '&lt;empty&gt;'}</span>`;
+        el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:4px;overflow:hidden;"><i data-lucide="type" style="width:10px;height:10px;flex-shrink:0;"></i> ${txt ? escapeHtml(txt) : '&lt;empty&gt;'}</span>`;
       } else if (track.track_type === 'video') {
         if (meta?.isReal && meta?.thumbnails && meta.thumbnails.length > 0) {
           const w = parseFloat(el.style.left || '0') + ((clip.timeline_end_us - clip.timeline_start_us) / 1_000_000 / dur) * tw;
@@ -204,23 +205,23 @@ export function renderClips() {
             thumbs += `<img src="${meta.thumbnails[idx].dataUrl}" draggable="false">`;
           }
           thumbs += '</div>';
-          el.innerHTML = `${thumbs}<span class="tl-clip-label">${displayName}</span>`;
+          el.innerHTML = `${thumbs}<span class="tl-clip-label">${safeDisplayName}</span>`;
         } else if (meta?.picId) {
           const count = Math.max(1, Math.floor(Math.max(1, parseFloat(el.style.width) || tw) / 60));
           let thumbs = '<div class="tl-clip-thumbs">';
           for (let j = 0; j < count; j++)
-            thumbs += `<img src="https://picsum.photos/id/${meta.picId}/100/60" crossorigin="anonymous" draggable="false">`;
+            thumbs += `<img src="${picUrl(meta.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
           thumbs += '</div>';
-          el.innerHTML = `${thumbs}<span class="tl-clip-label">${displayName}</span>`;
+          el.innerHTML = `${thumbs}<span class="tl-clip-label">${safeDisplayName}</span>`;
         } else {
-          el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${displayName}</span>`;
+          el.innerHTML = `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${safeDisplayName}</span>`;
         }
       } else {
         const bars = Array.from({ length: Math.max(1, Math.floor(Math.max(1, parseFloat(el.style.width) || 100) / 4)) }, (_, i) => {
           const h = seededBarHeight(i);
           return `<rect x="${i * 4}" y="${20 - h / 2}" width="2.5" height="${Math.min(h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`;
         }).join('');
-        el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, parseFloat(el.style.width) || 100)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${displayName}</span>`;
+        el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, parseFloat(el.style.width) || 100)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${safeDisplayName}</span>`;
       }
       applyDragLogic(el, clip, track.clips, tw);
       lane.appendChild(el);
@@ -596,18 +597,18 @@ function renderClipsLegacy(IKState: any) {
           thumbs += `<img src="${group.video.thumbnails[idx].dataUrl}" draggable="false">`;
         }
         thumbs += '</div>';
-        content += `${thumbs}<span class="tl-clip-label">${group.video.name}</span>`;
+        content += `${thumbs}<span class="tl-clip-label">${escapeHtml(group.video.name)}</span>`;
       } else if (group.video.isReal) {
-        content += `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${group.video.name}</span>`;
+        content += `<span class="tl-clip-label" style="display:flex;align-items:center;gap:6px;"><i data-lucide="film" style="width:12px;height:12px;"></i> ${escapeHtml(group.video.name)}</span>`;
       } else if (group.video.picId) {
         const count = Math.max(1, Math.floor(w / 60));
         let thumbs = '<div class="tl-clip-thumbs">';
         for (let j = 0; j < count; j++)
-          thumbs += `<img src="https://picsum.photos/id/${group.video.picId}/100/60" crossorigin="anonymous" draggable="false">`;
+          thumbs += `<img src="${picUrl(group.video.picId, 100, 60)}" crossorigin="anonymous" draggable="false">`;
         thumbs += '</div>';
-        content += `${thumbs}<span class="tl-clip-label">${group.video.name}</span>`;
+        content += `${thumbs}<span class="tl-clip-label">${escapeHtml(group.video.name)}</span>`;
       } else {
-        content += `<span class="tl-clip-label">${group.video.name}</span>`;
+        content += `<span class="tl-clip-label">${escapeHtml(group.video.name)}</span>`;
       }
     }
     el.innerHTML = content;
@@ -628,7 +629,7 @@ function renderClipsLegacy(IKState: any) {
       h: (() => { let x = ((i * 2654435761) >>> 0) & 0xff; return 10 + (x % 28); })(),
     }));
     const svgContent = bars.map((b, i) => `<rect x="${i * 4}" y="${20 - b.h / 2}" width="2.5" height="${Math.min(b.h, 38)}" fill="currentColor" opacity="0.8" rx="1"/>`).join('');
-    el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, w)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${svgContent}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${clip.name}</span>`;
+    el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, w)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${svgContent}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${escapeHtml(clip.name)}</span>`;
     applyDragLogic(el, clip, standaloneAudio, tw);
     laneA1.appendChild(el);
   });
@@ -640,7 +641,8 @@ function renderClipsLegacy(IKState: any) {
       const el = document.createElement('div');
       el.className = 'ai-node';
       el.style.left = (node.time / dur) * tw + 'px';
-      el.innerHTML = `<i data-lucide="${node.icon}"></i> ${node.label}`;
+      const safeIcon = /^[a-z0-9-]+$/i.test(node.icon) ? node.icon : 'sparkles';
+      el.innerHTML = `<i data-lucide="${safeIcon}"></i> ${escapeHtml(node.label)}`;
       laneAi.appendChild(el);
     });
   }

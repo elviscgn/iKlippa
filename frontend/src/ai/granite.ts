@@ -29,7 +29,10 @@ function configureOfflineRuntime() {
   env.allowLocalModels = true;
   env.allowRemoteModels = !offline;
   env.localModelPath = LOCAL_MODEL_ROOT;
-  env.backends.onnx.wasm.wasmPaths = LOCAL_WASM_ROOT;
+  const wasmBackend = env.backends.onnx.wasm;
+  if (wasmBackend) {
+    wasmBackend.wasmPaths = LOCAL_WASM_ROOT;
+  }
 }
 
 function chooseDevice(): 'webgpu' | 'wasm' {
