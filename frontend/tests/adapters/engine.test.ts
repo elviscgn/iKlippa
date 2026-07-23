@@ -947,7 +947,7 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
 describe('renderLoop (Tier 2)', () => {
   let mockWorker: any;
 
-  function stubIKState(clips: any[] = [{ id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 }]) {
+  function stubIKState(clips: any[] = [{ id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000, source_id: 'default', speed: 1 }]) {
     const state = {
       isReady: () => true,
       getVideoClips: () => clips,
@@ -973,16 +973,19 @@ describe('renderLoop (Tier 2)', () => {
     __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
     __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
     __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.pendingFramesBySource = new Map();
     __TEST_HOOKS__.videoDurationMs = 10000;
     __TEST_HOOKS__.playheadMs = 0;
     __TEST_HOOKS__.lastRafTs = null;
     __TEST_HOOKS__.rafHandle = null;
     __TEST_HOOKS__.lastSyncSig = '';
+    __TEST_HOOKS__.isBuffering = false;
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     __TEST_HOOKS__.isPlaying = false;
+    __TEST_HOOKS__.isBuffering = false;
   });
 
   it('returns early when not playing', () => {
@@ -1030,6 +1033,14 @@ describe('renderLoop (Tier 2)', () => {
     __TEST_HOOKS__.pendingFrames.set(500, {} as ImageData);
     __TEST_HOOKS__.pendingFrames.set(1000, {} as ImageData);
     __TEST_HOOKS__.pendingFrames.set(50, {} as ImageData);
+
+    // Also populate pendingFramesBySource (used by renderLoop for framesAhead count)
+    const srcFrames = new Map<number, ImageData>();
+    srcFrames.set(100, {} as ImageData);
+    srcFrames.set(500, {} as ImageData);
+    srcFrames.set(1000, {} as ImageData);
+    srcFrames.set(50, {} as ImageData);
+    __TEST_HOOKS__.pendingFramesBySource.set('default', srcFrames);
 
     renderLoop(16);
     const syncCalls = mockWorker.postMessage.mock.calls.filter(
@@ -1214,6 +1225,11 @@ describe('window callbacks (Tier 2)', () => {
   beforeEach(() => {
     vi.stubGlobal('window', {});
     __TEST_HOOKS__.worker = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() } as any;
+    __TEST_HOOKS__.isBuffering = false;
+    __TEST_HOOKS__.pendingFramesBySource = new Map();
+    __TEST_HOOKS__.audioCtx = null;
+    __TEST_HOOKS__.sourceVideoWidth = 0;
+    __TEST_HOOKS__.sourceVideoHeight = 0;
   });
 
   afterEach(() => {
@@ -1246,7 +1262,7 @@ describe('window callbacks (Tier 2)', () => {
     const onPlayheadUpdate = vi.fn();
     const state = {
       isReady: () => true,
-      getVideoClips: () => [{ id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000 }],
+      getVideoClips: () => [{ id: 1, timeline_start_us: 0, timeline_end_us: 5000000, source_start_us: 0, source_end_us: 5000000, source_id: 'default', speed: 1 }],
       getAudioClips: () => [] as any[],
       getDurationSec: () => 10,
     };
@@ -1257,9 +1273,16 @@ describe('window callbacks (Tier 2)', () => {
     __TEST_HOOKS__.isPlaying = true;
     __TEST_HOOKS__.playheadMs = 0;
     __TEST_HOOKS__.lastRafTs = 0;
+    __TEST_HOOKS__.isBuffering = false;
     __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
     __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
     __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.pendingFramesBySource = new Map();
+
+    // Seed a frame so renderLoop doesn't enter buffering
+    const srcFrames = new Map<number, ImageData>();
+    srcFrames.set(100, {} as ImageData);
+    __TEST_HOOKS__.pendingFramesBySource.set('default', srcFrames);
 
     renderLoop(16);
 
@@ -1382,7 +1405,7 @@ describe('seekTo fallback timeout (Tier 2)', () => {
   it('fires fallback timeout and paints black frame when no frame arrives', () => {
     seekTo(1000);
 
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(2000);
 
     const ctx = __TEST_HOOKS__.ctx as any;
     expect(ctx.fillRect).toHaveBeenCalled();

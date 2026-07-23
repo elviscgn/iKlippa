@@ -190,6 +190,26 @@
                   Drop video to import
                 </div>
 
+                <div
+                  id="buffering-spinner"
+                  style="
+                    display: none;
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(0, 0, 0, 0.45);
+                    border-radius: var(--radius-md);
+                    align-items: center;
+                    justify-content: center;
+                    flex-direction: column;
+                    gap: 10px;
+                    z-index: 25;
+                    pointer-events: none;
+                  "
+                >
+                  <div class="spinner"></div>
+                  <span style="color: #fff; font-size: 12px; font-weight: 600;">Buffering...</span>
+                </div>
+
                 <input
                   type="file"
                   id="file-input"
