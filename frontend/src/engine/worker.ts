@@ -285,6 +285,26 @@ function handleSetClipGrade(msg: { clipId: number; grade: Record<string, number>
   }
 }
 
+function handleLoadLut(msg: { id: number; data: ArrayBuffer }) {
+  if (!wasmModule) return;
+  try {
+    const ok = wasmModule.load_lut(msg.id, new Uint8Array(msg.data));
+    wlog('lut', `load_lut id=${msg.id} — ${ok ? 'OK' : 'FAIL'}`);
+  } catch (e) {
+    wwarn('lut', 'load_lut failed', String(e));
+  }
+}
+
+function handleSetClipEffects(msg: { clip_id: number; json: string }) {
+  if (!wasmModule) return;
+  try {
+    wasmModule.set_clip_effects(msg.clip_id, msg.json);
+    wlog('effects', `set_clip_effects clip ${msg.clip_id}`);
+  } catch (e) {
+    wwarn('effects', `set_clip_effects failed for clip ${msg.clip_id}`, String(e));
+  }
+}
+
 function handleSetTimeline(msg: WorkerSetTimelineCmd) {
   if (!wasmModule) {
     wwarn('worker', 'set_timeline received but WASM not ready');
@@ -482,6 +502,8 @@ async function routeMessage(msg: any): Promise<void> {
   else if (msg.type === 'get_project_json') handleGetProjectJson();
   else if (msg.type === 'composite') handleComposite(msg);
   else if (msg.type === 'decode_all') handleDecodeAll(msg);
+  else if (msg.type === 'load_lut') handleLoadLut(msg);
+  else if (msg.type === 'set_clip_effects') handleSetClipEffects(msg);
   else if (msg.type === 'reset_grade') { if (wasmModule) { wasmModule.set_exposure(0); wasmModule.set_contrast(0); wasmModule.set_saturation(0); wasmModule.set_temperature(0); wasmModule.set_highlights(0); wasmModule.set_shadows(0); wasmModule.set_vignette(0); wasmModule.set_grain(0); wasmModule.set_lut(0); } }
 }
 
