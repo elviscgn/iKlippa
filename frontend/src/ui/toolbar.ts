@@ -9,6 +9,7 @@ let isGraniteBusy = false;
 
 export function initToolbar() {
   const btnText = $('#t-text');
+  const chatComposer = $('#chat-composer') as HTMLElement | null;
   if (btnText) {
     btnText.onclick = () => {
       isTextActive = !isTextActive;
@@ -30,6 +31,7 @@ export function initToolbar() {
         gradePanel.style.display = isEffectActive ? 'flex' : 'none';
         copilotBody.style.display = isEffectActive ? 'none' : 'flex';
       }
+      syncChatComposer(chatComposer);
       showToast(isEffectActive ? 'Colour Grade Panel Open' : 'AI Director Restored', 'sparkles');
     };
   }
@@ -63,104 +65,97 @@ export function initToolbar() {
       });
       const target = $('#' + (tab as HTMLElement).dataset.target!);
       if (target) target.style.display = 'flex';
+      syncChatComposer(chatComposer);
     };
   });
 
   initChat();
+  syncChatComposer(chatComposer);
   initAspectRatio();
   initModeToggle();
 }
 
+function syncChatComposer(chatComposer: HTMLElement | null) {
+  if (!chatComposer) return;
+  const activeTab = document.querySelector('.ai-tab.active') as HTMLElement | null;
+  chatComposer.style.display = activeTab?.dataset.target === 'tab-chat' && !isEffectActive ? 'flex' : 'none';
+}
+
 function initChat() {
-  const cmdInput = $('#ai-cmd') as HTMLInputElement;
+  const cmdInput = $('#ai-cmd') as HTMLInputElement | null;
+  const cmdSend = $('#ai-cmd-send') as HTMLButtonElement | null;
+  const miniInput = $('#chat-mini-cmd') as HTMLInputElement | null;
+  const miniSend = $('#chat-mini-send') as HTMLButtonElement | null;
   const acMenu = $('#ac-menu');
 
-  if (!cmdInput || !acMenu) return;
+  if (!cmdInput && !miniInput) return;
 
-  cmdInput.addEventListener(
-    'focus',
-    () => {
-      void warmGraniteModel().catch(() => {
-        // Lazy fallback still works on submit.
-      });
-    },
-    { once: true },
-  );
-
-  cmdInput.addEventListener('input', (e) => {
-    const lastWord = (e.target as HTMLInputElement).value.split(' ').pop() || '';
-    if (lastWord.startsWith('/')) {
-      acMenu.innerHTML =
-        '<div class="ac-section">Commands</div>' +
-        '<div class="ac-item" onclick="insertAC(\'/trim-silence \')"><i data-lucide="scissors"></i> /trim-silence</div>' +
-        '<div class="ac-item" onclick="insertAC(\'/sync-audio \')"><i data-lucide="music"></i> /sync-audio</div>' +
-        '<div class="ac-item" onclick="insertAC(\'/auto-broll \')"><i data-lucide="sparkles"></i> /auto-broll</div>' +
-        '<div class="ac-item" onclick="insertAC(\'/add-captions \')"><i data-lucide="captions"></i> /add-captions</div>';
-      window.lucide.createIcons({ nodes: [acMenu] });
-      acMenu.classList.add('active');
-    } else if (lastWord.startsWith('@')) {
-      const clipItems = (window as any).IKState.getVideoClips().map((c: any) =>
-        `<div class="ac-item" onclick="insertAC('@${c.name.replace(/[^a-zA-Z0-9_]/g, '_')} ')"><i data-lucide="film"></i> @${c.name}</div>`
-      ).join('');
-      acMenu.innerHTML =
-        '<div class="ac-section">Clips</div>' +
-        (clipItems || '<div class="ac-item" style="color:var(--text-muted);">No clips yet</div>');
-      window.lucide.createIcons({ nodes: [acMenu] });
-      acMenu.classList.add('active');
-    } else {
-      acMenu.classList.remove('active');
-    }
-  });
-
-  (window as any).insertAC = function (text: string) {
-    const words = cmdInput.value.split(' ');
-    words.pop();
-    cmdInput.value = (words.join(' ') + ' ' + text).trim() + ' ';
-    acMenu.classList.remove('active');
-    cmdInput.focus();
+  let warmupAttempted = false;
+  const warmGranite = () => {
+    if (warmupAttempted) return;
+    warmupAttempted = true;
+    void warmGraniteModel().catch(() => {
+      // Lazy fallback still works on submit.
+      warmupAttempted = false;
+    });
   };
 
-  (window as any).submitCmd = function () {
-    const val = cmdInput.value.trim();
+  const composerInputs = [cmdInput, miniInput].filter(Boolean) as HTMLInputElement[];
+  const composerButtons = [cmdSend, miniSend].filter(Boolean) as HTMLButtonElement[];
+
+  const setGraniteBusy = (busy: boolean) => {
+    isGraniteBusy = busy;
+    for (const input of composerInputs) input.disabled = busy;
+    for (const button of composerButtons) button.disabled = busy;
+  };
+
+  const runLocalCommand = (val: string) => {
+    const command = val.toLowerCase();
+    setTimeout(() => {
+      if (command.includes('/trim-silence')) {
+        applyAiAction('silence');
+        appendChat('Trimmed the silences locally.');
+      } else if (command.includes('/sync-audio')) {
+        applyAiAction('sync');
+        appendChat('Matched the cut timing to the beat.');
+      } else if (command.includes('/add-captions')) {
+        applyAiAction('captions');
+        appendChat('Generated captions on the timeline.');
+      } else if (command.includes('/auto-broll')) {
+        appendChat('Auto b-roll is not wired yet, but I can still help plan it.');
+      } else {
+        appendChat('Try /trim-silence, /sync-audio, or /add-captions.');
+      }
+    }, 300);
+  };
+
+  const submitPrompt = (sourceInput: HTMLInputElement) => {
+    const val = sourceInput.value.trim();
     if (!val || isGraniteBusy) return;
 
     appendChat(val, true);
-    cmdInput.value = '';
+    sourceInput.value = '';
+    acMenu?.classList.remove('active');
 
     if (val.startsWith('/')) {
-      const command = val.toLowerCase();
-      setTimeout(() => {
-        if (command.includes('/trim-silence')) {
-          applyAiAction('silence');
-          appendChat('Trimmed the silences locally.');
-        } else if (command.includes('/sync-audio')) {
-          applyAiAction('sync');
-          appendChat('Matched the cut timing to the beat.');
-        } else if (command.includes('/add-captions')) {
-          applyAiAction('captions');
-          appendChat('Generated captions on the timeline.');
-        } else if (command.includes('/auto-broll')) {
-          appendChat('Auto b-roll is not wired yet, but I can still help plan it.');
-        } else {
-          appendChat('Try /trim-silence, /sync-audio, or /add-captions.');
-        }
-      }, 300);
+      runLocalCommand(val);
       return;
     }
 
     const aiBody = appendChat('Loading Granite locally...', false);
-    isGraniteBusy = true;
-    cmdInput.disabled = true;
+    setGraniteBusy(true);
     void sendGranitePrompt(val, {
       onChunk: (chunk) => {
         if (aiBody.textContent === 'Loading Granite locally...') {
           aiBody.textContent = '';
         }
         aiBody.textContent += chunk;
+        scrollChatToBottom();
       },
     })
       .then((response) => {
         aiBody.textContent = response || 'Granite did not return a response.';
+        scrollChatToBottom();
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -168,15 +163,86 @@ function initChat() {
         showToast(message, 'alert-triangle');
       })
       .finally(() => {
-        isGraniteBusy = false;
-        cmdInput.disabled = false;
-        cmdInput.focus();
+        setGraniteBusy(false);
+        sourceInput.focus();
       });
   };
 
-  cmdInput.onkeypress = (e) => {
-    if (e.key === 'Enter') (window as any).submitCmd();
-  };
+  if (cmdInput && acMenu) {
+    cmdInput.addEventListener('focus', warmGranite);
+
+    cmdInput.addEventListener('input', (e) => {
+      const lastWord = (e.target as HTMLInputElement).value.split(' ').pop() || '';
+      if (lastWord.startsWith('/')) {
+        acMenu.innerHTML =
+          '<div class="ac-section">Commands</div>' +
+          '<div class="ac-item" onclick="insertAC(\'/trim-silence \')"><i data-lucide="scissors"></i> /trim-silence</div>' +
+          '<div class="ac-item" onclick="insertAC(\'/sync-audio \')"><i data-lucide="music"></i> /sync-audio</div>' +
+          '<div class="ac-item" onclick="insertAC(\'/auto-broll \')"><i data-lucide="sparkles"></i> /auto-broll</div>' +
+          '<div class="ac-item" onclick="insertAC(\'/add-captions \')"><i data-lucide="captions"></i> /add-captions</div>';
+        window.lucide.createIcons({ nodes: [acMenu] });
+        acMenu.classList.add('active');
+      } else if (lastWord.startsWith('@')) {
+        const clipItems = (window as any).IKState.getVideoClips().map((c: any) =>
+          `<div class="ac-item" onclick="insertAC('@${c.name.replace(/[^a-zA-Z0-9_]/g, '_')} ')"><i data-lucide="film"></i> @${c.name}</div>`,
+        ).join('');
+        acMenu.innerHTML =
+          '<div class="ac-section">Clips</div>' +
+          (clipItems || '<div class="ac-item" style="color:var(--text-muted);">No clips yet</div>');
+        window.lucide.createIcons({ nodes: [acMenu] });
+        acMenu.classList.add('active');
+      } else {
+        acMenu.classList.remove('active');
+      }
+    });
+
+    (window as any).insertAC = function (text: string) {
+      const words = cmdInput.value.split(' ');
+      words.pop();
+      cmdInput.value = (words.join(' ') + ' ' + text).trim() + ' ';
+      acMenu.classList.remove('active');
+      cmdInput.focus();
+    };
+
+    (window as any).submitCmd = function () {
+      submitPrompt(cmdInput);
+    };
+
+    cmdInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitPrompt(cmdInput);
+      }
+    });
+  }
+
+  if (miniInput) {
+    miniInput.addEventListener('focus', warmGranite);
+    miniInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      submitPrompt(miniInput);
+    });
+  }
+
+  if (miniSend && miniInput) {
+    miniSend.addEventListener('click', (e) => {
+      e.preventDefault();
+      submitPrompt(miniInput);
+    });
+  }
+}
+
+function scrollChatToBottom() {
+  const log = $('#chat-log') as HTMLElement | null;
+  if (log) {
+    log.scrollTop = log.scrollHeight;
+    return;
+  }
+  const scrollRoot = $('#copilot-body') as HTMLElement | null;
+  if (scrollRoot) {
+    scrollRoot.scrollTop = scrollRoot.scrollHeight;
+  }
 }
 
 function appendChat(text: string, isUser = false) {
@@ -202,9 +268,7 @@ function appendChat(text: string, isUser = false) {
   if (log) {
     log.appendChild(el);
     window.lucide?.createIcons({ nodes: [el] });
-    if (log.parentElement) {
-      log.parentElement.scrollTop = log.parentElement.scrollHeight;
-    }
+    scrollChatToBottom();
   }
   return body;
 }

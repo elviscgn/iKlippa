@@ -1,5 +1,4 @@
-import { env, pipeline, TextStreamer } from '@huggingface/transformers';
-import { isOfflineMode } from '../ui/utils';
+import type { ClipWithMeta, Track } from '../state/types';
 
 type GraniteRole = 'system' | 'user' | 'assistant';
 
@@ -12,34 +11,135 @@ export interface GraniteSendOptions {
   onChunk?: (chunk: string) => void;
 }
 
-type GranitePipeline = any;
+type GraniteWorkerRequest =
+  | { type: 'warm' }
+  | { type: 'generate'; id: number; messages: GraniteMessage[] };
 
-const MODEL_ID = 'onnx-community/granite-4.0-micro-ONNX-web';
+type GraniteWorkerResponse =
+  | { type: 'ready' }
+  | { type: 'progress'; progress: Record<string, unknown> }
+  | { type: 'chunk'; id: number; chunk: string }
+  | { type: 'result'; id: number; output: unknown }
+  | { type: 'error'; id?: number; message: string };
+
+type PendingGraniteRequest = {
+  onChunk?: (chunk: string) => void;
+  resolve: (response: string) => void;
+  reject: (error: Error) => void;
+};
+
 const MAX_HISTORY_MESSAGES = 10;
+const MAX_TRACK_LINES = 6;
+const MAX_SELECTED_CLIPS = 5;
+const MAX_CURRENT_CLIPS = 4;
+const MAX_NEARBY_CLIPS = 5;
+const PLAYHEAD_CONTEXT_WINDOW_US = 5_000_000;
 const GRANITE_CACHE_MISS_MESSAGE =
   'Granite has not been cached in this browser yet. Open the app once while online so Transformers.js can download and cache the model, then offline chat will work.';
 
-let graniteModel: GranitePipeline | null = null;
-let graniteModelPromise: Promise<GranitePipeline> | null = null;
 let graniteLoadError: Error | null = null;
 let conversationHistory: GraniteMessage[] = [];
+let graniteWorker: Worker | null = null;
+let graniteWorkerReady = false;
+let graniteLoadPromise: Promise<void> | null = null;
+let graniteWarmResolve: (() => void) | null = null;
+let graniteWarmReject: ((error: Error) => void) | null = null;
+let nextGraniteRequestId = 1;
+const pendingGraniteRequests = new Map<number, PendingGraniteRequest>();
 
-function configureOfflineRuntime() {
-  env.allowLocalModels = false;
-  // Keep remote loading enabled so Transformers.js can resolve cached
-  // browser artifacts without tripping its "both disabled" guard.
-  env.allowRemoteModels = true;
-  env.useBrowserCache = true;
-  if (isOfflineMode()) {
-    // Offline mode uses the browser cache when available. If the model
-    // has not been warmed yet, the caller will get a clearer load error
-    // than the old broken local /models/ fetch path.
+function createGraniteWorker(): Worker {
+  const worker = new Worker(new URL('./granite.worker.ts', import.meta.url), {
+    type: 'module',
+  });
+  worker.addEventListener('message', handleGraniteWorkerMessage);
+  worker.addEventListener('error', handleGraniteWorkerError);
+  return worker;
+}
+
+function getGraniteWorker(): Worker {
+  if (!graniteWorker) {
+    graniteWorker = createGraniteWorker();
+  }
+  return graniteWorker;
+}
+
+function resetGraniteWarmState() {
+  graniteLoadPromise = null;
+  graniteWarmResolve = null;
+  graniteWarmReject = null;
+}
+
+function resolveGraniteWarm() {
+  const resolve = graniteWarmResolve;
+  resetGraniteWarmState();
+  graniteWorkerReady = true;
+  graniteLoadError = null;
+  resolve?.();
+}
+
+function rejectGraniteWarm(error: Error) {
+  const reject = graniteWarmReject;
+  resetGraniteWarmState();
+  graniteWorkerReady = false;
+  graniteLoadError = error;
+  reject?.(error);
+}
+
+function rejectGraniteRequest(id: number, error: Error) {
+  const pending = pendingGraniteRequests.get(id);
+  if (!pending) return;
+  pendingGraniteRequests.delete(id);
+  pending.reject(error);
+}
+
+function handleGraniteWorkerMessage(event: MessageEvent<GraniteWorkerResponse>) {
+  const data = event.data;
+  if (!data || typeof data !== 'object' || !('type' in data)) return;
+
+  if (data.type === 'progress') return;
+
+  if (data.type === 'ready') {
+    resolveGraniteWarm();
+    return;
+  }
+
+  if (data.type === 'chunk') {
+    const pending = pendingGraniteRequests.get(data.id);
+    pending?.onChunk?.(data.chunk);
+    return;
+  }
+
+  if (data.type === 'result') {
+    const pending = pendingGraniteRequests.get(data.id);
+    if (!pending) return;
+    pendingGraniteRequests.delete(data.id);
+    const response = typeof data.output === 'string' ? data.output.trim() : normalizeResponseText(data.output);
+    pending.resolve(response);
+    return;
+  }
+
+  if (data.type === 'error') {
+    const normalizedError = graniteLoadHint(new Error(data.message));
+    graniteLoadError = normalizedError;
+    if (data.id !== undefined) {
+      rejectGraniteRequest(data.id, normalizedError);
+    }
+    rejectGraniteWarm(normalizedError);
+    if (normalizedError.message === GRANITE_CACHE_MISS_MESSAGE) {
+      graniteWorkerReady = false;
+    }
   }
 }
 
-function chooseDevice(): 'webgpu' | 'wasm' {
-  if (typeof navigator !== 'undefined' && 'gpu' in navigator) return 'webgpu';
-  return 'wasm';
+function handleGraniteWorkerError(event: ErrorEvent) {
+  const normalizedError = graniteLoadHint(event.error ?? event.message ?? 'Granite worker failed.');
+  graniteLoadError = normalizedError;
+  rejectGraniteWarm(normalizedError);
+  if (pendingGraniteRequests.size > 0) {
+    for (const id of [...pendingGraniteRequests.keys()]) {
+      rejectGraniteRequest(id, normalizedError);
+    }
+  }
 }
 
 function trimHistory() {
@@ -47,58 +147,208 @@ function trimHistory() {
   conversationHistory = conversationHistory.slice(-MAX_HISTORY_MESSAGES);
 }
 
-function shortText(text: string, max = 72): string {
-  const cleaned = text.replace(/\s+/g, ' ').trim();
+function cleanText(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function shortText(text: unknown, max = 72): string {
+  const cleaned = cleanText(text);
   return cleaned.length > max ? cleaned.slice(0, max - 1) + '...' : cleaned;
 }
 
-function formatClipSummary(): string {
+function toClipId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function formatTimeRange(startUs: number, endUs: number): string {
+  return `${(startUs / 1_000_000).toFixed(2)}-${(endUs / 1_000_000).toFixed(2)}s`;
+}
+
+function getSelectedClipIds(): number[] {
+  const ids = new Set<number>();
+  const windowSelection = (window as Window & { selectedClipIds?: Set<number | string> })
+    .selectedClipIds;
+  if (windowSelection?.size) {
+    for (const raw of windowSelection) {
+      const id = toClipId(raw);
+      if (id !== null) ids.add(id);
+    }
+  }
+
+  document.querySelectorAll('.tl-clip.active').forEach((el) => {
+    const id = toClipId((el as HTMLElement).dataset.clipId);
+    if (id !== null) ids.add(id);
+  });
+
+  return [...ids];
+}
+
+function getClipEntries(): Array<{ track: Track; clip: ClipWithMeta; meta: Record<string, unknown> | null }> {
   const state = window.IKState;
-  if (!state?.isReady()) return 'No project is loaded yet.';
+  if (!state?.isReady()) return [];
+
+  const tracks = state.getTracks?.() ?? [];
+  const entries: Array<{ track: Track; clip: ClipWithMeta; meta: Record<string, unknown> | null }> = [];
+  for (const track of tracks) {
+    for (const clip of track.clips ?? []) {
+      entries.push({
+        track,
+        clip: clip as ClipWithMeta,
+        meta: state.getClipMeta?.(clip.id) ?? null,
+      });
+    }
+  }
+  return entries;
+}
+
+function clipLabel(
+  clip: ClipWithMeta,
+  meta: Record<string, unknown> | null,
+  track: Track,
+): string {
+  if (track.track_type === 'caption') {
+    return shortText(clip.caption_text || meta?.name || clip.source_id || `Clip ${clip.id}`, 56);
+  }
+  return shortText(meta?.name || clip.caption_text || clip.source_id || `Clip ${clip.id}`, 56);
+}
+
+function formatClipLine(
+  clip: ClipWithMeta,
+  track: Track,
+  meta: Record<string, unknown> | null,
+): string {
+  const details: string[] = [`${formatTimeRange(clip.timeline_start_us, clip.timeline_end_us)}`];
+  details.push(`src=${shortText(clip.source_id, 20)}`);
+
+  if (track.track_type !== 'caption' && clip.caption_text) {
+    details.push(`caption="${shortText(clip.caption_text, 44)}"`);
+  }
+  if (meta?.name && shortText(meta.name, 56) !== clipLabel(clip, meta, track)) {
+    details.push(`name="${shortText(meta.name, 32)}"`);
+  }
+  if (meta?.isReal === true) details.push('real');
+  if (meta?.isReal === false) details.push('stock');
+  if (typeof meta?.picId === 'number') details.push(`picId=${meta.picId}`);
+  const thumbnails = Array.isArray(meta?.thumbnails) ? meta.thumbnails : [];
+  if (thumbnails.length > 0) {
+    details.push(`${thumbnails.length} thumbs`);
+  }
+  if (clip.speed && Math.abs(clip.speed - 1) > 0.01) {
+    details.push(`speed ${clip.speed.toFixed(2)}x`);
+  }
+  if (clip.effects?.length) {
+    const effectTypes = clip.effects.map((effect) => effect.effect_type).slice(0, 3).join(', ');
+    details.push(`effects=${effectTypes}`);
+  }
+  if (clip.group_id) {
+    details.push(`group=${shortText(clip.group_id, 14)}`);
+  }
+
+  return `- ${clipLabel(clip, meta, track)} [${track.name}/${track.track_type}] ${details.join(', ')}`;
+}
+
+function formatTrackLine(track: Track): string {
+  const clips = track.clips ?? [];
+  if (clips.length === 0) {
+    return `- ${track.name} [${track.track_type}] empty, ${track.visible ? 'visible' : 'hidden'}, ${track.locked ? 'locked' : 'unlocked'}`;
+  }
+
+  const spanStart = clips[0]?.timeline_start_us ?? 0;
+  const spanEnd = clips[clips.length - 1]?.timeline_end_us ?? 0;
+  return `- ${track.name} [${track.track_type}] ${clips.length} clips, ${formatTimeRange(spanStart, spanEnd)}, ${track.visible ? 'visible' : 'hidden'}, ${track.locked ? 'locked' : 'unlocked'}${track.muted ? ', muted' : ''}`;
+}
+
+function buildContextLines(): string[] {
+  const state = window.IKState;
+  if (!state?.isReady()) return ['No project is loaded yet.'];
 
   const project = state.getProject();
-  const videoClips = state.getVideoClips?.() ?? [];
-  const audioClips = state.getAudioClips?.() ?? [];
+  if (!project) return ['No project is loaded yet.'];
+
   const tracks = state.getTracks?.() ?? [];
+  const entries = getClipEntries();
+  const playheadUs = Math.round((window.S?.time ?? 0) * 1_000_000);
+  const durationSec = state.getDurationSec?.() ?? 0;
   const selectedAr = window.S?.selectedAR ?? '16/9';
-  const timelineTime = window.S?.time ?? 0;
-  const timelineDur = window.S?.dur ?? 0;
+  const frameRate = project.frame_rate?.den ? project.frame_rate.num / project.frame_rate.den : 0;
+  const fpsLabel = frameRate > 0 ? `${frameRate % 1 === 0 ? frameRate.toFixed(0) : frameRate.toFixed(2)}fps` : 'fps unknown';
   const recentNodes = (window.aiNodes ?? []).slice(-5);
 
   const lines: string[] = [
-    `Project: ${project?.name ?? 'Untitled'} (${project?.width ?? 0}x${project?.height ?? 0})`,
-    `Aspect ratio: ${selectedAr}`,
-    `Timeline: ${timelineTime.toFixed(2)}s playhead, ${timelineDur.toFixed(2)}s total`,
-    `Tracks: ${tracks.map((track) => `${track.name} [${track.track_type}] ${track.clips.length} clips`).join('; ') || 'none'}`,
-    `Clips: ${videoClips.length} video, ${audioClips.length} audio`,
+    `Project: ${project.name ?? 'Untitled'} (${project.width}x${project.height}, ${selectedAr}, ${fpsLabel})`,
+    `Timeline: ${durationSec.toFixed(2)}s total, playhead ${(playheadUs / 1_000_000).toFixed(2)}s`,
+    `Tracks: ${tracks.length} total, ${entries.length} clips`,
+    'Track overview:',
   ];
 
-  if (videoClips.length > 0) {
-    const clipLines = videoClips.slice(0, 6).map((clip) => {
-      const name = shortText(
-        clip.name || clip.caption_text || clip.source_id || `Clip ${clip.id}`,
-        48,
-      );
-      const start = (clip.timeline_start_us / 1_000_000).toFixed(2);
-      const end = (clip.timeline_end_us / 1_000_000).toFixed(2);
-      return `- ${name}: ${start}s to ${end}s`;
-    });
-    if (clipLines.length > 0) {
-      lines.push('Video clip summary:');
-      lines.push(...clipLines);
-    }
+  const selectedIds = new Set(getSelectedClipIds());
+  const currentEntries = entries.filter(
+    ({ clip }) => playheadUs >= clip.timeline_start_us && playheadUs < clip.timeline_end_us,
+  );
+  const currentIds = new Set(currentEntries.map(({ clip }) => clip.id));
+  const nearbyEntries = entries
+    .filter(({ clip }) => !selectedIds.has(clip.id) && !currentIds.has(clip.id))
+    .map((entry) => {
+      const centerUs = (entry.clip.timeline_start_us + entry.clip.timeline_end_us) / 2;
+      return { ...entry, distanceUs: Math.abs(centerUs - playheadUs) };
+    })
+    .filter((entry) => entry.distanceUs <= PLAYHEAD_CONTEXT_WINDOW_US)
+    .sort((a, b) => a.distanceUs - b.distanceUs)
+    .slice(0, MAX_NEARBY_CLIPS);
+
+  const selectedEntries = selectedIds.size
+    ? entries.filter(({ clip }) => selectedIds.has(clip.id)).slice(0, MAX_SELECTED_CLIPS)
+    : [];
+
+  lines.push(...tracks.slice(0, MAX_TRACK_LINES).map(formatTrackLine));
+  if (tracks.length > MAX_TRACK_LINES) {
+    lines.push(`- ...and ${tracks.length - MAX_TRACK_LINES} more track(s)`);
+  }
+
+  lines.push('Selected clips:');
+  if (selectedEntries.length > 0) {
+    lines.push(...selectedEntries.map(({ track, clip, meta }) => formatClipLine(clip, track, meta)));
+  } else {
+    lines.push('- none');
+  }
+
+  lines.push('Clips at playhead:');
+  if (currentEntries.length > 0) {
+    lines.push(
+      ...currentEntries.slice(0, MAX_CURRENT_CLIPS).map(({ track, clip, meta }) =>
+        formatClipLine(clip, track, meta),
+      ),
+    );
+  } else {
+    lines.push('- none');
+  }
+
+  lines.push('Nearby clips:');
+  if (nearbyEntries.length > 0) {
+    lines.push(
+      ...nearbyEntries.map(({ track, clip, meta }) => formatClipLine(clip, track, meta)),
+    );
+  } else {
+    lines.push('- none');
   }
 
   if (recentNodes.length > 0) {
     lines.push(
       'Recent AI markers: ' +
-        recentNodes
-          .map((node) => `${shortText(node.label, 28)} @ ${node.time.toFixed(1)}s`)
-          .join('; '),
+        recentNodes.map((node) => `${shortText(node.label, 24)} @ ${node.time.toFixed(1)}s`).join('; '),
     );
   }
 
-  return lines.join('\n');
+  return lines;
+}
+
+function formatClipSummary(): string {
+  return buildContextLines().join('\n');
 }
 
 function buildSystemPrompt(): string {
@@ -106,8 +356,10 @@ function buildSystemPrompt(): string {
     'You are Granite, the local assistant inside iKlippa.',
     'Answer in a concise, helpful way.',
     'The app runs fully in the browser, so do not claim server access or internet access.',
-    'Use the project context below when the user asks about the edit or timeline.',
-    'If the user asks for actions, explain the exact editor action or workflow.',
+    'Use the edit context below when the user asks about the timeline, selected clips, captions, pacing, or export.',
+    'Treat the selected clips and playhead clips as the primary source of truth.',
+    'If the context is still too thin, ask the user to select a clip or move the playhead instead of saying you cannot see the video.',
+    'When you suggest edits, name the concrete clip, track, or timeline range you are referring to.',
     '',
     'Project context:',
     formatClipSummary(),
@@ -165,34 +417,6 @@ function graniteLoadHint(error: unknown): Error {
   return base;
 }
 
-async function loadGraniteModel(): Promise<GranitePipeline> {
-  configureOfflineRuntime();
-  if (graniteModel) return graniteModel;
-  if (graniteModelPromise) return graniteModelPromise;
-
-  graniteModelPromise = pipeline('text-generation', MODEL_ID, {
-    device: chooseDevice(),
-    dtype: 'q4f16',
-    revision: 'main',
-  })
-    .then((pipe) => {
-      graniteModel = pipe as GranitePipeline;
-      graniteLoadError = null;
-      return graniteModel;
-    })
-    .catch((error) => {
-      graniteLoadError = graniteLoadHint(error);
-      graniteModelPromise = null;
-      throw graniteLoadError;
-    });
-
-  return graniteModelPromise;
-}
-
-export async function warmGraniteModel(): Promise<void> {
-  await loadGraniteModel();
-}
-
 export function resetGraniteConversation(): void {
   conversationHistory = [];
 }
@@ -201,44 +425,72 @@ export function getGraniteLoadError(): Error | null {
   return graniteLoadError;
 }
 
+async function loadGraniteModel(): Promise<void> {
+  if (graniteWorkerReady) return;
+  if (graniteLoadPromise) return graniteLoadPromise;
+
+  graniteLoadError = null;
+  const worker = getGraniteWorker();
+
+  graniteLoadPromise = new Promise<void>((resolve, reject) => {
+    graniteWarmResolve = () => {
+      graniteWorkerReady = true;
+      graniteLoadError = null;
+      resolve();
+    };
+    graniteWarmReject = (error: Error) => {
+      reject(error);
+    };
+    worker.postMessage({ type: 'warm' } satisfies GraniteWorkerRequest);
+  }).finally(() => {
+    graniteLoadPromise = null;
+    graniteWarmResolve = null;
+    graniteWarmReject = null;
+  });
+
+  return graniteLoadPromise;
+}
+
+export async function warmGraniteModel(): Promise<void> {
+  await loadGraniteModel();
+}
+
 export async function sendGranitePrompt(
   prompt: string,
   options: GraniteSendOptions = {},
 ): Promise<string> {
-  const generator = await loadGraniteModel();
+  await loadGraniteModel();
   const messages = buildMessages(prompt);
   let streamedText = '';
-
-  const streamer = new TextStreamer(generator.tokenizer, {
-    skip_prompt: true,
-    skip_special_tokens: true,
-    callback_function: (chunk: string) => {
-      streamedText += chunk;
-      options.onChunk?.(chunk);
-    },
-  });
+  const worker = getGraniteWorker();
+  const requestId = nextGraniteRequestId++;
 
   let output: unknown;
   try {
-    output = await generator(messages, {
-      max_new_tokens: 256,
-      do_sample: false,
-      temperature: 0.2,
-      top_p: 0.9,
-      repetition_penalty: 1.05,
-      streamer,
+    output = await new Promise<unknown>((resolve, reject) => {
+      pendingGraniteRequests.set(requestId, {
+        onChunk: (chunk: string) => {
+          streamedText += chunk;
+          options.onChunk?.(chunk);
+        },
+        resolve: (response: string) => resolve(response || streamedText.trim()),
+        reject: (error: Error) => reject(error),
+      });
+      const request: GraniteWorkerRequest = {
+        type: 'generate',
+        id: requestId,
+        messages,
+      };
+      worker.postMessage(request);
     });
   } catch (error) {
     const normalizedError = graniteLoadHint(error);
     graniteLoadError = normalizedError;
-    if (normalizedError.message === GRANITE_CACHE_MISS_MESSAGE) {
-      graniteModel = null;
-      graniteModelPromise = null;
-    }
+    pendingGraniteRequests.delete(requestId);
     throw normalizedError;
   }
 
-  const response = normalizeResponseText(output) || streamedText.trim();
+  const response = typeof output === 'string' ? output.trim() || streamedText.trim() : normalizeResponseText(output) || streamedText.trim();
   conversationHistory.push({ role: 'user', content: prompt });
   conversationHistory.push({ role: 'assistant', content: response });
   trimHistory();

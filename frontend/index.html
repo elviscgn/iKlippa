@@ -273,7 +273,7 @@
                     />
                     <div class="ac-menu" id="ac-menu"></div>
                   </div>
-                  <button class="fcb-send" onclick="submitCmd()">
+                  <button class="fcb-send" id="ai-cmd-send" onclick="submitCmd()">
                     <i data-lucide="arrow-up"></i>
                   </button>
                   <div class="fcb-divider"></div>
@@ -414,6 +414,15 @@
                   </div>
                 </div>
 
+                <div class="chat-log" id="chat-log">
+                  <div class="chat-msg ai intro">
+                    <div class="chat-intro-title">Ready to help with this cut.</div>
+                    <div class="chat-body">
+                      I can see your timeline, clips, and edits.
+                    </div>
+                  </div>
+                </div>
+
                 <div class="ai-actions-wrap">
                   <span
                     style="
@@ -477,35 +486,6 @@
                   </div>
                 </div>
 
-                <div class="chat-log" id="chat-log">
-                  <div class="chat-msg ai">
-                    <div class="msg-sender">
-                      <i data-lucide="bot"></i> Granite
-                    </div>
-                    <div class="chat-body">
-                      Granite is ready in the browser. Use the mode toggle for
-                      online assets or offline local loading, then ask me
-                      about the cut, captions, sync, or export.
-                    </div>
-                    <div class="chat-btns">
-                      <button
-                        class="chat-btn"
-                        onclick="
-                          applyAiAction('silence');
-                          this.parentElement.remove();
-                        "
-                      >
-                        Yes, trim silences
-                      </button>
-                      <button
-                        class="chat-btn secondary"
-                        onclick="this.parentElement.remove()"
-                      >
-                        No thanks
-                      </button>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <div id="tab-script">
@@ -568,6 +548,26 @@
                   />
                 </div>
               </div>
+            </div>
+
+            <div class="chat-composer" id="chat-composer">
+              <i data-lucide="sparkles" class="chat-composer-icon"></i>
+              <input
+                type="text"
+                class="chat-composer-input"
+                id="chat-mini-cmd"
+                placeholder="Ask Granite about this cut..."
+                autocomplete="off"
+                aria-label="Ask Granite about the current edit"
+              />
+              <button
+                class="chat-composer-send"
+                id="chat-mini-send"
+                type="button"
+                title="Send to Granite"
+              >
+                <i data-lucide="arrow-up"></i>
+              </button>
             </div>
 
             <!-- PER-CLIP COLOUR GRADE PANEL -->
