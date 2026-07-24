@@ -64,8 +64,12 @@ export function initToolbar() {
 
   $$('.ai-tab').forEach((tab) => {
     (tab as HTMLElement).onclick = () => {
-      $$('.ai-tab').forEach((t) => t.classList.remove('active'));
+      $$('.ai-tab').forEach((t) => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
       tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
       ['tab-chat', 'tab-script', 'tab-brand'].forEach((id) => {
         const el = $('#' + id);
         if (el) el.style.display = 'none';
@@ -162,7 +166,26 @@ function ensureGraniteStatusCard(): GraniteStatusElements | null {
   return graniteStatusElements;
 }
 
+function renderGraniteHeaderState(state: GraniteLoadState) {
+  const status = $('#granite-header-status');
+  const label = $('#granite-header-label');
+  if (!status || !label) return;
+
+  status.dataset.phase = state.phase;
+  status.title = state.title;
+  if (state.phase === 'loading') {
+    label.textContent = state.percent == null ? 'Granite loading' : `Granite ${state.percent}%`;
+  } else if (state.phase === 'ready') {
+    label.textContent = 'Granite ready';
+  } else if (state.phase === 'error') {
+    label.textContent = 'Granite error';
+  } else {
+    label.textContent = 'Granite';
+  }
+}
+
 function renderGraniteStatus(state: GraniteLoadState) {
+  renderGraniteHeaderState(state);
   const elements = ensureGraniteStatusCard();
   if (!elements) return;
 
@@ -346,6 +369,16 @@ function initChat() {
     });
   }
 
+  $$('[data-granite-prompt]').forEach((starter) => {
+    (starter as HTMLButtonElement).addEventListener('click', () => {
+      const prompt = (starter as HTMLElement).dataset.granitePrompt;
+      const targetInput = miniInput ?? cmdInput;
+      if (!prompt || !targetInput) return;
+      targetInput.value = prompt;
+      submitPrompt(targetInput);
+    });
+  });
+
   window.addEventListener('beforeunload', () => {
     unSubGraniteState();
     clearGraniteStatusTimer();
@@ -365,6 +398,7 @@ function scrollChatToBottom() {
 }
 
 function appendChat(text: string, isUser = false) {
+  $('#chat-log')?.querySelector('.chat-msg.intro')?.remove();
   const el = document.createElement('div');
   el.className = 'chat-msg ' + (isUser ? 'user' : 'ai');
   const sender = document.createElement('div');
@@ -418,7 +452,7 @@ function initAspectRatio() {
       const panelRight = $('#panel-right');
       if (panelRight) {
         panelRight.style.width =
-          S.selectedAR === '9/16' || S.selectedAR === '4/5' ? '340px' : '300px';
+          S.selectedAR === '9/16' || S.selectedAR === '4/5' ? '360px' : '320px';
       }
       window.lucide.createIcons({ nodes: [arBtn] });
       showToast('Canvas set to ' + (opt as HTMLElement).dataset.label, 'monitor');
