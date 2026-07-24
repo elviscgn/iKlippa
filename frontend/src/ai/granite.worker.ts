@@ -1,4 +1,5 @@
 import { env, pipeline, TextStreamer } from '@huggingface/transformers';
+import type { GraniteLoadProgress } from './granite';
 
 type GraniteRole = 'system' | 'user' | 'assistant';
 
@@ -13,7 +14,7 @@ type GraniteWorkerRequest =
 
 type GraniteWorkerResponse =
   | { type: 'ready' }
-  | { type: 'progress'; progress: Record<string, unknown> }
+  | { type: 'progress'; progress: GraniteLoadProgress }
   | { type: 'chunk'; id: number; chunk: string }
   | { type: 'result'; id: number; output: unknown }
   | { type: 'error'; id?: number; message: string };
@@ -90,7 +91,7 @@ async function loadGraniteModel(): Promise<GranitePipeline> {
     device: chooseDevice(),
     dtype: 'q4f16',
     revision: 'main',
-    progress_callback: (progress: Record<string, unknown>) => {
+    progress_callback: (progress: GraniteLoadProgress) => {
       postMessage({ type: 'progress', progress } satisfies GraniteWorkerResponse);
     },
   })

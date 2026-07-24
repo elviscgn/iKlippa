@@ -1,11 +1,18 @@
 import { $, $$, S, aiNodes } from './state';
 import { showToast, resizeCanvas, toggleOfflineMode } from './utils';
 import { calculateTimelineDuration, renderRuler, renderClips, updatePlayhead, applyAiAction } from './timeline';
-import { sendGranitePrompt, warmGraniteModel } from '../ai/granite';
+import {
+  getGraniteLoadState,
+  sendGranitePrompt,
+  subscribeGraniteLoadState,
+  warmGraniteModel,
+  type GraniteLoadState,
+} from '../ai/granite';
 
 let isTextActive = false;
 let isEffectActive = false;
 let isGraniteBusy = false;
+let graniteStatusHideTimer: number | null = null;
 
 export function initToolbar() {
   const btnText = $('#t-text');
@@ -81,6 +88,110 @@ function syncChatComposer(chatComposer: HTMLElement | null) {
   chatComposer.style.display = activeTab?.dataset.target === 'tab-chat' && !isEffectActive ? 'flex' : 'none';
 }
 
+type GraniteStatusElements = {
+  card: HTMLElement;
+  title: HTMLElement;
+  detail: HTMLElement;
+  fill: HTMLElement;
+  percent: HTMLElement;
+  retry: HTMLButtonElement;
+};
+
+let graniteStatusElements: GraniteStatusElements | null = null;
+
+function clearGraniteStatusTimer() {
+  if (graniteStatusHideTimer === null) return;
+  window.clearTimeout(graniteStatusHideTimer);
+  graniteStatusHideTimer = null;
+}
+
+function ensureGraniteStatusCard(): GraniteStatusElements | null {
+  if (graniteStatusElements) return graniteStatusElements;
+
+  const chatTab = $('#tab-chat') as HTMLElement | null;
+  const chatLog = $('#chat-log') as HTMLElement | null;
+  if (!chatTab || !chatLog) return null;
+
+  let card = $('#granite-status') as HTMLElement | null;
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'granite-status';
+    card.className = 'granite-status';
+    card.hidden = true;
+    card.setAttribute('role', 'status');
+    card.setAttribute('aria-live', 'polite');
+    card.innerHTML = `
+      <div class="granite-status-head">
+        <div class="granite-status-copy">
+          <div class="granite-status-kicker">
+            <i data-lucide="sparkles" class="granite-status-icon"></i>
+            <span>Granite</span>
+          </div>
+          <div class="granite-status-title"></div>
+        </div>
+        <button type="button" class="granite-status-retry" hidden>Retry</button>
+      </div>
+      <div class="granite-status-detail"></div>
+      <div class="granite-status-progress" aria-hidden="true">
+        <div class="granite-status-bar">
+          <div class="granite-status-fill"></div>
+        </div>
+        <span class="granite-status-percent"></span>
+      </div>
+    `;
+    chatTab.insertBefore(card, chatLog);
+    window.lucide?.createIcons({ nodes: [card] });
+  }
+
+  const title = card.querySelector('.granite-status-title') as HTMLElement | null;
+  const detail = card.querySelector('.granite-status-detail') as HTMLElement | null;
+  const fill = card.querySelector('.granite-status-fill') as HTMLElement | null;
+  const percent = card.querySelector('.granite-status-percent') as HTMLElement | null;
+  const retry = card.querySelector('.granite-status-retry') as HTMLButtonElement | null;
+  if (!title || !detail || !fill || !percent || !retry) return null;
+
+  retry.addEventListener('click', () => {
+    clearGraniteStatusTimer();
+    void warmGraniteModel().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      showToast(message, 'alert-triangle');
+    });
+  });
+
+  graniteStatusElements = { card, title, detail, fill, percent, retry };
+  return graniteStatusElements;
+}
+
+function renderGraniteStatus(state: GraniteLoadState) {
+  const elements = ensureGraniteStatusCard();
+  if (!elements) return;
+
+  clearGraniteStatusTimer();
+
+  if (state.phase === 'idle') {
+    elements.card.hidden = true;
+    elements.card.dataset.phase = 'idle';
+    return;
+  }
+
+  elements.card.hidden = false;
+  elements.card.dataset.phase = state.phase;
+  elements.title.textContent = state.title;
+  elements.detail.textContent = state.detail;
+  elements.percent.textContent = state.percent == null ? '' : `${state.percent}%`;
+  elements.fill.classList.toggle('is-indeterminate', state.phase === 'loading' && state.percent == null);
+  elements.fill.style.width = `${state.phase === 'loading' && state.percent == null ? 28 : Math.max(0, state.percent ?? 100)}%`;
+  elements.retry.hidden = state.phase !== 'error';
+  elements.retry.textContent = state.phase === 'error' ? 'Retry' : 'Retry';
+
+  if (state.phase === 'ready') {
+    graniteStatusHideTimer = window.setTimeout(() => {
+      elements.card.hidden = true;
+      elements.card.dataset.phase = 'idle';
+    }, 1800);
+  }
+}
+
 function initChat() {
   const cmdInput = $('#ai-cmd') as HTMLInputElement | null;
   const cmdSend = $('#ai-cmd-send') as HTMLButtonElement | null;
@@ -89,6 +200,9 @@ function initChat() {
   const acMenu = $('#ac-menu');
 
   if (!cmdInput && !miniInput) return;
+
+  renderGraniteStatus(getGraniteLoadState());
+  const unSubGraniteState = subscribeGraniteLoadState(renderGraniteStatus);
 
   let warmupAttempted = false;
   const warmGranite = () => {
@@ -231,6 +345,11 @@ function initChat() {
       submitPrompt(miniInput);
     });
   }
+
+  window.addEventListener('beforeunload', () => {
+    unSubGraniteState();
+    clearGraniteStatusTimer();
+  });
 }
 
 function scrollChatToBottom() {
