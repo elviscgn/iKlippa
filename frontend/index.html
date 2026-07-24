@@ -268,7 +268,7 @@
                       type="text"
                       class="fcb-input"
                       id="ai-cmd"
-                      placeholder="Chat Granite or type / for commands..."
+                      placeholder="Quick command or ask Granite..."
                       autocomplete="off"
                     />
                     <div class="ac-menu" id="ac-menu"></div>
@@ -369,40 +369,47 @@
               </div>
             </div>
             <div class="copilot-header">
-              <i data-lucide="bot" style="color: var(--accent-primary)"></i> AI
-              Director
-              <span class="ibm-tag"
-                >Granite
-                <span
-                  style="
-                    width: 4px;
-                    height: 4px;
-                    background: var(--accent-primary);
-                    border-radius: 50%;
-                    display: inline-block;
-                    box-shadow: 0 0 6px var(--accent-primary);
-                  "
-                ></span
-              ></span>
+              <span class="copilot-mark"><i data-lucide="bot"></i></span>
+              <div class="copilot-heading">
+                <span class="copilot-title">AI Director</span>
+                <span class="copilot-subtitle">Understands your current edit</span>
+              </div>
+              <span class="ibm-tag">
+                <span class="ibm-status-dot"></span>
+                Granite
+              </span>
             </div>
-            <div class="ai-tabs">
-              <div class="ai-tab active" data-target="tab-chat">Chat</div>
-              <div class="ai-tab" data-target="tab-script">Script</div>
-              <div class="ai-tab" data-target="tab-brand">Brand</div>
+            <div class="ai-tabs" role="tablist" aria-label="AI Director views">
+              <button class="ai-tab active" data-target="tab-chat" role="tab" aria-selected="true">
+                <i data-lucide="message-square"></i><span>Chat</span>
+              </button>
+              <button class="ai-tab" data-target="tab-script" role="tab" aria-selected="false">
+                <i data-lucide="scroll-text"></i><span>Script</span>
+              </button>
+              <button class="ai-tab" data-target="tab-brand" role="tab" aria-selected="false">
+                <i data-lucide="swatch-book"></i><span>Brand</span>
+              </button>
             </div>
             <div class="copilot-body" id="copilot-body">
               <div id="tab-chat">
                 <div class="insight-box" id="insight-box">
-                  <i
-                    data-lucide="x"
+                  <button
+                    type="button"
                     class="insight-close"
+                    title="Hide cut score"
+                    aria-label="Hide cut score"
                     onclick="
                       document.getElementById('insight-box').style.display =
                         'none'
                     "
-                  ></i>
+                  >
+                    <i data-lucide="x"></i>
+                  </button>
                   <div class="insight-top">
-                    <span class="insight-title">Script & Pacing Score</span>
+                    <span class="insight-label">
+                      <i data-lucide="activity"></i>
+                      <span class="insight-title">Cut score</span>
+                    </span>
                     <span class="insight-score" id="insight-score">76</span>
                   </div>
                   <div class="insight-bar-bg">
@@ -416,27 +423,25 @@
 
                 <div class="chat-log" id="chat-log">
                   <div class="chat-msg ai intro">
-                    <div class="chat-intro-title">Ready to help with this cut.</div>
-                    <div class="chat-body">
-                      I can see your timeline, clips, and edits.
+                    <span class="chat-intro-mark"><i data-lucide="sparkles"></i></span>
+                    <div class="chat-intro-title">Your edit, in context.</div>
+                    <div class="chat-body">Ask about pacing, clips, captions, or your next cut.</div>
+                    <div class="chat-starters">
+                      <button type="button" data-granite-prompt="Review the pacing of my current cut.">
+                        Review pacing
+                      </button>
+                      <button type="button" data-granite-prompt="What should I improve in this edit?">
+                        Suggest improvements
+                      </button>
                     </div>
                   </div>
                 </div>
 
                 <div class="ai-actions-wrap">
-                  <span
-                    style="
-                      font-size: 10px;
-                      font-weight: 800;
-                      color: var(--text-muted);
-                      text-transform: uppercase;
-                      letter-spacing: 0.5px;
-                      margin-bottom: 2px;
-                      display: block;
-                      padding-left: 4px;
-                    "
-                    >Suggested Actions</span
-                  >
+                  <div class="ai-actions-heading">
+                    <span>Quick edits</span>
+                    <span>Run locally</span>
+                  </div>
                   <div class="ai-actions-scroll">
                     <button
                       class="ai-action"
@@ -446,7 +451,7 @@
                         <i data-lucide="scissors"></i>
                       </div>
                       <div class="ai-action-text">
-                        <h4>Smart Trim Silences</h4>
+                        <h4>Trim</h4>
                         <p>Remove dead air</p>
                       </div>
                     </button>
@@ -461,7 +466,7 @@
                         <i data-lucide="music"></i>
                       </div>
                       <div class="ai-action-text">
-                        <h4>Afro-Beat Sync</h4>
+                        <h4>Beat sync</h4>
                         <p>Snap cuts to Amapiano drops</p>
                       </div>
                     </button>
@@ -479,7 +484,7 @@
                         <i data-lucide="captions"></i>
                       </div>
                       <div class="ai-action-text">
-                        <h4>Generate Captions</h4>
+                        <h4>Captions</h4>
                         <p>Create synced subtitles</p>
                       </div>
                     </button>
@@ -551,23 +556,30 @@
             </div>
 
             <div class="chat-composer" id="chat-composer">
-              <i data-lucide="sparkles" class="chat-composer-icon"></i>
-              <input
-                type="text"
-                class="chat-composer-input"
-                id="chat-mini-cmd"
-                placeholder="Ask Granite about this cut..."
-                autocomplete="off"
-                aria-label="Ask Granite about the current edit"
-              />
-              <button
-                class="chat-composer-send"
-                id="chat-mini-send"
-                type="button"
-                title="Send to Granite"
-              >
-                <i data-lucide="arrow-up"></i>
-              </button>
+              <div class="chat-composer-row">
+                <i data-lucide="sparkles" class="chat-composer-icon"></i>
+                <input
+                  type="text"
+                  class="chat-composer-input"
+                  id="chat-mini-cmd"
+                  placeholder="Ask about this edit..."
+                  autocomplete="off"
+                  aria-label="Ask Granite about the current edit"
+                />
+                <button
+                  class="chat-composer-send"
+                  id="chat-mini-send"
+                  type="button"
+                  title="Send to Granite"
+                  aria-label="Send to Granite"
+                >
+                  <i data-lucide="arrow-up"></i>
+                </button>
+              </div>
+              <div class="chat-composer-meta">
+                <span><i data-lucide="cpu"></i> On-device Granite</span>
+                <span>Enter to send</span>
+              </div>
             </div>
 
             <!-- PER-CLIP COLOUR GRADE PANEL -->

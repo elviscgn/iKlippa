@@ -459,6 +459,7 @@ export function initTimelineUI() {
       const isLocked = control.classList.contains('active');
       control.setAttribute('aria-pressed', String(isLocked));
       control.title = isLocked ? 'Unlock track' : 'Lock track';
+      control.setAttribute('aria-label', control.title);
       icon.setAttribute('data-lucide', isLocked ? 'lock' : 'unlock');
       window.lucide.createIcons({ nodes: [icon] });
       IKState.setTrackProp(trackId, 'locked', isLocked);
@@ -468,6 +469,7 @@ export function initTimelineUI() {
       const isVisible = !control.classList.contains('active');
       control.setAttribute('aria-pressed', String(!isVisible));
       control.title = isVisible ? 'Hide track' : 'Show track';
+      control.setAttribute('aria-label', control.title);
       icon.setAttribute('data-lucide', isVisible ? 'eye' : 'eye-off');
       window.lucide.createIcons({ nodes: [icon] });
       IKState.setTrackProp(trackId, 'visible', isVisible);
@@ -477,6 +479,7 @@ export function initTimelineUI() {
       const isMuted = control.classList.contains('active');
       control.setAttribute('aria-pressed', String(isMuted));
       control.title = isMuted ? 'Unmute track' : 'Mute track';
+      control.setAttribute('aria-label', control.title);
       icon.setAttribute('data-lucide', isMuted ? 'volume-x' : 'volume-2');
       window.lucide.createIcons({ nodes: [icon] });
       IKState.setTrackProp(trackId, 'muted', isMuted);
