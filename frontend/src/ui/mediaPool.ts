@@ -158,7 +158,7 @@ export async function renderMedia(
       const durStr = item.dur || '?';
       const safeName = escapeHtml(item.name);
       const safeDur = escapeHtml(durStr);
-      el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${safeName}</h4><p>${safeDur}</p></div><span class="media-drag-cue" aria-hidden="true"><i data-lucide="grip-vertical"></i><span>Drag</span></span>`;
+      el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${safeName}</h4><p>${safeDur}</p></div><span class="media-drag-cue" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>`;
       makeDraggable(el, item, 'audio');
       el.onclick = () => selectMediaItem(el);
       list.appendChild(el);
@@ -187,7 +187,7 @@ export async function renderMedia(
       }
       el.insertAdjacentHTML(
         'beforeend',
-        '<span class="media-drag-cue" aria-hidden="true"><i data-lucide="grip-vertical"></i><span>Drag</span></span>',
+        '<span class="media-drag-cue" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>',
       );
       makeDraggable(el, item, 'video');
 

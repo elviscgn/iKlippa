@@ -41,6 +41,7 @@ vi.mock('../../src/ui/dragDrop', () => ({
 
 vi.mock('../../src/ui/timelineUtils', () => ({
   getLaneW: () => 800,
+  getTimelineLaneOffset: () => 100,
   applySnap: (_us: number) => null,
   showSnapGuide: vi.fn(),
   hideSnapGuide: vi.fn(),
@@ -239,16 +240,78 @@ describe('ikl:reRender event', () => {
 });
 
 describe('initTimelineDrop (drop handler)', () => {
-  let calculateTimelineDuration: () => number;
+  let addClipMock: ReturnType<typeof vi.fn>;
+  let videoLane: HTMLElement;
+  let audioLane: HTMLElement;
+
+  const tracks = [
+    { id: 0, track_type: 'video', name: 'Video 1', locked: false },
+    { id: 1, track_type: 'audio', name: 'Audio 1', locked: false },
+  ];
+
+  function dispatchMediaDrag(
+    target: HTMLElement,
+    type: 'dragover' | 'drop',
+    payload: Record<string, unknown>,
+    clientX = 400,
+  ) {
+    const raw = JSON.stringify(payload);
+    const kind = payload.kind === 'audio' ? 'audio' : 'video';
+    const dataTransfer = {
+      types: [
+        'application/x-iklippa-media',
+        `application/x-iklippa-${kind}`,
+        'text/plain',
+      ],
+      dropEffect: 'none',
+      getData: (mime: string) =>
+        mime === 'application/x-iklippa-media' || mime === 'text/plain'
+          ? raw
+          : mime === `application/x-iklippa-${kind}`
+            ? kind
+            : '',
+    };
+    const event = new Event(type, { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperties(event, {
+      clientX: { value: clientX },
+      dataTransfer: { value: dataTransfer },
+    });
+    target.dispatchEvent(event);
+    return dataTransfer;
+  }
 
   beforeEach(async () => {
     document.body.innerHTML = FIXTURE;
+    const tlTracks = document.getElementById('tl-tracks')!;
+    tlTracks.innerHTML = `
+      <div class="track video-track" data-track-id="0" data-track-type="video">
+        <div class="track-lane" id="lane-v1"></div>
+      </div>
+      <div class="track audio-track" data-track-id="1" data-track-type="audio">
+        <div class="track-lane" id="lane-a1"></div>
+      </div>
+    `;
+    videoLane = document.getElementById('lane-v1')!;
+    audioLane = document.getElementById('lane-a1')!;
+    for (const lane of [videoLane, audioLane]) {
+      lane.getBoundingClientRect = () =>
+        ({ left: 0, right: 800, top: 0, bottom: 60, width: 800, height: 60 }) as DOMRect;
+    }
+
     vi.stubGlobal('lucide', { createIcons: vi.fn() });
-    // initTimelineDrop is called inside initTimelineUI which is exported as default import side-effect
-    // Just import the module which triggers the setup
+    addClipMock = vi.fn().mockReturnValue({ id: 77 });
+    (window as any).IKState = {
+      isReady: () => true,
+      getTrackById: (id: number) => tracks.find((track) => track.id === id),
+      getTracks: () => [],
+      getVideoClips: () => [],
+      getAudioClips: () => [],
+      computeDuration: vi.fn(),
+      addClip: addClipMock,
+    };
     const mod = await import('../../src/ui/timeline');
-    calculateTimelineDuration = mod.calculateTimelineDuration;
     mockS.dur = 20;
+    mod.initTimelineUI();
   });
 
   afterEach(() => {
@@ -257,41 +320,78 @@ describe('initTimelineDrop (drop handler)', () => {
     delete (window as any).IKState;
   });
 
-  it('laneV1 ondragover does not throw', () => {
-    const lane = document.getElementById('lane-v1')!;
-    if (lane.ondragover) {
-      const fakeEvent = {
-        preventDefault: vi.fn(),
-        clientX: 100,
-      };
-      expect(() => lane.ondragover!(fakeEvent as any)).not.toThrow();
-    } else {
-      expect(true).toBe(true); // not yet wired (needs initTimelineUI)
-    }
+  it('highlights a compatible video track while dragging', () => {
+    const transfer = dispatchMediaDrag(videoLane, 'dragover', {
+      app: 'iklippa',
+      kind: 'video',
+      sourceId: 'stock_sv1',
+      name: 'Neon.mp4',
+      durationSec: 4,
+      isReal: false,
+    });
+
+    expect(videoLane.classList.contains('drop-valid')).toBe(true);
+    expect(transfer.dropEffect).toBe('copy');
   });
 
-  it('laneV1 ondrop with real item adds a clip', () => {
-    const addVideoClipMock = vi.fn();
-    (window as any).IKState = {
-      isReady: () => true,
-      getVideoClips: () => [],
-      getAudioClips: () => [],
-      computeDuration: vi.fn(),
-      addVideoClip: addVideoClipMock,
-    };
-    window.lucide = { createIcons: vi.fn() };
+  it('drops stock video onto the video track at the cursor', () => {
+    dispatchMediaDrag(videoLane, 'drop', {
+      app: 'iklippa',
+      kind: 'video',
+      sourceId: 'stock_sv1',
+      name: 'Neon.mp4',
+      durationSec: 4,
+      isReal: false,
+      picId: 83,
+    });
 
-    const lane = document.getElementById('lane-v1')!;
-    if (lane.ondrop) {
-      lane.getBoundingClientRect = () => ({ left: 0, right: 800, top: 0, bottom: 60, width: 800, height: 60 } as DOMRect);
-      const fakeEvent = {
-        preventDefault: vi.fn(),
-        clientX: 400,
-        dataTransfer: {
-          getData: () => JSON.stringify({ isReal: true, sourceId: 'src1', name: 'clip.mp4', dur: '4.0' }),
-        },
-      };
-      expect(() => lane.ondrop!(fakeEvent as any)).not.toThrow();
-    }
+    expect(addClipMock).toHaveBeenCalledWith(
+      0,
+      'stock_sv1',
+      10_000_000,
+      14_000_000,
+      expect.objectContaining({ name: 'Neon.mp4', picId: 83 }),
+    );
+  });
+
+  it('drops stock music onto the audio track with its full duration', () => {
+    dispatchMediaDrag(audioLane, 'drop', {
+      app: 'iklippa',
+      kind: 'audio',
+      sourceId: 'stock_sm1',
+      name: 'Epic.mp3',
+      durationSec: 130,
+      isReal: false,
+    }, 0);
+
+    expect(addClipMock).toHaveBeenCalledWith(
+      1,
+      'stock_sm1',
+      0,
+      130_000_000,
+      expect.objectContaining({ name: 'Epic.mp3' }),
+    );
+  });
+
+  it('rejects music dropped on a video track', () => {
+    dispatchMediaDrag(videoLane, 'dragover', {
+      app: 'iklippa',
+      kind: 'audio',
+      sourceId: 'stock_sm1',
+      name: 'Epic.mp3',
+      durationSec: 130,
+      isReal: false,
+    });
+    expect(videoLane.classList.contains('drop-invalid')).toBe(true);
+
+    dispatchMediaDrag(videoLane, 'drop', {
+      app: 'iklippa',
+      kind: 'audio',
+      sourceId: 'stock_sm1',
+      name: 'Epic.mp3',
+      durationSec: 130,
+      isReal: false,
+    });
+    expect(addClipMock).not.toHaveBeenCalled();
   });
 });

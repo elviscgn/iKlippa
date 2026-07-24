@@ -504,14 +504,12 @@ textarea {
 .media-drag-cue {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
   flex: 0 0 auto;
   color: #7d8a9e;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
   line-height: 1;
-  text-transform: uppercase;
   transition:
     color var(--transition-fast),
     opacity var(--transition-fast);
@@ -525,7 +523,6 @@ textarea {
   top: 6px;
   left: 6px;
   z-index: 2;
-  padding: 4px 5px 4px 3px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 4px;
   background: rgba(4, 7, 10, 0.76);
