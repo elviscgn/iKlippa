@@ -952,6 +952,28 @@ textarea {
   background: #2dd4bf;
   box-shadow: 0 0 7px rgba(45, 212, 191, 0.75);
 }
+.ibm-tag[data-phase='idle'] .ibm-status-dot {
+  opacity: 0.55;
+}
+.ibm-tag[data-phase='loading'] .ibm-status-dot {
+  background: #fbbf24;
+  box-shadow: 0 0 7px rgba(251, 191, 36, 0.68);
+  animation: graniteHeaderPulse 1.2s ease-in-out infinite;
+}
+.ibm-tag[data-phase='error'] {
+  color: #fb7185;
+  border-color: rgba(244, 63, 94, 0.18);
+}
+.ibm-tag[data-phase='error'] .ibm-status-dot {
+  background: #fb7185;
+  box-shadow: 0 0 7px rgba(251, 113, 133, 0.62);
+}
+@keyframes graniteHeaderPulse {
+  50% {
+    opacity: 0.42;
+    transform: scale(0.78);
+  }
+}
 
 .ai-tabs {
   display: flex;
