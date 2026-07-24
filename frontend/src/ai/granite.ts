@@ -15,9 +15,9 @@ export interface GraniteSendOptions {
 type GranitePipeline = any;
 
 const MODEL_ID = 'onnx-community/granite-4.0-micro-ONNX-web';
-const LOCAL_MODEL_ROOT = '/models/';
-const LOCAL_WASM_ROOT = '/transformers/';
 const MAX_HISTORY_MESSAGES = 10;
+const GRANITE_CACHE_MISS_MESSAGE =
+  'Granite has not been cached in this browser yet. Open the app once while online so Transformers.js can download and cache the model, then offline chat will work.';
 
 let graniteModel: GranitePipeline | null = null;
 let graniteModelPromise: Promise<GranitePipeline> | null = null;
@@ -25,13 +25,15 @@ let graniteLoadError: Error | null = null;
 let conversationHistory: GraniteMessage[] = [];
 
 function configureOfflineRuntime() {
-  const offline = isOfflineMode();
-  env.allowLocalModels = true;
-  env.allowRemoteModels = !offline;
-  env.localModelPath = LOCAL_MODEL_ROOT;
-  const wasmBackend = env.backends.onnx.wasm;
-  if (wasmBackend) {
-    wasmBackend.wasmPaths = LOCAL_WASM_ROOT;
+  env.allowLocalModels = false;
+  // Keep remote loading enabled so Transformers.js can resolve cached
+  // browser artifacts without tripping its "both disabled" guard.
+  env.allowRemoteModels = true;
+  env.useBrowserCache = true;
+  if (isOfflineMode()) {
+    // Offline mode uses the browser cache when available. If the model
+    // has not been warmed yet, the caller will get a clearer load error
+    // than the old broken local /models/ fetch path.
   }
 }
 
@@ -143,14 +145,22 @@ function normalizeResponseText(output: unknown): string {
 function graniteLoadHint(error: unknown): Error {
   const base = error instanceof Error ? error : new Error(String(error));
   const message = base.message.toLowerCase();
+  const isHtmlParseError =
+    message.includes('unexpected token') &&
+    (message.includes('doctype') || message.includes('html') || message.includes('<'));
   if (
+    isHtmlParseError ||
+    message.includes('not valid json') ||
+    message.includes('invalid json') ||
     message.includes('could not locate file') ||
     message.includes('not found locally') ||
-    message.includes('failed to fetch')
+    message.includes('failed to fetch') ||
+    message.includes('local models are disabled') ||
+    message.includes('both local and remote models are disabled') ||
+    message.includes('local_files_only=true') ||
+    message.includes('env.allowremotemodels=false')
   ) {
-    return new Error(
-      `Granite model files were not found under ${LOCAL_MODEL_ROOT}${MODEL_ID}/onnx/. Put the local Transformers.js export there and reload.`,
-    );
+    return new Error(GRANITE_CACHE_MISS_MESSAGE);
   }
   return base;
 }
@@ -163,7 +173,6 @@ async function loadGraniteModel(): Promise<GranitePipeline> {
   graniteModelPromise = pipeline('text-generation', MODEL_ID, {
     device: chooseDevice(),
     dtype: 'q4f16',
-    local_files_only: isOfflineMode(),
     revision: 'main',
   })
     .then((pipe) => {
@@ -209,14 +218,25 @@ export async function sendGranitePrompt(
     },
   });
 
-  const output = await generator(messages, {
-    max_new_tokens: 256,
-    do_sample: false,
-    temperature: 0.2,
-    top_p: 0.9,
-    repetition_penalty: 1.05,
-    streamer,
-  });
+  let output: unknown;
+  try {
+    output = await generator(messages, {
+      max_new_tokens: 256,
+      do_sample: false,
+      temperature: 0.2,
+      top_p: 0.9,
+      repetition_penalty: 1.05,
+      streamer,
+    });
+  } catch (error) {
+    const normalizedError = graniteLoadHint(error);
+    graniteLoadError = normalizedError;
+    if (normalizedError.message === GRANITE_CACHE_MISS_MESSAGE) {
+      graniteModel = null;
+      graniteModelPromise = null;
+    }
+    throw normalizedError;
+  }
 
   const response = normalizeResponseText(output) || streamedText.trim();
   conversationHistory.push({ role: 'user', content: prompt });

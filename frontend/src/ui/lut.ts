@@ -143,5 +143,4 @@ export function reflectClipEffects(clip: any): void {
     intensitySlider.value = '100';
     if (intensityVal) intensityVal.textContent = '100%';
   }
-  showLutPanel();
 }
