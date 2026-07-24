@@ -1,4 +1,4 @@
-import { createIcons } from 'lucide';
+import { createIcons, icons } from 'lucide';
 import { S, $ } from './state';
 
 declare global {
@@ -97,8 +97,8 @@ if (typeof window !== 'undefined') {
   window.setOfflineMode = setOfflineMode;
 }
 
-export function escapeHtml(value: string): string {
-  return value
+export function escapeHtml(value: unknown): string {
+  return String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -106,8 +106,10 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-if (typeof window !== 'undefined') {
-  window.lucide = { createIcons };
+if (typeof window !== 'undefined' && !window.lucide) {
+  window.lucide = {
+    createIcons: (opts?: Record<string, unknown>) => createIcons({ icons, ...(opts ?? {}) }),
+  };
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────

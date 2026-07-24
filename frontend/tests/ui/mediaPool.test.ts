@@ -31,11 +31,14 @@ vi.mock('../../src/ui/state', () => ({
   aiNodes: [],
 }));
 
-vi.mock('../../src/ui/utils', () => ({
-  picUrl: (id: any, w: number, h: number) => `https://picsum.photos/id/${id}/${w}/${h}`,
-  showToast: vi.fn(),
-  resizeCanvas: vi.fn(),
-}));
+vi.mock('../../src/ui/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/ui/utils')>();
+  return {
+    ...actual,
+    showToast: vi.fn(),
+    resizeCanvas: vi.fn(),
+  };
+});
 
 const FIXTURE = `
   <div id="media-grid" style="display:grid;"></div>

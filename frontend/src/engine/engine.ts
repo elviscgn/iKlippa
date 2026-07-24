@@ -592,7 +592,10 @@ export async function importFile(file: File): Promise<void> {
     audioSamples: MP4Sample[];
     audioConfigVersion: number;
   }>((resolve, reject) => {
-    const mp4 = MP4Box.createFile() as unknown as MP4BoxFile;
+    const createMp4 = typeof window !== 'undefined' && window.MP4Box?.createFile
+      ? () => window.MP4Box.createFile()
+      : MP4Box.createFile;
+    const mp4 = createMp4() as unknown as MP4BoxFile;
     let trackInfo: MP4BoxVideoTrack | null = null;
     let audioTrackInfo: MP4BoxAudioTrack | null = null;
     let codecConfigResult: (VideoDecoderConfig & { description?: ArrayBuffer }) | null = null;
