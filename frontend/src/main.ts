@@ -7,6 +7,7 @@
 // Import state first (attaches to window.IKState, sets up videoClips/audioClips)
 import './state/state';
 import './ui/index';
+import { MEDIA_DRAG_MIME, parseMediaDuration } from './ui/mediaPool';
 
 import {
   initEngine,
@@ -396,15 +397,28 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
     await importFile(file);
     return;
   }
-  const textData = e.dataTransfer?.getData('text/plain');
+  const textData =
+    e.dataTransfer?.getData(MEDIA_DRAG_MIME) ||
+    e.dataTransfer?.getData('text/plain');
   if (!textData) return;
   try {
     const data = JSON.parse(textData);
-    if (data.id && data.name) {
+    if (data.kind === 'audio') {
+      window.showToast('Drop music onto an audio track', 'music');
+      return;
+    }
+    const sourceId =
+      typeof data.sourceId === 'string'
+        ? data.sourceId
+        : typeof data.id === 'string'
+          ? `stock_${data.id}`
+          : '';
+    if (sourceId && data.name) {
+      const durationSec = parseMediaDuration(data.durationSec ?? data.dur, 4);
       window.saveSnapshot();
-      window.IKState.addVideoClip('stock_' + data.id, 0, 4_000_000, {
+      window.IKState.addVideoClip(sourceId, 0, Math.round(durationSec * 1_000_000), {
         name: data.name,
-        isReal: false,
+        isReal: Boolean(data.isReal),
         picId: data.picId || 0,
       });
       window.IKState.computeDuration();

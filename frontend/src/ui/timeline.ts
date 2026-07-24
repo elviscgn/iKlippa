@@ -23,6 +23,13 @@ function setClipDimensions(el: HTMLElement, clip: any, dur: number, tw: number) 
 import { $, $$, S, us2s, aiNodes } from './state';
 import { escapeHtml, picUrl, showToast } from './utils';
 import { applyDragLogic, selectedClipIds, saveSnapshot } from './dragDrop';
+import {
+  MEDIA_DRAG_KIND_MIME,
+  MEDIA_DRAG_MIME,
+  type MediaDragKind,
+  type MediaDragPayload,
+  parseMediaDuration,
+} from './mediaPool';
 
 declare global {
   interface Window {
@@ -210,6 +217,7 @@ export function renderClips() {
     const trackEl = document.createElement('div');
     trackEl.className = `track ${track.track_type}-track`;
     trackEl.setAttribute('data-track-id', String(track.id));
+    trackEl.setAttribute('data-track-type', track.track_type);
 
     const gutter = document.createElement('div');
     gutter.className = 'track-gutter';
@@ -291,6 +299,9 @@ export function renderClips() {
 
       if (track.clips.length === 0 && track.track_type === 'video') {
         lane.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop video here</div>';
+      }
+      if (track.clips.length === 0 && track.track_type === 'audio') {
+        lane.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Drop music here</div>';
       }
       if (track.clips.length === 0 && track.track_type === 'caption') {
         lane.innerHTML = '<div class="empty-hint" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;opacity:0.6;pointer-events:none;">Click + to add a caption</div>';
@@ -518,6 +529,80 @@ export function initTimelineUI() {
   initTimelineDrop();
 }
 
+function safeGetDragData(dataTransfer: DataTransfer, type: string): string {
+  try {
+    return dataTransfer.getData(type);
+  } catch {
+    return '';
+  }
+}
+
+function parseMediaDragPayload(dataTransfer: DataTransfer | null): MediaDragPayload | null {
+  if (!dataTransfer) return null;
+  const raw =
+    safeGetDragData(dataTransfer, MEDIA_DRAG_MIME) ||
+    safeGetDragData(dataTransfer, 'text/plain');
+  if (!raw) return null;
+
+  try {
+    const data = JSON.parse(raw);
+    const kind: MediaDragKind = data.kind === 'audio' ? 'audio' : 'video';
+    const sourceId =
+      typeof data.sourceId === 'string'
+        ? data.sourceId
+        : typeof data.id === 'string'
+          ? `stock_${data.id}`
+          : '';
+    if (!sourceId || typeof data.name !== 'string') return null;
+
+    return {
+      app: 'iklippa',
+      kind,
+      sourceId,
+      name: data.name,
+      durationSec: parseMediaDuration(
+        data.durationSec ?? data.dur,
+        typeof data.end === 'number' && typeof data.start === 'number'
+          ? data.end - data.start
+          : 4,
+      ),
+      isReal: Boolean(data.isReal),
+      ...(data.picId ? { picId: Number(data.picId) } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getDraggedMediaKind(dataTransfer: DataTransfer | null): MediaDragKind | null {
+  if (!dataTransfer) return null;
+  const types = Array.from(dataTransfer.types || []);
+  if (types.includes(MEDIA_DRAG_KIND_MIME.audio)) return 'audio';
+  if (types.includes(MEDIA_DRAG_KIND_MIME.video)) return 'video';
+  return parseMediaDragPayload(dataTransfer)?.kind ?? null;
+}
+
+function getTrackType(trackEl: HTMLElement, IKState: any): string | null {
+  if (trackEl.dataset.trackType) return trackEl.dataset.trackType;
+  const trackId = Number(trackEl.dataset.trackId);
+  return IKState?.getTrackById?.(trackId)?.track_type ?? null;
+}
+
+function clearDropTargets() {
+  document
+    .querySelectorAll('.track-lane.drop-valid, .track-lane.drop-invalid')
+    .forEach((lane) => lane.classList.remove('drop-valid', 'drop-invalid'));
+}
+
+function markDropTarget(lane: Element, isValid: boolean) {
+  clearDropTargets();
+  lane.classList.add(isValid ? 'drop-valid' : 'drop-invalid');
+}
+
+function isCompatibleTrack(kind: MediaDragKind, trackType: string | null) {
+  return kind === trackType;
+}
+
 function initTimelineDrop() {
   const tlTracks = $('#tl-tracks');
   if (!tlTracks) return;
@@ -527,6 +612,17 @@ function initTimelineDrop() {
     ev.preventDefault();
     const lane = (ev.target as HTMLElement).closest('.track-lane');
     if (!lane) return;
+    const trackEl = lane.closest('[data-track-id]') as HTMLElement | null;
+    const IKState = (window as any).IKState;
+    const kind = getDraggedMediaKind(ev.dataTransfer);
+    const trackType = trackEl ? getTrackType(trackEl, IKState) : null;
+    const isValid = Boolean(kind && isCompatibleTrack(kind, trackType));
+    markDropTarget(lane, isValid);
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = isValid ? 'copy' : 'none';
+    if (!isValid) {
+      hideSnapGuide();
+      return;
+    }
     const tw = getLaneW();
     const rect = lane.getBoundingClientRect();
     const cursorPx = ev.clientX - rect.left + tlTracks.scrollLeft;
@@ -536,11 +632,18 @@ function initTimelineDrop() {
     else hideSnapGuide();
   });
 
-  tlTracks.addEventListener('dragleave', () => hideSnapGuide());
+  tlTracks.addEventListener('dragleave', (e: Event) => {
+    const ev = e as DragEvent;
+    const lane = (ev.target as HTMLElement).closest('.track-lane');
+    if (lane && ev.relatedTarget instanceof Node && lane.contains(ev.relatedTarget)) return;
+    clearDropTargets();
+    hideSnapGuide();
+  });
 
   tlTracks.addEventListener('drop', (e: Event) => {
     const ev = e as DragEvent;
     ev.preventDefault();
+    clearDropTargets();
     hideSnapGuide();
     const IKState = (window as any).IKState;
     if (!IKState) return;
@@ -550,25 +653,42 @@ function initTimelineDrop() {
     if (!trackEl) return;
     const trackId = parseInt(trackEl.dataset.trackId!);
     if (isNaN(trackId)) return;
+    const track = IKState.getTrackById?.(trackId);
+    const trackType = getTrackType(trackEl, IKState);
+    const data = parseMediaDragPayload(ev.dataTransfer);
+    if (!data) return;
+    if (!isCompatibleTrack(data.kind, trackType)) {
+      showToast(
+        data.kind === 'audio'
+          ? 'Drop music on an audio track'
+          : 'Drop video on a video track',
+        'move-down',
+      );
+      return;
+    }
+    if (track?.locked) {
+      showToast(`${track.name} is locked`, 'lock');
+      return;
+    }
     const tw = getLaneW();
     const rect = lane.getBoundingClientRect();
     const cursorPx = ev.clientX - rect.left + tlTracks.scrollLeft;
     const rawUs = Math.round((cursorPx / tw) * S.dur * 1_000_000);
     const snapped = cursorPx <= 24 ? 0 : applySnap(rawUs, null, tw);
     const startUs = Math.max(0, snapped !== null ? snapped : rawUs);
-    const data = JSON.parse(ev.dataTransfer!.getData('text/plain'));
+    const endUs = startUs + Math.round(data.durationSec * 1_000_000);
     saveSnapshot();
-    if (data.isReal && data.sourceId) {
-      const durSec = parseFloat(data.dur) || 4.0;
-      const endUs = Math.round(startUs + durSec * 1_000_000);
-      IKState.addClip(trackId, data.sourceId, startUs, endUs, { name: data.name, isReal: true }, `group_${Date.now()}`);
-      showToast('Clip added to timeline', 'film');
-    } else {
-      const endUs = startUs + 4_000_000;
-      IKState.addClip(trackId, 'stock_' + data.id, startUs, endUs, { name: data.name, isReal: false, picId: data.picId || 0 });
-      showToast('Stock Inserted', 'film');
-    }
-    reRender();
+    const clip = IKState.addClip(trackId, data.sourceId, startUs, endUs, {
+      name: data.name,
+      isReal: data.isReal,
+      picId: data.picId || 0,
+    });
+    if (!clip) return;
+    showToast(
+      `${data.kind === 'audio' ? 'Music' : 'Clip'} added to ${track?.name || trackType}`,
+      data.kind === 'audio' ? 'music' : 'film',
+    );
+    reRender(clip.id);
   });
 }
 

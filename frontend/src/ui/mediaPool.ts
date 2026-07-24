@@ -1,10 +1,128 @@
 import { $, $$, mediaPool } from './state';
 import { escapeHtml, showToast, picUrl } from './utils';
 
+export const MEDIA_DRAG_MIME = 'application/x-iklippa-media';
+export const MEDIA_DRAG_KIND_MIME = {
+  video: 'application/x-iklippa-video',
+  audio: 'application/x-iklippa-audio',
+} as const;
+
+export type MediaDragKind = keyof typeof MEDIA_DRAG_KIND_MIME;
+
+export interface MediaDragPayload {
+  app: 'iklippa';
+  kind: MediaDragKind;
+  sourceId: string;
+  name: string;
+  durationSec: number;
+  isReal: boolean;
+  picId?: number;
+}
+
 declare global {
   interface Window {
     renderMedia: (type: 'footage' | 'audio' | 'stock', subType?: 'video' | 'image' | 'music' | null) => void;
   }
+}
+
+export function parseMediaDuration(value: unknown, fallbackSec = 4): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value !== 'string') return fallbackSec;
+
+  const trimmed = value.trim();
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':').map(Number);
+    if (parts.every(Number.isFinite)) {
+      const seconds = parts.reduce((total, part) => total * 60 + part, 0);
+      if (seconds > 0) return seconds;
+    }
+  }
+
+  const seconds = parseFloat(trimmed);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : fallbackSec;
+}
+
+function createDragPayload(item: any, kind: MediaDragKind): MediaDragPayload {
+  const isReal = Boolean(item.isReal);
+  return {
+    app: 'iklippa',
+    kind,
+    sourceId: isReal ? item.id : `stock_${item.id}`,
+    name: item.name,
+    durationSec: parseMediaDuration(item.dur, 4),
+    isReal,
+    ...(item.picId ? { picId: item.picId } : {}),
+  };
+}
+
+function setDragData(event: DragEvent, payload: MediaDragPayload) {
+  if (!event.dataTransfer) return;
+  event.dataTransfer.effectAllowed = 'copy';
+  const serialized = JSON.stringify(payload);
+  event.dataTransfer.setData(MEDIA_DRAG_MIME, serialized);
+  event.dataTransfer.setData(MEDIA_DRAG_KIND_MIME[payload.kind], payload.kind);
+  event.dataTransfer.setData('text/plain', serialized);
+}
+
+function insertAtPlayhead(payload: MediaDragPayload) {
+  const IKState = (window as any).IKState;
+  const S = (window as any).S;
+  if (!IKState || !S) return;
+
+  let track =
+    payload.kind === 'audio' ? IKState.getAudioTrack?.() : IKState.getVideoTrack?.();
+  if (!track) track = IKState.addTrack?.(payload.kind);
+  if (!track) {
+    showToast(`Add an ${payload.kind} track first`, 'alert-circle');
+    return;
+  }
+
+  const playheadUs = Math.round((S.time || 0) * 1_000_000);
+  const endUs = playheadUs + Math.round(payload.durationSec * 1_000_000);
+  (window as any).saveSnapshot?.();
+  const clip = IKState.addClip(
+    track.id,
+    payload.sourceId,
+    playheadUs,
+    endUs,
+    {
+      name: payload.name,
+      isReal: payload.isReal,
+      picId: payload.picId || 0,
+    },
+  );
+  if (!clip) return;
+
+  showToast(
+    `${payload.kind === 'audio' ? 'Music' : 'Clip'} added at playhead`,
+    payload.kind === 'audio' ? 'music' : 'film',
+  );
+  window.dispatchEvent(
+    new CustomEvent('ikl:reRender', { detail: { activeClipId: clip.id } }),
+  );
+}
+
+function makeDraggable(el: HTMLElement, item: any, kind: MediaDragKind) {
+  const payload = createDragPayload(item, kind);
+  el.draggable = true;
+  el.dataset.mediaKind = kind;
+  el.title = `Drag to an ${kind} track, or double-click to add at the playhead`;
+  el.ondragstart = (event) => {
+    el.classList.add('dragging');
+    setDragData(event, payload);
+  };
+  el.ondragend = () => {
+    el.classList.remove('dragging');
+    document
+      .querySelectorAll('.track-lane.drop-valid, .track-lane.drop-invalid')
+      .forEach((lane) => lane.classList.remove('drop-valid', 'drop-invalid'));
+  };
+  el.ondblclick = () => insertAtPlayhead(payload);
+}
+
+function selectMediaItem(el: HTMLElement) {
+  $$('.media-item, .audio-item').forEach((item) => item.classList.remove('selected'));
+  el.classList.add('selected');
 }
 
 // ── Media Rendering Logic ──────────────────────────────────────────────
@@ -40,7 +158,9 @@ export async function renderMedia(
       const durStr = item.dur || '?';
       const safeName = escapeHtml(item.name);
       const safeDur = escapeHtml(durStr);
-      el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${safeName}</h4><p>${safeDur}</p></div>`;
+      el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${safeName}</h4><p>${safeDur}</p></div><span class="media-drag-cue" aria-hidden="true"><i data-lucide="grip-vertical"></i><span>Drag</span></span>`;
+      makeDraggable(el, item, 'audio');
+      el.onclick = () => selectMediaItem(el);
       list.appendChild(el);
     });
   } else {
@@ -65,52 +185,11 @@ export async function renderMedia(
       } else {
         el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${safeName}</div>`;
       }
-      el.draggable = true;
-      if (item.isReal) {
-        el.ondragstart = (e) =>
-          e.dataTransfer?.setData(
-            'text/plain',
-            JSON.stringify({
-              sourceId: item.id,
-              name: item.name,
-              isReal: true,
-              dur: item.dur,
-            })
-          );
-      } else {
-        el.ondragstart = (e) =>
-          e.dataTransfer?.setData(
-            'text/plain',
-            JSON.stringify({
-              id: 'vc_' + Date.now(),
-              name: item.name,
-              picId: item.picId || 0,
-              start: 0,
-              end: 4.0,
-            })
-          );
-      }
-
-      el.ondblclick = () => {
-        const IKState = (window as any).IKState;
-        if (!IKState) return;
-        const S = (window as any).S;
-        const playheadUs = Math.round((S.time || 0) * 1_000_000);
-        (window as any).saveSnapshot?.();
-        if (item.isReal) {
-          const durSec = parseFloat(item.dur) || 4.0;
-          const neededDurSec = (playheadUs / 1_000_000) + durSec;
-          if (neededDurSec > S.dur) S.dur = neededDurSec + 10;
-          const endUs = Math.round(playheadUs + durSec * 1_000_000);
-          IKState.addVideoClip(item.id, playheadUs, endUs, { name: item.name, isReal: true }, `group_${Date.now()}`);
-          (window as any).showToast?.('Clip added at playhead', 'film');
-        } else {
-          const endUs = playheadUs + 4_000_000;
-          IKState.addVideoClip('stock_' + Date.now(), playheadUs, endUs, { name: item.name, isReal: false, picId: item.picId || 0 });
-          (window as any).showToast?.('Stock added at playhead', 'film');
-        }
-        (window as any).reRender?.();
-      };
+      el.insertAdjacentHTML(
+        'beforeend',
+        '<span class="media-drag-cue" aria-hidden="true"><i data-lucide="grip-vertical"></i><span>Drag</span></span>',
+      );
+      makeDraggable(el, item, 'video');
 
       const delBtn = document.createElement('button');
       delBtn.className = 'media-del-btn';
@@ -123,10 +202,7 @@ export async function renderMedia(
         renderMedia(type, subType);
       };
       el.appendChild(delBtn);
-      el.onclick = () => {
-        $$('.media-item').forEach((m) => m.classList.remove('selected'));
-        el.classList.add('selected');
-      };
+      el.onclick = () => selectMediaItem(el);
       grid.appendChild(el);
     });
   }
