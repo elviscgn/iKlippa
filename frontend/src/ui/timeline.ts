@@ -1,4 +1,10 @@
-import { applySnap, showSnapGuide, hideSnapGuide, getLaneW } from './timelineUtils';
+import {
+  applySnap,
+  showSnapGuide,
+  hideSnapGuide,
+  getLaneW,
+  getTimelineLaneOffset,
+} from './timelineUtils';
 import { addCaptionAtPlayhead } from './captions';
 
 function getTrackLane(trackId: number): HTMLElement | null {
@@ -46,20 +52,11 @@ export function calculateTimelineDuration() {
 }
 window.calculateTimelineDuration = calculateTimelineDuration;
 
-let _laneRefW = 0;
 function autoFitZoom() {
   if (S.dur <= 0) return;
-  if (_laneRefW <= 1) {
-    const lane = document.querySelector('.track-lane') as HTMLElement;
-    if (!lane) return;
-    const prevW = lane.style.width;
-    lane.style.width = '';
-    _laneRefW = lane.getBoundingClientRect().width;
-    lane.style.width = prevW;
-  }
-  if (_laneRefW <= 0) return;
+  const laneRefW = getLaneW() / Math.max(S.zoom, 0.01);
   const minPxPerSec = 20;
-  S.zoom = Math.max(0.5, (minPxPerSec * S.dur) / _laneRefW);
+  S.zoom = Math.max(1, (minPxPerSec * S.dur) / laneRefW);
   const zt = $('#zoom-text');
   if (zt) zt.textContent = Math.round(S.zoom * 100) + '%';
 }
@@ -83,14 +80,24 @@ export function renderRuler() {
   else if (dur <= 120) interval = S.zoom > 1.5 ? 2 : 5;
   else interval = S.zoom > 1.5 ? 5 : 10;
 
-  for (let s = 0; s <= dur; s += interval) {
+  const subdivisions = 4;
+  const minorInterval = interval / subdivisions;
+  const tickCount = Math.floor(dur / minorInterval);
+
+  for (let index = 0; index <= tickCount; index++) {
+    const s = index * minorInterval;
+    const isMajor = index % subdivisions === 0;
     const tick = document.createElement('div');
-    tick.className = 'ruler-tick';
+    tick.className = `ruler-tick ${isMajor ? 'major' : 'minor'}`;
     tick.style.left = (s / dur) * tw + 'px';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    const label = m > 0 ? `${m}:${String(sec).padStart(2, '0')}` : `${sec}s`;
-    tick.innerHTML = `<div class="tick-line major"></div><span class="tick-label">${label}</span>`;
+    if (isMajor) {
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      const label = m > 0 ? `${m}:${String(sec).padStart(2, '0')}` : `${sec}s`;
+      tick.innerHTML = `<div class="tick-line"></div><span class="tick-label">${label}</span>`;
+    } else {
+      tick.innerHTML = '<div class="tick-line"></div>';
+    }
     r.appendChild(tick);
   }
 }
@@ -133,6 +140,42 @@ function seededBarHeight(i: number) {
   return 10 + (x % 28);
 }
 
+function formatDuration(sec: number) {
+  const safeSec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(safeSec / 3600);
+  const m = Math.floor((safeSec % 3600) / 60);
+  const s = safeSec % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function updateTimelineSummary(tracks: any[]) {
+  const summary = $('#tl-summary');
+  if (!summary) return;
+
+  const clips = tracks.flatMap((track) => track.clips ?? []);
+  const projectEndSec = clips.reduce(
+    (latest, clip) => Math.max(latest, us2s(clip.timeline_end_us)),
+    0,
+  );
+  const clipLabel = clips.length === 1 ? '1 clip' : `${clips.length} clips`;
+  summary.textContent = clips.length
+    ? `${clipLabel} · ${formatDuration(projectEndSec)}`
+    : 'No clips · 00:00';
+}
+
+function appendClipDuration(el: HTMLElement, clip: any) {
+  const width = parseFloat(el.style.width || '0');
+  if (width < 96) return;
+
+  const duration = document.createElement('span');
+  duration.className = 'tl-clip-duration';
+  duration.textContent = formatDuration(us2s(clip.timeline_end_us - clip.timeline_start_us));
+  el.appendChild(duration);
+}
+
 export function renderClips() {
   const IKState = (window as any).IKState;
   if (!IKState) return;
@@ -149,10 +192,14 @@ export function renderClips() {
   const tw = getLaneW();
   const dur = S.dur;
   if (dur <= 0) return;
+  updateTimelineSummary(tracks);
 
-  // Sort tracks: video first, then audio; within each group by order
+  // Keep the visual stack predictable regardless of when tracks were created.
+  const trackTypeOrder: Record<string, number> = { video: 0, audio: 1, caption: 2 };
   const sortedTracks = [...tracks].sort((a, b) => {
-    if (a.track_type !== b.track_type) return a.track_type === 'video' ? -1 : 1;
+    if (a.track_type !== b.track_type) {
+      return (trackTypeOrder[a.track_type] ?? 99) - (trackTypeOrder[b.track_type] ?? 99);
+    }
     return a.order - b.order;
   });
 
@@ -167,19 +214,33 @@ export function renderClips() {
     const gutter = document.createElement('div');
     gutter.className = 'track-gutter';
     const isCaption = track.track_type === 'caption';
-    const trackIcon = isCaption ? 'captions' : '';
+    const trackIcon =
+      track.track_type === 'video'
+        ? 'film'
+        : track.track_type === 'audio'
+          ? 'audio-waveform'
+          : 'captions';
+    const safeTrackName = escapeHtml(track.name);
     gutter.innerHTML = `
-      ${isCaption ? '<i data-lucide="captions" style="width:14px;height:14px;margin-right:4px;color:var(--text-muted);"></i>' : ''}
-      <div class="track-icons">
-        <i data-lucide="${isCaption ? 'plus-square' : (track.locked ? 'lock' : 'unlock')}" class="${isCaption ? 'add-caption-btn' : 'track-lock'}${track.locked && !isCaption ? ' active' : ''}" style="${isCaption ? 'cursor:pointer;' : ''}"></i>
-        <i data-lucide="${track.visible ? 'eye' : 'eye-off'}" class="track-visibility${!track.visible ? ' active' : ''}"></i>
-        ${!isCaption ? `<i data-lucide="${track.muted ? 'volume-x' : 'volume-2'}" class="track-volume-icon${track.muted ? ' active' : ''}"></i>` : ''}
+      <div class="track-meta">
+        <span class="track-type-icon"><i data-lucide="${trackIcon}"></i></span>
+        <span class="track-name">${safeTrackName}</span>
       </div>
-      <span style="font-size:9px;color:var(--text-muted);white-space:nowrap;overflow:hidden;">${escapeHtml(track.name)}</span>
+      <div class="track-icons">
+        <button class="track-action${isCaption ? '' : track.locked ? ' active' : ''}" data-track-action="${isCaption ? 'caption-add' : 'lock'}" title="${isCaption ? 'Add caption' : track.locked ? 'Unlock track' : 'Lock track'}" aria-label="${isCaption ? 'Add caption' : track.locked ? 'Unlock track' : 'Lock track'}" ${isCaption ? '' : `aria-pressed="${track.locked}"`}>
+          <i data-lucide="${isCaption ? 'plus' : track.locked ? 'lock' : 'unlock'}"></i>
+        </button>
+        <button class="track-action${!track.visible ? ' active' : ''}" data-track-action="visibility" title="${track.visible ? 'Hide track' : 'Show track'}" aria-label="${track.visible ? 'Hide track' : 'Show track'}" aria-pressed="${!track.visible}">
+          <i data-lucide="${track.visible ? 'eye' : 'eye-off'}"></i>
+        </button>
+        ${!isCaption ? `<button class="track-action${track.muted ? ' active' : ''}" data-track-action="mute" title="${track.muted ? 'Unmute track' : 'Mute track'}" aria-label="${track.muted ? 'Unmute track' : 'Mute track'}" aria-pressed="${track.muted}"><i data-lucide="${track.muted ? 'volume-x' : 'volume-2'}"></i></button>` : ''}
+      </div>
     `;
 
     const lane = document.createElement('div');
     lane.className = 'track-lane';
+    lane.style.width = `${tw}px`;
+    lane.style.flex = `0 0 ${tw}px`;
 
     // Render clips in this track
     for (const clip of track.clips) {
@@ -223,6 +284,7 @@ export function renderClips() {
         }).join('');
         el.innerHTML = `<div class="waveform"><svg viewBox="0 0 ${Math.max(1, parseFloat(el.style.width) || 100)} 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">${bars}</svg></div><span class="tl-clip-label" style="position:absolute;bottom:6px;left:8px;">${safeDisplayName}</span>`;
       }
+      appendClipDuration(el, clip);
       applyDragLogic(el, clip, track.clips, tw);
       lane.appendChild(el);
     }
@@ -243,6 +305,11 @@ export function renderClips() {
   const aiTrack = tlTracks.querySelector('.track.ai-track');
   if (aiTrack && tlTracks.firstChild !== aiTrack) {
     tlTracks.insertBefore(aiTrack, tlTracks.firstChild);
+  }
+  const aiLane = $('#lane-ai');
+  if (aiLane) {
+    aiLane.style.width = `${tw}px`;
+    aiLane.style.flex = `0 0 ${tw}px`;
   }
 
   window.lucide.createIcons({ nodes: [tlTracks] });
@@ -273,13 +340,24 @@ export function updatePlayhead() {
   const dur = S.dur;
   if (dur <= 0) return;
   const px = (S.time / dur) * tw;
-  const gutterWidth = 100;
+  const scrollLeft = $('#tl-tracks')?.scrollLeft ?? 0;
+  const timelineLeft = getTimelineLaneOffset();
   const phTracks = $('#ph-tracks');
-  if (phTracks) phTracks.style.left = gutterWidth + px + 'px';
+  if (phTracks) phTracks.style.left = timelineLeft + px - scrollLeft + 'px';
   const timecode = $('#timecode');
   if (timecode) timecode.textContent = fmtTime(S.time);
+  const playheadTime = $('#playhead-time');
+  if (playheadTime) playheadTime.textContent = fmtTime(S.time);
 }
 window.updatePlayhead = updatePlayhead;
+
+function refreshTimelineScale() {
+  const zoomText = $('#zoom-text');
+  if (zoomText) zoomText.textContent = Math.round(S.zoom * 100) + '%';
+  renderRuler();
+  renderClips();
+  updatePlayhead();
+}
 
 export function initTimelineUI() {
   const tlBody = $('#tl-body');
@@ -288,31 +366,24 @@ export function initTimelineUI() {
       if (e.ctrlKey || e.metaKey || e.shiftKey) {
         e.preventDefault();
         S.zoom = Math.max(0.5, Math.min(50, S.zoom + (e.deltaY > 0 ? -0.1 : 0.1)));
-        const zt = $('#zoom-text');
-        if (zt) zt.textContent = Math.round(S.zoom * 100) + '%';
-        renderRuler();
-        renderClips();
-        updatePlayhead();
+        refreshTimelineScale();
       }
     }, { passive: false });
   }
 
   $('#zoom-in')?.addEventListener('click', () => {
     S.zoom = Math.min(50, S.zoom + 0.25);
-    const zt = $('#zoom-text');
-    if (zt) zt.textContent = Math.round(S.zoom * 100) + '%';
-    renderRuler();
-    renderClips();
-    updatePlayhead();
+    refreshTimelineScale();
   });
 
   $('#zoom-out')?.addEventListener('click', () => {
     S.zoom = Math.max(0.5, S.zoom - 0.25);
-    const zt = $('#zoom-text');
-    if (zt) zt.textContent = Math.round(S.zoom * 100) + '%';
-    renderRuler();
-    renderClips();
-    updatePlayhead();
+    refreshTimelineScale();
+  });
+
+  $('#zoom-fit')?.addEventListener('click', () => {
+    S.zoom = 1;
+    refreshTimelineScale();
   });
 
   const tlTracks = $('#tl-tracks');
@@ -320,8 +391,18 @@ export function initTimelineUI() {
     tlTracks.addEventListener('scroll', () => {
       const rw = document.querySelector('.tl-ruler-wrapper');
       if (rw) rw.scrollLeft = tlTracks.scrollLeft;
+      updatePlayhead();
     });
   }
+
+  let resizeFrame: number | null = null;
+  window.addEventListener('resize', () => {
+    if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = null;
+      refreshTimelineScale();
+    });
+  });
 
   const handle = $('#tl-resize-handle');
   if (handle) {
@@ -361,39 +442,46 @@ export function initTimelineUI() {
     };
   });
 
-  // Track icons logic — works with dynamic tracks via data-track-id
+  // Track controls use delegation because tracks are rebuilt after every edit.
   document.addEventListener('click', (e) => {
-    const icon = (e.target as Element).closest('.track-icons svg');
-    if (!icon) return;
-    const trackEl = icon.closest('[data-track-id]') as HTMLElement;
+    const control = (e.target as Element).closest('.track-action') as HTMLButtonElement | null;
+    if (!control) return;
+    const trackEl = control.closest('[data-track-id]') as HTMLElement;
     if (!trackEl) return;
     const trackId = parseInt(trackEl.dataset.trackId!);
     if (isNaN(trackId)) return;
     const IKState = (window as any).IKState;
+    const icon = control.querySelector('svg');
+    const action = control.dataset.trackAction;
 
-    const iconType = icon.getAttribute('data-lucide');
-    if (iconType === 'lock' || iconType === 'unlock') {
-      icon.classList.toggle('active');
-      const isLocked = icon.classList.contains('active');
+    if (action === 'lock' && icon) {
+      control.classList.toggle('active');
+      const isLocked = control.classList.contains('active');
+      control.setAttribute('aria-pressed', String(isLocked));
+      control.title = isLocked ? 'Unlock track' : 'Lock track';
       icon.setAttribute('data-lucide', isLocked ? 'lock' : 'unlock');
       window.lucide.createIcons({ nodes: [icon] });
       IKState.setTrackProp(trackId, 'locked', isLocked);
       showToast(isLocked ? 'Track locked' : 'Track unlocked', isLocked ? 'lock' : 'unlock');
-    } else if (iconType === 'eye' || iconType === 'eye-off') {
-      icon.classList.toggle('active');
-      const isVisible = !icon.classList.contains('active');
+    } else if (action === 'visibility' && icon) {
+      control.classList.toggle('active');
+      const isVisible = !control.classList.contains('active');
+      control.setAttribute('aria-pressed', String(!isVisible));
+      control.title = isVisible ? 'Hide track' : 'Show track';
       icon.setAttribute('data-lucide', isVisible ? 'eye' : 'eye-off');
       window.lucide.createIcons({ nodes: [icon] });
       IKState.setTrackProp(trackId, 'visible', isVisible);
       showToast(isVisible ? 'Track visible' : 'Track hidden', isVisible ? 'eye' : 'eye-off');
-    } else if (iconType === 'volume-2' || iconType === 'volume-x') {
-      icon.classList.toggle('active');
-      const isMuted = icon.classList.contains('active');
+    } else if (action === 'mute' && icon) {
+      control.classList.toggle('active');
+      const isMuted = control.classList.contains('active');
+      control.setAttribute('aria-pressed', String(isMuted));
+      control.title = isMuted ? 'Unmute track' : 'Mute track';
       icon.setAttribute('data-lucide', isMuted ? 'volume-x' : 'volume-2');
       window.lucide.createIcons({ nodes: [icon] });
       IKState.setTrackProp(trackId, 'muted', isMuted);
       showToast(isMuted ? 'Track muted' : 'Track unmuted', isMuted ? 'volume-x' : 'volume-2');
-    } else if (iconType === 'plus-square') {
+    } else if (action === 'caption-add') {
       addCaptionAtPlayhead();
     }
   });

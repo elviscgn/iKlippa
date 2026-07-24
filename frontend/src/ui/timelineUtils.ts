@@ -1,12 +1,30 @@
 import { $, S, us2s } from './state';
 
 export function getLaneW() {
-  let lane = document.querySelector('.track-lane');
-  if (!lane || typeof (lane as any).getBoundingClientRect !== 'function') {
-    lane = $('#lane-v1');
-  }
-  if (!lane || typeof (lane as any).getBoundingClientRect !== 'function') return 100;
-  return (lane as HTMLElement).getBoundingClientRect().width * S.zoom;
+  const tracks = $('#tl-tracks');
+  if (!tracks) return 100;
+
+  const trackGutter = tracks.querySelector('.track-gutter') as HTMLElement | null;
+  const styles = window.getComputedStyle(tracks);
+  const horizontalPadding =
+    parseFloat(styles.paddingLeft || '0') + parseFloat(styles.paddingRight || '0');
+  const gutterWidth = trackGutter?.offsetWidth ?? 96;
+  const availableWidth = Math.max(240, tracks.clientWidth - horizontalPadding - gutterWidth);
+
+  return availableWidth * S.zoom;
+}
+
+export function getTimelineLaneOffset() {
+  const body = $('#tl-body');
+  const tracks = $('#tl-tracks');
+  const lane =
+    (tracks?.querySelector('.track:not(.ai-track) .track-lane') as HTMLElement | null) ??
+    ($('#lane-ai') as HTMLElement | null);
+  if (!body || !tracks || !lane) return 108;
+
+  const bodyRect = body.getBoundingClientRect();
+  const laneRect = lane.getBoundingClientRect();
+  return laneRect.left - bodyRect.left + tracks.scrollLeft;
 }
 
 function getSnapPoints(excludeClipId: string | number | null, includePlayhead: boolean) {
@@ -47,7 +65,8 @@ export function showSnapGuide(timeUs: number, tw: number) {
   const snapGuide = $('#snap-guide');
   if (!snapGuide) return;
   const px = (us2s(timeUs) / S.dur) * tw;
-  snapGuide.style.left = 100 + px + 'px';
+  const scrollLeft = $('#tl-tracks')?.scrollLeft ?? 0;
+  snapGuide.style.left = getTimelineLaneOffset() + px - scrollLeft + 'px';
   snapGuide.classList.add('active');
 }
 

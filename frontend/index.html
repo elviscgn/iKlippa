@@ -658,32 +658,42 @@
         <div class="panel-timeline">
           <div class="tl-toolbar">
             <div class="tl-toolbar-left">
-              <span class="tl-section-label">TIMELINE</span>
+              <div class="tl-heading">
+                <span class="tl-heading-icon"><i data-lucide="panel-bottom"></i></span>
+                <div>
+                  <span class="tl-section-label">Timeline</span>
+                  <span class="tl-summary" id="tl-summary">No clips · 00:00</span>
+                </div>
+              </div>
               <div class="tl-tools" id="tl-tools">
-              <button class="tl-tool active" data-tool="select">
-                <i data-lucide="mouse-pointer-2"></i> Select
-              </button>
-              <div
-                style="
-                  width: 1px;
-                  height: 16px;
-                  background: var(--border-subtle);
-                  margin: 0 4px;
-                "
-              ></div>
-              <button class="tl-tool" data-tool="split">
-                <i data-lucide="scissors"></i> Split
-              </button>
+                <button class="tl-tool active" data-tool="select" title="Select clips (V)">
+                  <i data-lucide="mouse-pointer-2"></i>
+                  <span>Select</span>
+                </button>
+                <button class="tl-tool" data-tool="split" title="Split a clip (B)">
+                  <i data-lucide="scissors"></i>
+                  <span>Split</span>
+                </button>
+              </div>
             </div>
-            </div>
-            <div class="tl-zoom-controls">
-              <button class="tl-zoom-btn" id="add-video-track" title="Add Video Track"><i data-lucide="plus"></i> Vid</button>
-              <button class="tl-zoom-btn" id="add-audio-track" title="Add Audio Track"><i data-lucide="plus"></i> Aud</button>
-              <button class="tl-zoom-btn" id="add-caption-track" title="Add Caption Track"><i data-lucide="plus"></i> Cap</button>
-              <span style="width:8px;"></span>
-              <button class="tl-zoom-btn" id="zoom-out" title="Zoom out"><i data-lucide="minus"></i></button>
+            <div class="tl-toolbar-right">
+              <div class="tl-add-controls" aria-label="Add timeline track">
+                <button class="tl-zoom-btn" id="add-video-track" title="Add video track">
+                  <i data-lucide="film"></i><span class="tl-button-label">Video</span>
+                </button>
+                <button class="tl-zoom-btn" id="add-audio-track" title="Add audio track">
+                  <i data-lucide="audio-waveform"></i><span class="tl-button-label">Audio</span>
+                </button>
+                <button class="tl-zoom-btn" id="add-caption-track" title="Add caption track">
+                  <i data-lucide="captions"></i><span class="tl-button-label">Caption</span>
+                </button>
+              </div>
+              <div class="tl-zoom-controls" aria-label="Timeline zoom">
+                <button class="tl-zoom-btn" id="zoom-out" title="Zoom out"><i data-lucide="minus"></i></button>
+                <button class="tl-zoom-btn tl-fit-btn" id="zoom-fit" title="Fit timeline">Fit</button>
               <span class="tl-zoom-text" id="zoom-text">100%</span>
-              <button class="tl-zoom-btn" id="zoom-in" title="Zoom in"><i data-lucide="plus"></i></button>
+                <button class="tl-zoom-btn" id="zoom-in" title="Zoom in"><i data-lucide="plus"></i></button>
+              </div>
             </div>
           </div>
           <div class="tl-resize-handle" id="tl-resize-handle"></div>
@@ -705,6 +715,7 @@
             </div>
             <div class="playhead" id="ph-tracks" style="left: 100px">
               <div class="playhead-knob"></div>
+              <span class="playhead-time" id="playhead-time">00:00:00</span>
             </div>
             <div class="snap-guide" id="snap-guide"></div>
           </div>
