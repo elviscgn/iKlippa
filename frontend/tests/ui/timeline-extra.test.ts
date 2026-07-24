@@ -24,11 +24,14 @@ vi.mock('../../src/ui/state', () => ({
   get aiNodes() { return mockAiNodes; },
 }));
 
-vi.mock('../../src/ui/utils', () => ({
-  picUrl: (id: any, w: number, h: number) => `https://picsum.photos/id/${id}/${w}/${h}`,
-  showToast: vi.fn(),
-  resizeCanvas: vi.fn(),
-}));
+vi.mock('../../src/ui/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/ui/utils')>();
+  return {
+    ...actual,
+    showToast: vi.fn(),
+    resizeCanvas: vi.fn(),
+  };
+});
 
 vi.mock('../../src/ui/dragDrop', () => ({
   applyDragLogic: vi.fn(),

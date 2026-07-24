@@ -1,5 +1,5 @@
 import { $, $$, mediaPool } from './state';
-import { showToast, picUrl } from './utils';
+import { escapeHtml, showToast, picUrl } from './utils';
 
 declare global {
   interface Window {
@@ -38,7 +38,9 @@ export async function renderMedia(
       const el = document.createElement('div');
       el.className = 'audio-item';
       const durStr = item.dur || '?';
-      el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${item.name}</h4><p>${durStr}</p></div>`;
+      const safeName = escapeHtml(item.name);
+      const safeDur = escapeHtml(durStr);
+      el.innerHTML = `<div class="audio-icon"><i data-lucide="music"></i></div><div class="audio-info"><h4>${safeName}</h4><p>${safeDur}</p></div>`;
       list.appendChild(el);
     });
   } else {
@@ -53,14 +55,15 @@ export async function renderMedia(
     data.forEach((item) => {
       const el = document.createElement('div');
       el.className = 'media-item';
+      const safeName = escapeHtml(item.name);
       if (item.isReal) {
         if (item.thumbDataUrl) {
-          el.innerHTML = `<img src="${item.thumbDataUrl}" style="width:100%;height:100%;object-fit:cover;" draggable="false"><div class="media-label">${item.name}</div>`;
+          el.innerHTML = `<img src="${item.thumbDataUrl}" style="width:100%;height:100%;object-fit:cover;" draggable="false"><div class="media-label">${safeName}</div>`;
         } else {
-          el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:32px;height:32px;color:var(--accent-primary);"></i></div><div class="media-label">${item.name}</div>`;
+          el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(13,148,136,0.15),rgba(13,148,136,0.05));"><i data-lucide="film" style="width:32px;height:32px;color:var(--accent-primary);"></i></div><div class="media-label">${safeName}</div>`;
         }
       } else {
-        el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${item.name}</div>`;
+        el.innerHTML = `<img src="${picUrl(item.picId, 320, 200)}" crossorigin="anonymous"><div class="media-label">${safeName}</div>`;
       }
       el.draggable = true;
       if (item.isReal) {

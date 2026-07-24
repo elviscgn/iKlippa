@@ -5,13 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>iKlippa Studio — Professional NLE</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <!-- CSS is imported by main.ts via Vite, but keep this for dev fallback -->
     <link rel="stylesheet" href="styles.css" />
 <<<<<<< HEAD
@@ -66,6 +59,16 @@
           <span class="status-badge"
             ><i data-lucide="cloud-lightning"></i> All changes saved</span
           >
+          <button
+            class="mode-toggle"
+            id="mode-toggle"
+            onclick="toggleOfflineMode()"
+            title="Toggle offline mode"
+            aria-pressed="false"
+          >
+            <i data-lucide="cloud" id="mode-icon"></i>
+            <span id="mode-label">Online</span>
+          </button>
           <button class="nav-btn" onclick="saveProject()" title="Save Project (.iklippa)">
             <i data-lucide="save"></i>
           </button>
@@ -265,12 +268,12 @@
                       type="text"
                       class="fcb-input"
                       id="ai-cmd"
-                      placeholder="Ask Granite or type / for commands..."
+                      placeholder="Quick command or ask Granite..."
                       autocomplete="off"
                     />
                     <div class="ac-menu" id="ac-menu"></div>
                   </div>
-                  <button class="fcb-send" onclick="submitCmd()">
+                  <button class="fcb-send" id="ai-cmd-send" onclick="submitCmd()">
                     <i data-lucide="arrow-up"></i>
                   </button>
                   <div class="fcb-divider"></div>
@@ -366,40 +369,47 @@
               </div>
             </div>
             <div class="copilot-header">
-              <i data-lucide="bot" style="color: var(--accent-primary)"></i> AI
-              Director
-              <span class="ibm-tag"
-                >Granite
-                <span
-                  style="
-                    width: 4px;
-                    height: 4px;
-                    background: var(--accent-primary);
-                    border-radius: 50%;
-                    display: inline-block;
-                    box-shadow: 0 0 6px var(--accent-primary);
-                  "
-                ></span
-              ></span>
+              <span class="copilot-mark"><i data-lucide="bot"></i></span>
+              <div class="copilot-heading">
+                <span class="copilot-title">AI Director</span>
+                <span class="copilot-subtitle">Understands your current edit</span>
+              </div>
+              <span class="ibm-tag" id="granite-header-status" data-phase="idle">
+                <span class="ibm-status-dot"></span>
+                <span id="granite-header-label">Granite</span>
+              </span>
             </div>
-            <div class="ai-tabs">
-              <div class="ai-tab active" data-target="tab-chat">Chat</div>
-              <div class="ai-tab" data-target="tab-script">Script</div>
-              <div class="ai-tab" data-target="tab-brand">Brand</div>
+            <div class="ai-tabs" role="tablist" aria-label="AI Director views">
+              <button class="ai-tab active" data-target="tab-chat" role="tab" aria-selected="true">
+                <i data-lucide="message-square"></i><span>Chat</span>
+              </button>
+              <button class="ai-tab" data-target="tab-script" role="tab" aria-selected="false">
+                <i data-lucide="scroll-text"></i><span>Script</span>
+              </button>
+              <button class="ai-tab" data-target="tab-brand" role="tab" aria-selected="false">
+                <i data-lucide="swatch-book"></i><span>Brand</span>
+              </button>
             </div>
             <div class="copilot-body" id="copilot-body">
               <div id="tab-chat">
                 <div class="insight-box" id="insight-box">
-                  <i
-                    data-lucide="x"
+                  <button
+                    type="button"
                     class="insight-close"
+                    title="Hide cut score"
+                    aria-label="Hide cut score"
                     onclick="
                       document.getElementById('insight-box').style.display =
                         'none'
                     "
-                  ></i>
+                  >
+                    <i data-lucide="x"></i>
+                  </button>
                   <div class="insight-top">
-                    <span class="insight-title">Script & Pacing Score</span>
+                    <span class="insight-label">
+                      <i data-lucide="activity"></i>
+                      <span class="insight-title">Cut score</span>
+                    </span>
                     <span class="insight-score" id="insight-score">76</span>
                   </div>
                   <div class="insight-bar-bg">
@@ -411,20 +421,27 @@
                   </div>
                 </div>
 
+                <div class="chat-log" id="chat-log">
+                  <div class="chat-msg ai intro">
+                    <span class="chat-intro-mark"><i data-lucide="sparkles"></i></span>
+                    <div class="chat-intro-title">Your edit, in context.</div>
+                    <div class="chat-body">Ask about pacing, clips, captions, or your next cut.</div>
+                    <div class="chat-starters">
+                      <button type="button" data-granite-prompt="Review the pacing of my current cut.">
+                        Review pacing
+                      </button>
+                      <button type="button" data-granite-prompt="What should I improve in this edit?">
+                        Suggest improvements
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <div class="ai-actions-wrap">
-                  <span
-                    style="
-                      font-size: 10px;
-                      font-weight: 800;
-                      color: var(--text-muted);
-                      text-transform: uppercase;
-                      letter-spacing: 0.5px;
-                      margin-bottom: 2px;
-                      display: block;
-                      padding-left: 4px;
-                    "
-                    >Suggested Actions</span
-                  >
+                  <div class="ai-actions-heading">
+                    <span>Quick edits</span>
+                    <span>Run locally</span>
+                  </div>
                   <div class="ai-actions-scroll">
                     <button
                       class="ai-action"
@@ -434,7 +451,7 @@
                         <i data-lucide="scissors"></i>
                       </div>
                       <div class="ai-action-text">
-                        <h4>Smart Trim Silences</h4>
+                        <h4>Trim</h4>
                         <p>Remove dead air</p>
                       </div>
                     </button>
@@ -449,7 +466,7 @@
                         <i data-lucide="music"></i>
                       </div>
                       <div class="ai-action-text">
-                        <h4>Afro-Beat Sync</h4>
+                        <h4>Beat sync</h4>
                         <p>Snap cuts to Amapiano drops</p>
                       </div>
                     </button>
@@ -467,39 +484,13 @@
                         <i data-lucide="captions"></i>
                       </div>
                       <div class="ai-action-text">
-                        <h4>Generate Captions</h4>
+                        <h4>Captions</h4>
                         <p>Create synced subtitles</p>
                       </div>
                     </button>
                   </div>
                 </div>
 
-                <div class="chat-log" id="chat-log">
-                  <div class="chat-msg ai">
-                    <div class="msg-sender">
-                      <i data-lucide="bot"></i> Granite
-                    </div>
-                    I've analyzed your timeline. The pacing looks okay, but
-                    there are some silent gaps. Want me to tighten the cut?
-                    <div class="chat-btns">
-                      <button
-                        class="chat-btn"
-                        onclick="
-                          applyAiAction('silence');
-                          this.parentElement.remove();
-                        "
-                      >
-                        Yes, trim silences
-                      </button>
-                      <button
-                        class="chat-btn secondary"
-                        onclick="this.parentElement.remove()"
-                      >
-                        No thanks
-                      </button>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <div id="tab-script">
@@ -561,6 +552,33 @@
                     value="Vibrant City Studio"
                   />
                 </div>
+              </div>
+            </div>
+
+            <div class="chat-composer" id="chat-composer">
+              <div class="chat-composer-row">
+                <i data-lucide="sparkles" class="chat-composer-icon"></i>
+                <input
+                  type="text"
+                  class="chat-composer-input"
+                  id="chat-mini-cmd"
+                  placeholder="Ask about this edit..."
+                  autocomplete="off"
+                  aria-label="Ask Granite about the current edit"
+                />
+                <button
+                  class="chat-composer-send"
+                  id="chat-mini-send"
+                  type="button"
+                  title="Send to Granite"
+                  aria-label="Send to Granite"
+                >
+                  <i data-lucide="arrow-up"></i>
+                </button>
+              </div>
+              <div class="chat-composer-meta">
+                <span><i data-lucide="cpu"></i> On-device Granite</span>
+                <span>Enter to send</span>
               </div>
             </div>
 
@@ -652,32 +670,42 @@
         <div class="panel-timeline">
           <div class="tl-toolbar">
             <div class="tl-toolbar-left">
-              <span class="tl-section-label">TIMELINE</span>
+              <div class="tl-heading">
+                <span class="tl-heading-icon"><i data-lucide="panel-bottom"></i></span>
+                <div>
+                  <span class="tl-section-label">Timeline</span>
+                  <span class="tl-summary" id="tl-summary">No clips · 00:00</span>
+                </div>
+              </div>
               <div class="tl-tools" id="tl-tools">
-              <button class="tl-tool active" data-tool="select">
-                <i data-lucide="mouse-pointer-2"></i> Select
-              </button>
-              <div
-                style="
-                  width: 1px;
-                  height: 16px;
-                  background: var(--border-subtle);
-                  margin: 0 4px;
-                "
-              ></div>
-              <button class="tl-tool" data-tool="split">
-                <i data-lucide="scissors"></i> Split
-              </button>
+                <button class="tl-tool active" data-tool="select" title="Select clips (V)">
+                  <i data-lucide="mouse-pointer-2"></i>
+                  <span>Select</span>
+                </button>
+                <button class="tl-tool" data-tool="split" title="Split a clip (B)">
+                  <i data-lucide="scissors"></i>
+                  <span>Split</span>
+                </button>
+              </div>
             </div>
-            </div>
-            <div class="tl-zoom-controls">
-              <button class="tl-zoom-btn" id="add-video-track" title="Add Video Track"><i data-lucide="plus"></i> Vid</button>
-              <button class="tl-zoom-btn" id="add-audio-track" title="Add Audio Track"><i data-lucide="plus"></i> Aud</button>
-              <button class="tl-zoom-btn" id="add-caption-track" title="Add Caption Track"><i data-lucide="plus"></i> Cap</button>
-              <span style="width:8px;"></span>
-              <button class="tl-zoom-btn" id="zoom-out" title="Zoom out"><i data-lucide="minus"></i></button>
+            <div class="tl-toolbar-right">
+              <div class="tl-add-controls" aria-label="Add timeline track">
+                <button class="tl-zoom-btn" id="add-video-track" title="Add video track">
+                  <i data-lucide="film"></i><span class="tl-button-label">Video</span>
+                </button>
+                <button class="tl-zoom-btn" id="add-audio-track" title="Add audio track">
+                  <i data-lucide="audio-waveform"></i><span class="tl-button-label">Audio</span>
+                </button>
+                <button class="tl-zoom-btn" id="add-caption-track" title="Add caption track">
+                  <i data-lucide="captions"></i><span class="tl-button-label">Caption</span>
+                </button>
+              </div>
+              <div class="tl-zoom-controls" aria-label="Timeline zoom">
+                <button class="tl-zoom-btn" id="zoom-out" title="Zoom out"><i data-lucide="minus"></i></button>
+                <button class="tl-zoom-btn tl-fit-btn" id="zoom-fit" title="Fit timeline">Fit</button>
               <span class="tl-zoom-text" id="zoom-text">100%</span>
-              <button class="tl-zoom-btn" id="zoom-in" title="Zoom in"><i data-lucide="plus"></i></button>
+                <button class="tl-zoom-btn" id="zoom-in" title="Zoom in"><i data-lucide="plus"></i></button>
+              </div>
             </div>
           </div>
           <div class="tl-resize-handle" id="tl-resize-handle"></div>
@@ -699,6 +727,7 @@
             </div>
             <div class="playhead" id="ph-tracks" style="left: 100px">
               <div class="playhead-knob"></div>
+              <span class="playhead-time" id="playhead-time">00:00:00</span>
             </div>
             <div class="snap-guide" id="snap-guide"></div>
           </div>

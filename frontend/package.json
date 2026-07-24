@@ -20,6 +20,9 @@
     "vitest": "^3.2.1"
   },
   "dependencies": {
-    "mp4-muxer": "^4.3.3"
+    "@huggingface/transformers": "^3.8.1",
+    "lucide": "^1.27.0",
+    "mp4-muxer": "^4.3.3",
+    "mp4box": "^2.4.1"
   }
 }

@@ -19,11 +19,14 @@ vi.mock('../../src/ui/state', () => ({
   aiNodes: [],
 }));
 
-vi.mock('../../src/ui/utils', () => ({
-  showToast: vi.fn(),
-  resizeCanvas: vi.fn(),
-  picUrl: vi.fn(),
-}));
+vi.mock('../../src/ui/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/ui/utils')>();
+  return {
+    ...actual,
+    showToast: vi.fn(),
+    resizeCanvas: vi.fn(),
+  };
+});
 
 vi.mock('../../src/ui/timeline', () => ({
   calculateTimelineDuration: vi.fn().mockReturnValue(10),

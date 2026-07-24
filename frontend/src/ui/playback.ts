@@ -1,6 +1,6 @@
 import { $, S, us2s } from './state';
 import { updatePlayhead } from './timeline';
-import { getLaneW } from './timelineUtils';
+import { getLaneW, getTimelineLaneOffset } from './timelineUtils';
 
 declare global {
   interface Window {
@@ -53,7 +53,7 @@ window.skipTime = skipTime;
 function handleTimelineScrub(e: MouseEvent, el: HTMLElement) {
   const rect = el.getBoundingClientRect();
   const isRuler = el.id === 'tl-ruler';
-  const headOffset = isRuler ? 0 : 100;
+  const headOffset = isRuler ? 0 : getTimelineLaneOffset();
   let x = e.clientX - rect.left;
   if (el.id === 'tl-tracks') {
     x += el.scrollLeft;
@@ -102,10 +102,12 @@ export function initPlayback() {
       if (dur <= 0 || tw <= 0 || !tracks) return;
       const onMove = (e2: MouseEvent) => {
         const rect = tracks.getBoundingClientRect();
-        const x = Math.max(0, e2.clientX - rect.left + tracks.scrollLeft - 100);
+        const timelineLeft = getTimelineLaneOffset();
+        const x = Math.max(0, e2.clientX - rect.left + tracks.scrollLeft - timelineLeft);
         const t = Math.max(0, Math.min((x / tw) * dur, dur));
         S.time = t;
-        $('#ph-tracks')!.style.left = 100 + (t / dur) * tw + 'px';
+        $('#ph-tracks')!.style.left =
+          timelineLeft + (t / dur) * tw - tracks.scrollLeft + 'px';
         if (window.onPlayheadScrub) window.onPlayheadScrub(t);
       };
       const onUp = () => {

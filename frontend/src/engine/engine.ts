@@ -5,7 +5,6 @@
 
 import { PerformanceMonitor } from './perf';
 import { errorBus, emitLocal, makeEngineError, wasReported } from './errors';
-import { loadScript } from '../utils/dom';
 import { getPorts } from '../adapters';
 import type { EnginePorts, AudioContextPort } from '../adapters';
 import type {
@@ -19,6 +18,7 @@ import type { ClipWithMeta } from '../state/types';
 
 import { currentTier, getTierConfig } from './tier';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+import * as MP4Box from 'mp4box';
 
 const DECODE_LOOKAHEAD = 12;
 
@@ -582,15 +582,6 @@ export async function importFile(file: File): Promise<void> {
   isPlaying = false;
   lastRafTs = null;
 
-  if (!window.MP4Box) {
-    try {
-      await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
-    } catch (e) {
-      emitLocal('DEMUX_FAILED', e, { fatal: true });
-      throw e;
-    }
-  }
-
   const payload = await new Promise<{
     codecConfig: VideoDecoderConfig & { description?: ArrayBuffer };
     width: number;
@@ -601,7 +592,10 @@ export async function importFile(file: File): Promise<void> {
     audioSamples: MP4Sample[];
     audioConfigVersion: number;
   }>((resolve, reject) => {
-    const mp4 = (window as unknown as { MP4Box: { createFile: () => MP4BoxFile } }).MP4Box.createFile();
+    const createMp4 = typeof window !== 'undefined' && window.MP4Box?.createFile
+      ? () => window.MP4Box.createFile()
+      : MP4Box.createFile;
+    const mp4 = createMp4() as unknown as MP4BoxFile;
     let trackInfo: MP4BoxVideoTrack | null = null;
     let audioTrackInfo: MP4BoxAudioTrack | null = null;
     let codecConfigResult: (VideoDecoderConfig & { description?: ArrayBuffer }) | null = null;
@@ -708,11 +702,7 @@ function getDecoderDescription(
   for (const entry of trak.mdia.minf.stbl.stsd.entries) {
     const box = entry.avcC ?? entry.hvcC ?? entry.vpcC ?? entry.av1C;
     if (box) {
-      const ds = new (window as unknown as { DataStream: new (buffer?: ArrayBuffer, offset?: number, endian?: number) => { buffer: ArrayBuffer } }).DataStream(
-        undefined,
-        0,
-        0, // BIG_ENDIAN
-      );
+      const ds = new MP4Box.DataStream(undefined, 0, MP4Box.Endianness.BIG_ENDIAN);
       (box as { write: (ds: unknown) => void }).write(ds);
       return ds.buffer.slice(8);
     }

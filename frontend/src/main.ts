@@ -39,10 +39,18 @@ const scoreValue = document.getElementById('score-value') as HTMLElement;
 
 let hasRealVideo = false;
 
+function setStatusBadge(icon: string, message: string): void {
+  if (!statusBadge) return;
+  const safeIcon = /^[a-z0-9-]+$/i.test(icon) ? icon : 'zap';
+  const iconEl = document.createElement('i');
+  iconEl.dataset.lucide = safeIcon;
+  statusBadge.replaceChildren(iconEl, document.createTextNode(' ' + message));
+  window.lucide?.createIcons({ nodes: [statusBadge] });
+}
+
 // ── Engine Status to UI ─────────────────────────────────────────────────
 window.onEngineStatus = (msg: string): void => {
-  statusBadge.innerHTML = `<i data-lucide="zap"></i> ${msg}`;
-  window.lucide.createIcons({ nodes: [statusBadge] });
+  setStatusBadge('zap', msg);
   window.showToast(msg, 'zap');
 };
 
@@ -57,8 +65,7 @@ window.onEngineError = (e: EngineError): void => {
     'alert-triangle',
   );
   if (e.fatal) {
-    statusBadge.innerHTML = `<i data-lucide="alert-triangle"></i> ${friendly}`;
-    window.lucide.createIcons({ nodes: [statusBadge] });
+    setStatusBadge('alert-triangle', friendly);
   }
 };
 
@@ -270,8 +277,7 @@ window.handleExport = async function (): Promise<void> {
   });
 
   if (modal) modal.style.display = 'none';
-  statusBadge.innerHTML = '<i data-lucide="check-circle"></i> Export complete';
-  window.lucide.createIcons({ nodes: [statusBadge] });
+  setStatusBadge('check-circle', 'Export complete');
 };
 
 // ── Per-clip color grading ─────────────────────────────────────────────
@@ -436,7 +442,7 @@ window.saveProject = function (): void {
   a.click();
   URL.revokeObjectURL(url);
   window.showToast('Project saved', 'save');
-  statusBadge.innerHTML = '<i data-lucide="check-circle"></i> Saved to disk';
+  setStatusBadge('check-circle', 'Saved to disk');
 };
 
 window.openProject = function (): void {
@@ -457,7 +463,7 @@ window.openProject = function (): void {
       window.renderClips();
       window.updatePlayhead();
       window.showToast('Project loaded', 'folder-open');
-      statusBadge.innerHTML = '<i data-lucide="check-circle"></i> Project loaded';
+      setStatusBadge('check-circle', 'Project loaded');
       autoSave();
     } catch (e) {
       console.error('[iKlippa] Failed to load project:', e);
@@ -522,8 +528,7 @@ window.addEventListener('ikl:reRender', () => {
 initEngine(canvasEl)
   .then(async () => {
     console.log('[iKlippa] Engine ready. Drop a video file to begin.');
-    statusBadge.innerHTML = '<i data-lucide="cloud-lightning"></i> Engine ready';
-    window.lucide.createIcons({ nodes: [statusBadge] });
+    setStatusBadge('cloud-lightning', 'Engine ready');
 
     // Render restored project UI (no sync — wait for import to remap + sync)
     if (_restoredFromStorage) {
@@ -551,6 +556,5 @@ initEngine(canvasEl)
   })
   .catch((error: Error) => {
     console.error('[iKlippa] WASM load failed:', error);
-    statusBadge.innerHTML = '<i data-lucide="alert-triangle"></i> WASM load failed';
-    window.lucide.createIcons({ nodes: [statusBadge] });
+    setStatusBadge('alert-triangle', 'WASM load failed');
   });

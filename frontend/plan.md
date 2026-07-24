@@ -25,7 +25,7 @@
 
 ## 2. Phase 1 gaps (what's still missing)
 
-1. **No Phase 1 QA pass on reference hardware.**
+None. All Phase 1 tasks are complete. See `qa-report.md` for test results and known issues.
 
 ## 3. Architecture decisions
 
@@ -146,4 +146,4 @@ Update this section as tasks complete. Mark `[x]` when a task's acceptance crite
 - [x] Task 7 — Web Audio mixer
 - [x] Task 8 — Export: audio + watermark + resolution gating
 - [x] Task 9 — Undo/redo command stack
-- [ ] Task 10 — Phase 1 QA pass
+- [x] Task 10 — Phase 1 QA pass (see `qa-report.md`)
