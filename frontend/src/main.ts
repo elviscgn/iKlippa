@@ -84,12 +84,12 @@ window.onPlayheadUpdate = (ms: number): void => {
 // ── Thumbnail updates: debounced re-render ──────────────────────────────
 let thumbnailRenderDebounce: ReturnType<typeof setTimeout> | null = null;
 // fallow-ignore-next-line complexity
-window.onThumbnailsUpdated = (thumbnails): void => {
+window.onThumbnailsUpdated = (sourceId, thumbnails): void => {
   if (!hasRealVideo) return;
   // Don't re-render DOM during playback — it causes flicker
   const allClips = window.IKState.getAllVideoClips ? window.IKState.getAllVideoClips() : window.IKState.getVideoClips();
   for (const clip of allClips) {
-    if (clip.isReal) {
+    if (clip.isReal && clip.source_id === sourceId) {
       window.IKState.setClipMeta(clip.id, { thumbnails });
     }
   }
@@ -167,19 +167,24 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
   syncTimelineToRust();
 
   // fallow-ignore-next-line complexity
-  setPendingThumbCapture((frameMs: number) => {
+  setPendingThumbCapture(sourceId, (frameMs: number, frameSourceId: string) => {
     try {
-      const thumb = captureThumbnailFromBuffer(frameMs);
+      const thumb = captureThumbnailFromBuffer(frameMs, frameSourceId);
       if (thumb && thumb.length > 500) {
-        const entry = window.mediaPool.footage.find((f) => f.id === sourceId);
+        const entry = window.mediaPool.footage.find((f) => f.id === frameSourceId);
         if (entry) {
           entry.thumbDataUrl = thumb;
-          window.renderMedia('footage');
-          console.log(`[iKlippa:app] thumbnail captured from frame ${frameMs}ms ✓`);
+          const activeTab = document.querySelector('.media-tab.active') as HTMLElement | null;
+          if (!activeTab || activeTab.dataset.tab === 'footage') {
+            window.renderMedia('footage');
+          }
+          console.log(
+            `[iKlippa:app] thumbnail captured [${frameSourceId}] from frame ${frameMs}ms ✓`,
+          );
         } else {
           console.warn(
             '[iKlippa:app] ⚠ thumbnail ready but media pool entry not found for',
-            sourceId,
+            frameSourceId,
           );
         }
       } else {

@@ -334,6 +334,18 @@ export async function renderMedia(
     const subtabs = $('#stock-subtabs');
     if (subtabs) subtabs.style.display = 'flex';
     data = mediaPool.stock[subType || 'video'];
+    if (isOfflineMode()) {
+      const isMusic = subType === 'music';
+      grid.style.display = isMusic ? 'none' : 'grid';
+      list.style.display = isMusic ? 'flex' : 'none';
+      renderMediaState(
+        isMusic ? list : grid,
+        'cloud-off',
+        'Stock library is online',
+        'Switch to Online mode to search Pexels and Jamendo.',
+      );
+      return;
+    }
   }
 
   const query = type === 'stock'

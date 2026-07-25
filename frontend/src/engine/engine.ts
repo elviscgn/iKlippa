@@ -118,6 +118,7 @@ let rafHandle: number | null = null;
 
 let pendingFrames = new Map<number, ImageData>();
 let pendingFramesBySource = new Map<string, Map<number, ImageData>>();
+let sourceDimensions = new Map<string, { width: number; height: number }>();
 let sourceVideoWidth = 0;
 let sourceVideoHeight = 0;
 let videoDurationMs = 0;
@@ -208,7 +209,11 @@ function isContinuousClipTransition(previousId: number | null, nextId: number | 
 // ── Thumbnail Capture State ─────────────────────────────────────────────
 let currentFileName = '';
 let timelineThumbnails: Array<{ ms: number; dataUrl: string }> = [];
-let lastThumbnailCaptureMs = -Infinity;
+let timelineThumbnailsBySource = new Map<
+  string,
+  Array<{ ms: number; dataUrl: string }>
+>();
+let lastThumbnailCaptureBySource = new Map<string, number>();
 const THUMBNAIL_CAPTURE_INTERVAL = 800;
 const MAX_TIMELINE_THUMBNAILS = 60;
 
@@ -223,8 +228,11 @@ let seekGeneration = 0;
 // real decode work by seconds. Only post when something material changed.
 let lastSyncSig = '';
 
-// ── Pending thumbnail capture callback ──────────────────────────────────
-let _pendingThumbCapture: ((frameMs: number) => void) | null = null;
+// ── Pending thumbnail capture callbacks ─────────────────────────────────
+let _pendingThumbCaptures = new Map<
+  string,
+  (frameMs: number, sourceId: string) => void
+>();
 
 // ── Reusable offscreen canvases for multi-track compositing ─────────────
 let _compositeCanvas: HTMLCanvasElement | null = null;
@@ -257,13 +265,24 @@ if (typeof window !== 'undefined') {
 function maybeCaptureThumbnail(ms: number): void {
   if (!canvas || canvas.width === 0 || canvas.height === 0) return;
   if (videoDurationMs === 0) return;
-  if (ms - lastThumbnailCaptureMs < THUMBNAIL_CAPTURE_INTERVAL) return;
-  if (timelineThumbnails.length >= MAX_TIMELINE_THUMBNAILS) return;
+  const mapped = mapTimelineToSource(ms);
+  if (!mapped) return;
+  const lastCaptureMs = lastThumbnailCaptureBySource.get(mapped.sourceId) ?? -Infinity;
+  if (mapped.sourceMs - lastCaptureMs < THUMBNAIL_CAPTURE_INTERVAL) return;
+  let sourceThumbnails = timelineThumbnailsBySource.get(mapped.sourceId);
+  if (!sourceThumbnails) {
+    sourceThumbnails = [];
+    timelineThumbnailsBySource.set(mapped.sourceId, sourceThumbnails);
+  }
+  if (sourceThumbnails.length >= MAX_TIMELINE_THUMBNAILS) return;
   try {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.35);
-    timelineThumbnails.push({ ms, dataUrl });
-    lastThumbnailCaptureMs = ms;
-    if (window.onThumbnailsUpdated) window.onThumbnailsUpdated(timelineThumbnails);
+    sourceThumbnails.push({ ms: mapped.sourceMs, dataUrl });
+    timelineThumbnails = sourceThumbnails;
+    lastThumbnailCaptureBySource.set(mapped.sourceId, mapped.sourceMs);
+    if (window.onThumbnailsUpdated) {
+      window.onThumbnailsUpdated(mapped.sourceId, sourceThumbnails);
+    }
   } catch (e) {
     warn('thumb', 'canvas.toDataURL failed (tainted?)', (e as Error).message);
   }
@@ -279,31 +298,37 @@ function captureThumbnail(): string | null {
 }
 
 // fallow-ignore-next-line complexity
-export function captureThumbnailFromBuffer(ms: number): string | null {
+export function captureThumbnailFromBuffer(ms: number, sourceId?: string): string | null {
   if (!canvas || !ctx) {
     warn('thumb', 'captureThumbnailFromBuffer: canvas/ctx not ready');
     return null;
   }
-  if (pendingFrames.size === 0) return null;
+  const frames = sourceId
+    ? pendingFramesBySource.get(sourceId)
+    : pendingFrames;
+  if (!frames || frames.size === 0) return null;
 
   let bestMs = -1;
-  for (const [frameMs] of pendingFrames) {
+  for (const [frameMs] of frames) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
   }
   if (bestMs < 0) {
-    for (const [frameMs] of pendingFrames) {
+    for (const [frameMs] of frames) {
       if (bestMs < 0 || frameMs < bestMs) bestMs = frameMs;
     }
   }
   if (bestMs < 0) return null;
 
-  const imageData = pendingFrames.get(bestMs);
+  const imageData = frames.get(bestMs);
   if (!imageData) return null;
 
   ctx.putImageData(imageData, 0, 0);
   try {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-    log('thumb', `captured from pendingFrames[${bestMs}ms] → ${dataUrl.length} bytes`);
+    log(
+      'thumb',
+      `captured ${sourceId ? `[${sourceId}] ` : ''}at ${bestMs}ms → ${dataUrl.length} bytes`,
+    );
     return dataUrl;
   } catch (e) {
     err('thumb', 'toDataURL failed', (e as Error).message);
@@ -319,8 +344,17 @@ function getCurrentFileName(): string {
   return currentFileName;
 }
 
-export function setPendingThumbCapture(cb: (frameMs: number) => void): void {
-  _pendingThumbCapture = cb;
+export function setPendingThumbCapture(
+  sourceId: string,
+  cb: (frameMs: number, sourceId: string) => void,
+): void {
+  const existingFrames = pendingFramesBySource.get(sourceId);
+  if (existingFrames && existingFrames.size > 0) {
+    const firstFrameMs = Math.min(...existingFrames.keys());
+    cb(firstFrameMs, sourceId);
+    return;
+  }
+  _pendingThumbCaptures.set(sourceId, cb);
 }
 
 // ── Init & Worker Bridge ────────────────────────────────────────────────
@@ -372,6 +406,7 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
   videoDurationMs = msg.durationMs;
   sourceVideoWidth = msg.width;
   sourceVideoHeight = msg.height;
+  sourceDimensions.set(msg.sourceId, { width: msg.width, height: msg.height });
   if (canvas) {
     canvas.width = sourceVideoWidth;
     canvas.height = sourceVideoHeight;
@@ -402,7 +437,11 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
   }
   perf.recordFrameArrival(msg.ms, msg.gradeMs);
   const arr = new Uint8ClampedArray(msg.buffer);
-  const img = new ImageData(arr, sourceVideoWidth, sourceVideoHeight);
+  const dimensions = sourceDimensions.get(msg.sourceId) ?? {
+    width: sourceVideoWidth,
+    height: sourceVideoHeight,
+  };
+  const img = new ImageData(arr, dimensions.width, dimensions.height);
 
   // Store in both caches for backward compat during transition
   pendingFrames.set(msg.ms, img);
@@ -422,11 +461,11 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
     exportFrames.push({ ms: msg.ms, imageData: img });
 
   // Fire pending thumbnail capture
-  if (_pendingThumbCapture) {
-    const cb = _pendingThumbCapture;
-    _pendingThumbCapture = null;
+  const pendingCapture = _pendingThumbCaptures.get(msg.sourceId);
+  if (pendingCapture) {
+    _pendingThumbCaptures.delete(msg.sourceId);
     try {
-      cb(msg.ms);
+      pendingCapture(msg.ms, msg.sourceId);
     } catch (e) {
       err('thumb', 'pendingThumbCapture callback threw', (e as Error).message);
     }
@@ -681,10 +720,8 @@ export async function importFile(
   logStatus(`Importing: ${file.name}`);
   currentFileName = file.name;
   timelineThumbnails = [];
-  lastThumbnailCaptureMs = -Infinity;
   seekTargetMs = -1;
   if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
-  _pendingThumbCapture = null;
   _loggedOnce.clear();
 
   initAudio();
@@ -806,6 +843,9 @@ export async function importFile(
   });
 
   const sourceId = preferredSourceId || 'imported_' + Date.now();
+  sourceDimensions.set(sourceId, { width: payload.width, height: payload.height });
+  timelineThumbnailsBySource.set(sourceId, []);
+  lastThumbnailCaptureBySource.delete(sourceId);
   worker!.postMessage({ type: 'load', file, fileName: file.name, sourceId, ...payload });
   return {
     sourceId,

@@ -128,7 +128,7 @@ declare global {
     onEngineStatus?: (msg: string) => void;
     onEngineError?: (e: EngineError) => void;
     onPlayheadUpdate?: (ms: number) => void;
-    onThumbnailsUpdated?: (thumbnails: ThumbnailEntry[]) => void;
+    onThumbnailsUpdated?: (sourceId: string, thumbnails: ThumbnailEntry[]) => void;
     onClipImported?: (data: ClipImportedData) => void;
     onTrimApplied?: (data: { durationMs: number }) => void;
     onSplitResult?: (data: {
