@@ -17,6 +17,12 @@ interface MediaItem {
   dur?: string;
   isReal?: boolean;
   thumbDataUrl?: string | null;
+  thumbnailUrl?: string | null;
+  remoteUrl?: string;
+  provider?: string;
+  creator?: string | null;
+  pageUrl?: string | null;
+  mimeType?: string;
   width?: number;
   height?: number;
 }
@@ -25,18 +31,9 @@ export const mediaPool = {
   footage: [] as MediaItem[],
   audio: [] as MediaItem[],
   stock: {
-    video: [
-      { id: 'sv1', name: 'Neon_Drive.mp4', picId: 83 },
-      { id: 'sv2', name: 'Drone_City.mp4', picId: 103 },
-    ] as MediaItem[],
-    image: [
-      { id: 'si1', name: 'Abstract_Texture.jpg', picId: 122 },
-      { id: 'si2', name: 'Modern_Architecture.jpg', picId: 155 },
-    ] as MediaItem[],
-    music: [
-      { id: 'sm1', name: 'Epic_Cinematic.mp3', dur: '2:10' },
-      { id: 'sm2', name: 'Corporate_Rhythm.wav', dur: '1:45' },
-    ] as MediaItem[],
+    video: [] as MediaItem[],
+    image: [] as MediaItem[],
+    music: [] as MediaItem[],
   },
 };
 

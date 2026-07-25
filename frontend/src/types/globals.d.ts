@@ -84,6 +84,12 @@ interface MediaPoolItem {
   isReal?: boolean;
   dur?: string;
   thumbDataUrl?: string | null;
+  thumbnailUrl?: string | null;
+  remoteUrl?: string;
+  provider?: string;
+  creator?: string | null;
+  pageUrl?: string | null;
+  mimeType?: string;
   width?: number;
   height?: number;
   picId?: number;
