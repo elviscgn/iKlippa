@@ -5,7 +5,7 @@ import {
   searchStockMusic,
   searchStockVideos,
 } from '../api/stock';
-import { importFile } from '../engine/engine';
+import { importFile, registerExternalAudio } from '../engine/engine';
 
 export const MEDIA_DRAG_MIME = 'application/x-iklippa-media';
 export const MEDIA_DRAG_KIND_MIME = {
@@ -86,9 +86,6 @@ export async function materializeMediaPayload(
   payload: MediaDragPayload,
 ): Promise<MediaDragPayload> {
   if (payload.isReal || !payload.remoteUrl) return payload;
-  if (payload.kind === 'audio') {
-    throw new Error('Jamendo audio import is not available yet.');
-  }
 
   const cached = materializedMedia.get(payload.remoteUrl);
   if (cached) return cached;
@@ -98,12 +95,14 @@ export async function materializeMediaPayload(
     const file = await downloadStockFile(
       payload.remoteUrl!,
       downloadName(payload),
-      payload.mimeType || 'video/mp4',
+      payload.mimeType || (payload.kind === 'audio' ? 'audio/mpeg' : 'video/mp4'),
     );
-    const imported = await importFile(file, payload.sourceId);
+    const imported = payload.kind === 'audio'
+      ? await registerExternalAudio(file, payload.sourceId)
+      : await importFile(file, payload.sourceId);
     const IKState = (window as any).IKState;
     if (IKState && !IKState.isReady?.()) {
-      IKState.init(imported.width, imported.height);
+      IKState.init(imported.width || 1920, imported.height || 1080);
     }
     return {
       ...payload,
