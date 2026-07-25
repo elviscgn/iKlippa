@@ -789,6 +789,9 @@ async function seekAndDecodeFrame(sourceId: string, targetMs: number) {
       i = batchEnd;
     }
 
+    // H.264 decoders may retain the first keyframe until another chunk arrives.
+    // Flush so load/seek always delivers a paintable frame before reporting ready.
+    await state.decoder.flush();
     state.decoderSeeded = true;
   } finally {
     state.isSeeking = false;

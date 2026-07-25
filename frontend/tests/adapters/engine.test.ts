@@ -42,6 +42,7 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
     __TEST_HOOKS__.canvas = mockCanvas;
     __TEST_HOOKS__.ctx = mockCtx;
     __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.pendingFramesBySource = new Map();
   });
 
   it('returns null if canvas or ctx is missing', () => {
@@ -81,6 +82,22 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
     const result = captureThumbnailFromBuffer(100);
     expect(result).toBe('data:image/jpeg;base64,mockdata');
     expect(mockCtx.putImageData).toHaveBeenCalledWith({ id: '120' }, 0, 0);
+  });
+
+  it('captures only from the requested source frame cache', () => {
+    __TEST_HOOKS__.pendingFramesBySource.set(
+      'test-video',
+      new Map([[100, { id: 'test-frame' } as any as ImageData]]),
+    );
+    __TEST_HOOKS__.pendingFramesBySource.set(
+      'nature-video',
+      new Map([[100, { id: 'nature-frame' } as any as ImageData]]),
+    );
+
+    const result = captureThumbnailFromBuffer(100, 'nature-video');
+
+    expect(result).toBe('data:image/jpeg;base64,mockdata');
+    expect(mockCtx.putImageData).toHaveBeenCalledWith({ id: 'nature-frame' }, 0, 0);
   });
 
   it('returns null if pendingFrames.get magically returns undefined', () => {

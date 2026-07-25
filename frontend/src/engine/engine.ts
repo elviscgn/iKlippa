@@ -434,11 +434,10 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
 }
 
 function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }>): void {
-  // During export, accept all frames — seekGeneration races ahead.
-  if (!isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration) {
-    log('paint', `dropping stale frame from seek ${msg.seekId} (current: ${seekGeneration})`);
-    return;
-  }
+  // A superseded seek frame is stale for playback, but it is still a valid
+  // frame from its source and can safely seed that source's thumbnail.
+  const isStaleSeekFrame =
+    !isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration;
   perf.recordFrameArrival(msg.ms, msg.gradeMs);
   const arr = new Uint8ClampedArray(msg.buffer);
   const dimensions = sourceDimensions.get(msg.sourceId) ?? {
@@ -447,8 +446,6 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
   };
   const img = new ImageData(arr, dimensions.width, dimensions.height);
 
-  // Store in both caches for backward compat during transition
-  pendingFrames.set(msg.ms, img);
   let sourceFrames = pendingFramesBySource.get(msg.sourceId);
   if (!sourceFrames) {
     sourceFrames = new Map();
@@ -474,6 +471,14 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
       err('thumb', 'pendingThumbCapture callback threw', (e as Error).message);
     }
   }
+
+  if (isStaleSeekFrame) {
+    log('paint', `ignoring stale playback frame from seek ${msg.seekId} (current: ${seekGeneration})`);
+    return;
+  }
+
+  // Keep the legacy active-source cache limited to current playback frames.
+  pendingFrames.set(msg.ms, img);
 
   if (seekTargetMs >= 0 && msg.ms >= seekTargetMs - 33) {
     log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);

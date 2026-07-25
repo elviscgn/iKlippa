@@ -408,4 +408,31 @@ describe('setPendingThumbCapture integration (Tier 2)', () => {
     expect(firstSource).not.toHaveBeenCalled();
     expect(secondSource).toHaveBeenCalledWith(100, 'source-b');
   });
+
+  it('keeps a superseded seek frame available for its source thumbnail', async () => {
+    const cb = vi.fn();
+    const worker = __TEST_HOOKS__.worker as any;
+    setPendingThumbCapture('source-a', cb);
+
+    await seekTo(1000);
+    const seekMessage = worker.postMessage.mock.calls
+      .map((call: any[]) => call[0])
+      .find((message: any) => message?.type === 'seek');
+
+    handleWorkerMessage({
+      data: {
+        type: 'frame',
+        ms: 0,
+        gradeMs: 0,
+        buffer: new ArrayBuffer(100),
+        sourceId: 'source-a',
+        seekId: seekMessage.seekId - 1,
+      },
+    } as MessageEvent);
+
+    expect(cb).toHaveBeenCalledWith(0, 'source-a');
+    expect(__TEST_HOOKS__.pendingFramesBySource.get('source-a')?.has(0)).toBe(true);
+    expect(__TEST_HOOKS__.pendingFrames.has(0)).toBe(false);
+    __TEST_HOOKS__.seekTargetMs = -1;
+  });
 });
