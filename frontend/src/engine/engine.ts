@@ -132,6 +132,8 @@ let pendingResumeAfterSeek = false;
 let audioCtx: AudioContextPort | null = null;
 let pendingAudio = new Map<number, AudioBuffer>();
 let scheduledAudioNodes: AudioBufferSourceNode[] = [];
+let scheduledExternalAudioNodes: AudioBufferSourceNode[] = [];
+let externalAudioBuffers = new Map<string, AudioBuffer>();
 let nextAudioStartTime = 0;
 let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
@@ -573,6 +575,93 @@ function stopAllAudioNodes(): void {
     }
   });
   scheduledAudioNodes = [];
+  scheduledExternalAudioNodes.forEach((n) => {
+    try {
+      n.stop();
+    } catch {
+      // already stopped
+    }
+  });
+  scheduledExternalAudioNodes = [];
+}
+
+function stopWorkerAudioNodes(): void {
+  scheduledAudioNodes.forEach((n) => {
+    try {
+      n.stop();
+    } catch {
+      // already stopped
+    }
+  });
+  scheduledAudioNodes = [];
+}
+
+function scheduleExternalAudioClips(timelineMs: number): void {
+  if (!audioCtx || !masterCompressor) return;
+  const IKState = (window as any).IKState;
+  if (!IKState?.isReady?.()) return;
+
+  const tracks = IKState.getTracks?.() || [];
+  for (const track of tracks) {
+    if (track.track_type !== 'audio') continue;
+    for (const clip of track.clips) {
+      const buffer = externalAudioBuffers.get(clip.source_id);
+      if (!buffer) continue;
+
+      const clipStartMs = clip.timeline_start_us / 1000;
+      const clipEndMs = clip.timeline_end_us / 1000;
+      if (timelineMs >= clipEndMs) continue;
+
+      const playbackStartMs = Math.max(timelineMs, clipStartMs);
+      const speed = Math.max(0.01, Number(clip.speed) || 1);
+      const sourceOffsetSec =
+        clip.source_start_us / 1_000_000 +
+        ((playbackStartMs - clipStartMs) / 1000) * speed;
+      const sourceDurationSec = ((clipEndMs - playbackStartMs) / 1000) * speed;
+      const playableDurationSec = Math.min(
+        sourceDurationSec,
+        buffer.duration - sourceOffsetSec,
+      );
+      if (playableDurationSec <= AUDIO_END_EPSILON_SEC) continue;
+
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      if (source.playbackRate) source.playbackRate.value = speed;
+      try {
+        source.connect(getTrackGainPan(track.id).gain);
+      } catch {
+        source.connect(masterCompressor);
+      }
+      source.onended = () => {
+        const index = scheduledExternalAudioNodes.indexOf(source);
+        if (index >= 0) scheduledExternalAudioNodes.splice(index, 1);
+      };
+      const delaySec = Math.max(0, clipStartMs - timelineMs) / 1000;
+      source.start(
+        audioCtx.currentTime + AUDIO_SCHEDULE_LEAD_SEC + delaySec,
+        sourceOffsetSec,
+        playableDurationSec,
+      );
+      scheduledExternalAudioNodes.push(source);
+    }
+  }
+}
+
+export async function registerExternalAudio(
+  file: File,
+  preferredSourceId?: string,
+): Promise<ImportedMediaSource> {
+  await initAudio();
+  const sourceId = preferredSourceId || 'audio_' + Date.now();
+  const buffer = await audioCtx!.decodeAudioData(await file.arrayBuffer());
+  externalAudioBuffers.set(sourceId, buffer);
+  return {
+    sourceId,
+    fileName: file.name,
+    durationMs: Math.round(buffer.duration * 1000),
+    width: 0,
+    height: 0,
+  };
 }
 
 // ── Demux ─────────────────────────────────────────────────────────────
@@ -801,7 +890,7 @@ export function renderLoop(ts: number): void {
     const isContinuous = isContinuousClipTransition(currentActiveClipId, newClipId);
     currentActiveClipId = newClipId;
     if (!isContinuous) {
-      stopAllAudioNodes();
+      stopWorkerAudioNodes();
       pendingAudio.clear();
       nextAudioStartTime = 0;
       lastScheduledChunkMs = -1;
@@ -817,7 +906,7 @@ export function renderLoop(ts: number): void {
   }
 
   if (activeNow.length === 0 && scheduledAudioNodes.length > 0) {
-    stopAllAudioNodes();
+    stopWorkerAudioNodes();
     nextAudioStartTime = 0;
   }
 
@@ -876,6 +965,7 @@ export function renderLoop(ts: number): void {
           scheduleAudioNode(chunkMs, buf);
         }
       }
+      scheduleExternalAudioClips(playheadMs);
       if (window.onBuffering) window.onBuffering(false);
     }
   }
@@ -1090,6 +1180,12 @@ export const __TEST_HOOKS__ = {
   set sourceVideoHeight(val: number) { sourceVideoHeight = val; },
   get scheduledAudioNodes() { return scheduledAudioNodes; },
   set scheduledAudioNodes(val: AudioBufferSourceNode[]) { scheduledAudioNodes = val; },
+  get scheduledExternalAudioNodes() { return scheduledExternalAudioNodes; },
+  set scheduledExternalAudioNodes(val: AudioBufferSourceNode[]) {
+    scheduledExternalAudioNodes = val;
+  },
+  get externalAudioBuffers() { return externalAudioBuffers; },
+  set externalAudioBuffers(val: Map<string, AudioBuffer>) { externalAudioBuffers = val; },
   get nextAudioStartTime() { return nextAudioStartTime; },
   set nextAudioStartTime(val: number) { nextAudioStartTime = val; },
   get audioPlayStartCtxTime() { return audioPlayStartCtxTime; },
@@ -1198,6 +1294,7 @@ async function startPlayback(opts?: { fromSeek?: boolean }): Promise<void> {
     const mapRes = mapTimelineToSource(playheadMs);
     worker?.postMessage({ type: 'resync_audio', ms: mapRes ? mapRes.sourceMs : playheadMs, sourceId: mapRes?.sourceId });
   }
+  scheduleExternalAudioClips(playheadMs);
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }

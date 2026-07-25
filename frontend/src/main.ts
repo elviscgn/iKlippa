@@ -148,7 +148,10 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
     width,
     height,
   });
-  window.renderMedia('footage');
+  const activeMediaTab = document.querySelector('.media-tab.active') as HTMLElement | null;
+  if (!activeMediaTab || activeMediaTab.dataset.tab === 'footage') {
+    window.renderMedia('footage');
+  }
   window.calculateTimelineDuration();
   window.renderRuler();
   window.renderClips();
