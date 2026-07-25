@@ -426,6 +426,47 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.media-label small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 7px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.media-empty-state {
+  grid-column: 1 / -1;
+  min-height: 148px;
+  padding: 24px 14px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  text-align: center;
+}
+.media-empty-state svg {
+  width: 22px;
+  height: 22px;
+  color: var(--accent-primary);
+}
+.media-empty-state strong {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.media-empty-state span {
+  max-width: 210px;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.media-empty-state [data-lucide="loader-circle"] {
+  animation: spin 0.9s linear infinite;
+}
 .media-del-btn {
   position: absolute;
   top: 4px;

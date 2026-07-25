@@ -7,7 +7,11 @@
 // Import state first (attaches to window.IKState, sets up videoClips/audioClips)
 import './state/state';
 import './ui/index';
-import { MEDIA_DRAG_MIME, parseMediaDuration } from './ui/mediaPool';
+import {
+  MEDIA_DRAG_MIME,
+  materializeMediaPayload,
+  parseMediaDuration,
+} from './ui/mediaPool';
 
 import {
   initEngine,
@@ -418,12 +422,31 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
           : '';
     if (sourceId && data.name) {
       const durationSec = parseMediaDuration(data.durationSec ?? data.dur, 4);
-      window.saveSnapshot();
-      window.IKState.addVideoClip(sourceId, 0, Math.round(durationSec * 1_000_000), {
+      const materialized = await materializeMediaPayload({
+        app: 'iklippa',
+        kind: 'video',
+        sourceId,
         name: data.name,
+        durationSec,
         isReal: Boolean(data.isReal),
-        picId: data.picId || 0,
+        ...(data.picId ? { picId: Number(data.picId) } : {}),
+        ...(typeof data.remoteUrl === 'string' ? { remoteUrl: data.remoteUrl } : {}),
+        ...(typeof data.thumbnailUrl === 'string' ? { thumbnailUrl: data.thumbnailUrl } : {}),
+        ...(typeof data.provider === 'string' ? { provider: data.provider } : {}),
+        ...(typeof data.creator === 'string' ? { creator: data.creator } : {}),
+        ...(typeof data.mimeType === 'string' ? { mimeType: data.mimeType } : {}),
       });
+      window.saveSnapshot();
+      window.IKState.addVideoClip(
+        materialized.sourceId,
+        0,
+        Math.round(materialized.durationSec * 1_000_000),
+        {
+          name: materialized.name,
+          isReal: materialized.isReal,
+          picId: materialized.picId || 0,
+        },
+      );
       window.IKState.computeDuration();
       window.calculateTimelineDuration();
       window.renderRuler();
@@ -431,8 +454,10 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
       window.updatePlayhead();
       window.showToast('Stock added via canvas', 'film');
     }
-  } catch {
-    // ignore invalid JSON
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      window.showToast((error as Error).message || 'Could not add stock media', 'alert-triangle');
+    }
   }
 });
 

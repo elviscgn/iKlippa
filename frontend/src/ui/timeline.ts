@@ -28,6 +28,7 @@ import {
   MEDIA_DRAG_MIME,
   type MediaDragKind,
   type MediaDragPayload,
+  materializeMediaPayload,
   parseMediaDuration,
 } from './mediaPool';
 
@@ -568,6 +569,11 @@ function parseMediaDragPayload(dataTransfer: DataTransfer | null): MediaDragPayl
       ),
       isReal: Boolean(data.isReal),
       ...(data.picId ? { picId: Number(data.picId) } : {}),
+      ...(typeof data.remoteUrl === 'string' ? { remoteUrl: data.remoteUrl } : {}),
+      ...(typeof data.thumbnailUrl === 'string' ? { thumbnailUrl: data.thumbnailUrl } : {}),
+      ...(typeof data.provider === 'string' ? { provider: data.provider } : {}),
+      ...(typeof data.creator === 'string' ? { creator: data.creator } : {}),
+      ...(typeof data.mimeType === 'string' ? { mimeType: data.mimeType } : {}),
     };
   } catch {
     return null;
@@ -640,7 +646,7 @@ function initTimelineDrop() {
     hideSnapGuide();
   });
 
-  tlTracks.addEventListener('drop', (e: Event) => {
+  tlTracks.addEventListener('drop', async (e: Event) => {
     const ev = e as DragEvent;
     ev.preventDefault();
     clearDropTargets();
@@ -655,11 +661,11 @@ function initTimelineDrop() {
     if (isNaN(trackId)) return;
     const track = IKState.getTrackById?.(trackId);
     const trackType = getTrackType(trackEl, IKState);
-    const data = parseMediaDragPayload(ev.dataTransfer);
-    if (!data) return;
-    if (!isCompatibleTrack(data.kind, trackType)) {
+    const dragData = parseMediaDragPayload(ev.dataTransfer);
+    if (!dragData) return;
+    if (!isCompatibleTrack(dragData.kind, trackType)) {
       showToast(
-        data.kind === 'audio'
+        dragData.kind === 'audio'
           ? 'Drop music on an audio track'
           : 'Drop video on a video track',
         'move-down',
@@ -668,6 +674,13 @@ function initTimelineDrop() {
     }
     if (track?.locked) {
       showToast(`${track.name} is locked`, 'lock');
+      return;
+    }
+    let data: MediaDragPayload;
+    try {
+      data = await materializeMediaPayload(dragData);
+    } catch (error) {
+      showToast((error as Error).message || 'Could not download stock media', 'alert-triangle');
       return;
     }
     const tw = getLaneW();
