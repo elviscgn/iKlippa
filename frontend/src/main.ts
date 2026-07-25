@@ -152,7 +152,10 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
 
   // If the project was restored (clips have stale source_ids from a previous
   // session), remap them to the newly imported source.
-  remapStaleSources(sourceId);
+  if (_restoredFromStorage) {
+    remapStaleSources(sourceId);
+    _restoredFromStorage = false;
+  }
 
   syncTimelineToRust();
 

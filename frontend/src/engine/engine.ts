@@ -576,7 +576,18 @@ function stopAllAudioNodes(): void {
 }
 
 // ── Demux ─────────────────────────────────────────────────────────────
-export async function importFile(file: File): Promise<void> {
+export interface ImportedMediaSource {
+  sourceId: string;
+  fileName: string;
+  durationMs: number;
+  width: number;
+  height: number;
+}
+
+export async function importFile(
+  file: File,
+  preferredSourceId?: string,
+): Promise<ImportedMediaSource> {
   log('import', `importFile: "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
   logStatus(`Importing: ${file.name}`);
   currentFileName = file.name;
@@ -705,8 +716,15 @@ export async function importFile(file: File): Promise<void> {
     throw e;
   });
 
-  const sourceId = 'imported_' + Date.now();
+  const sourceId = preferredSourceId || 'imported_' + Date.now();
   worker!.postMessage({ type: 'load', file, fileName: file.name, sourceId, ...payload });
+  return {
+    sourceId,
+    fileName: file.name,
+    durationMs: payload.durationMs,
+    width: payload.width,
+    height: payload.height,
+  };
 }
 
 function getDecoderDescription(
