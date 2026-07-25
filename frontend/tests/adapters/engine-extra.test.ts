@@ -355,6 +355,7 @@ describe('setPendingThumbCapture integration (Tier 2)', () => {
     __TEST_HOOKS__.canvas = { width: 100, height: 100, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
     __TEST_HOOKS__.ctx = { putImageData: vi.fn(), fillRect: vi.fn() } as any;
     __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.pendingFramesBySource = new Map();
     __TEST_HOOKS__.videoDurationMs = 5000;
     __TEST_HOOKS__.sourceVideoWidth = 100;
     __TEST_HOOKS__.sourceVideoHeight = 100;
@@ -368,28 +369,43 @@ describe('setPendingThumbCapture integration (Tier 2)', () => {
 
   it('fires the pending thumbnail capture callback when a frame arrives', () => {
     const cb = vi.fn();
-    setPendingThumbCapture(cb);
+    setPendingThumbCapture('source-a', cb);
 
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
-      data: { type: 'frame', ms: 500, gradeMs: 0, buffer: buf },
+      data: { type: 'frame', ms: 500, gradeMs: 0, buffer: buf, sourceId: 'source-a' },
     } as MessageEvent);
 
-    expect(cb).toHaveBeenCalledWith(500);
+    expect(cb).toHaveBeenCalledWith(500, 'source-a');
   });
 
   it('callback is cleared after being called once', () => {
     const cb = vi.fn();
-    setPendingThumbCapture(cb);
+    setPendingThumbCapture('source-a', cb);
 
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
-      data: { type: 'frame', ms: 500, gradeMs: 0, buffer: buf },
+      data: { type: 'frame', ms: 500, gradeMs: 0, buffer: buf, sourceId: 'source-a' },
     } as MessageEvent);
     handleWorkerMessage({
-      data: { type: 'frame', ms: 600, gradeMs: 0, buffer: buf },
+      data: { type: 'frame', ms: 600, gradeMs: 0, buffer: buf, sourceId: 'source-a' },
     } as MessageEvent);
 
     expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let one source consume another source thumbnail callback', () => {
+    const firstSource = vi.fn();
+    const secondSource = vi.fn();
+    setPendingThumbCapture('source-a', firstSource);
+    setPendingThumbCapture('source-b', secondSource);
+
+    const buf = new ArrayBuffer(100);
+    handleWorkerMessage({
+      data: { type: 'frame', ms: 100, gradeMs: 0, buffer: buf, sourceId: 'source-b' },
+    } as MessageEvent);
+
+    expect(firstSource).not.toHaveBeenCalled();
+    expect(secondSource).toHaveBeenCalledWith(100, 'source-b');
   });
 });

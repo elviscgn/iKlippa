@@ -360,8 +360,8 @@ describe('setColorGrade (Tier 2 - adapter ports)', () => {
 describe('setPendingThumbCapture (Tier 2 - adapter ports)', () => {
   it('sets a pending thumbnail capture callback', () => {
     const cb = vi.fn();
-    setPendingThumbCapture(cb);
-    expect(() => setPendingThumbCapture(vi.fn())).not.toThrow();
+    setPendingThumbCapture('source-a', cb);
+    expect(() => setPendingThumbCapture('source-b', vi.fn())).not.toThrow();
   });
 });
 
@@ -1148,25 +1148,25 @@ describe('handleWorkerFrame with pending thumb capture (Tier 2)', () => {
 
   it('fires pending thumbnail capture callback on frame arrival', () => {
     const cb = vi.fn();
-    setPendingThumbCapture(cb);
+    setPendingThumbCapture('source-a', cb);
 
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
-      data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf },
+      data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf, sourceId: 'source-a' },
     } as MessageEvent);
 
-    expect(cb).toHaveBeenCalledWith(500);
+    expect(cb).toHaveBeenCalledWith(500, 'source-a');
   });
 
   it('handles callback throwing without crashing', () => {
-    setPendingThumbCapture(() => {
+    setPendingThumbCapture('source-a', () => {
       throw new Error('thumb error');
     });
 
     const buf = new ArrayBuffer(100);
     expect(() => {
       handleWorkerMessage({
-        data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf },
+        data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf, sourceId: 'source-a' },
       } as MessageEvent);
     }).not.toThrow();
   });

@@ -351,7 +351,11 @@ export function setPendingThumbCapture(
   const existingFrames = pendingFramesBySource.get(sourceId);
   if (existingFrames && existingFrames.size > 0) {
     const firstFrameMs = Math.min(...existingFrames.keys());
-    cb(firstFrameMs, sourceId);
+    try {
+      cb(firstFrameMs, sourceId);
+    } catch (error) {
+      err('thumb', 'pendingThumbCapture callback threw', (error as Error).message);
+    }
     return;
   }
   _pendingThumbCaptures.set(sourceId, cb);
