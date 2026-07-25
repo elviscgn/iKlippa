@@ -3,7 +3,9 @@ import os
 import re
 import numpy as np
 import xgboost as xgb
-from fastapi import FastAPI
+import requests
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 import uvicorn
 from dotenv import load_dotenv
@@ -77,6 +79,45 @@ def predict_virality(features: dict) -> float | None:
             row[i] = features.get(name, 0.0)
     log_views = float(virality_model.predict(row.reshape(1, -1))[0])
     return round(float(np.expm1(log_views)), 0)
+
+
+def provider_error(provider: str, error: Exception) -> HTTPException:
+    if isinstance(error, ValueError):
+        return HTTPException(status_code=503, detail=str(error))
+    if isinstance(error, requests.RequestException):
+        return HTTPException(
+            status_code=502,
+            detail=f"{provider} could not be reached. Please try again.",
+        )
+    return HTTPException(status_code=500, detail=f"{provider} search failed.")
+
+
+@app.get("/stock/videos")
+async def stock_videos(
+    q: str = Query("cinematic", min_length=2, max_length=80),
+    orientation: str = Query("landscape", pattern="^(landscape|portrait|square)$"),
+):
+    try:
+        items = await run_in_threadpool(
+            search_stock_videos,
+            q.strip(),
+            3,
+            orientation,
+            8,
+        )
+        return {"items": items}
+    except Exception as error:
+        raise provider_error("Pexels", error) from error
+
+
+@app.get("/stock/music")
+async def stock_music(q: str = Query("cinematic", min_length=2, max_length=80)):
+    try:
+        items = await run_in_threadpool(search_background_music, q.strip(), 8)
+        return {"items": items}
+    except Exception as error:
+        raise provider_error("Jamendo", error) from error
+
 
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_script(req: ScriptRequest):
