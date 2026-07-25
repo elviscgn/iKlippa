@@ -32,6 +32,11 @@ def search_background_music(tags, limit=8):
     )
     response.raise_for_status()
     data = response.json()
+    response_headers = data.get("headers") or {}
+    if response_headers.get("status") == "failed":
+        raise ValueError(
+            "JAMENDO_CLIENT_ID was rejected by Jamendo. Check that the client ID is authorized."
+        )
 
     tracks = []
     for track in data.get("results", []):

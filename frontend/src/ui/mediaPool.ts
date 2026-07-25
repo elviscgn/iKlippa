@@ -238,7 +238,7 @@ function renderMediaState(
 }
 
 async function runStockSearch(subType: StockSubType, rawQuery: string): Promise<void> {
-  const query = rawQuery.trim() || 'cinematic';
+  const query = rawQuery.trim() || (subType === 'music' ? 'chill' : 'nature');
   if (isOfflineMode()) {
     stockSearchState[subType] = {
       status: 'error',
@@ -448,7 +448,8 @@ export function initMediaPoolTabs() {
   const searchActiveStock = () => {
     const activeTab = document.querySelector('.media-tab.active') as HTMLElement | null;
     if (activeTab?.dataset.tab !== 'stock') return;
-    void runStockSearch(activeStockSubType(), searchInput?.value || 'cinematic');
+    const subType = activeStockSubType();
+    void runStockSearch(subType, searchInput?.value || (subType === 'music' ? 'chill' : 'nature'));
   };
 
   if (searchInput) {
@@ -480,7 +481,7 @@ export function initMediaPoolTabs() {
         updateSearchPlaceholder('stock', 'video');
         renderMedia('stock', 'video');
         if (searchInput && stockSearchState.video.status === 'idle') {
-          if (!searchInput.value.trim()) searchInput.value = 'cinematic';
+          if (!searchInput.value.trim()) searchInput.value = 'nature';
           void runStockSearch('video', searchInput.value);
         }
       } else {
@@ -498,7 +499,9 @@ export function initMediaPoolTabs() {
       updateSearchPlaceholder('stock', subType);
       renderMedia('stock', subType);
       if (searchInput && stockSearchState[subType].status === 'idle') {
-        if (!searchInput.value.trim()) searchInput.value = 'cinematic';
+        if (!searchInput.value.trim()) {
+          searchInput.value = subType === 'music' ? 'chill' : 'nature';
+        }
         void runStockSearch(subType, searchInput.value);
       }
     };

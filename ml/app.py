@@ -1,8 +1,6 @@
 import json
 import os
 import re
-import numpy as np
-import xgboost as xgb
 import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
@@ -10,7 +8,6 @@ from pydantic import BaseModel
 import uvicorn
 from dotenv import load_dotenv
 
-from scripts.parse_script import parse_script
 from scripts.stock_search import search_stock_videos
 from scripts.music_search import search_background_music
 
@@ -22,8 +19,13 @@ FEATURE_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "feature_schema.js
 
 virality_model = None
 feature_names: list[str] = []
+np = None
 
 try:
+    import numpy as numpy_module
+    import xgboost as xgb
+
+    np = numpy_module
     virality_model = xgb.XGBRegressor()
     virality_model.load_model(MODEL_PATH)
     with open(FEATURE_SCHEMA_PATH) as f:
@@ -68,7 +70,7 @@ def derive_virality_features(script_text: str, keywords: list, mood: dict) -> di
     )
 
 def predict_virality(features: dict) -> float | None:
-    if virality_model is None or not feature_names:
+    if virality_model is None or not feature_names or np is None:
         return None
     row = np.zeros(len(feature_names))
     for i, name in enumerate(feature_names):
@@ -121,6 +123,8 @@ async def stock_music(q: str = Query("cinematic", min_length=2, max_length=80)):
 
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_script(req: ScriptRequest):
+    from scripts.parse_script import parse_script
+
     script_extraction = parse_script(req.script_text)
 
     first_keyword = script_extraction["keywords"][0] if script_extraction["keywords"] else "cinematic"

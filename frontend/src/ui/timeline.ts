@@ -676,12 +676,14 @@ function initTimelineDrop() {
       showToast(`${track.name} is locked`, 'lock');
       return;
     }
-    let data: MediaDragPayload;
-    try {
-      data = await materializeMediaPayload(dragData);
-    } catch (error) {
-      showToast((error as Error).message || 'Could not download stock media', 'alert-triangle');
-      return;
+    let data = dragData;
+    if (dragData.remoteUrl && !dragData.isReal) {
+      try {
+        data = await materializeMediaPayload(dragData);
+      } catch (error) {
+        showToast((error as Error).message || 'Could not download stock media', 'alert-triangle');
+        return;
+      }
     }
     const tw = getLaneW();
     const rect = lane.getBoundingClientRect();
