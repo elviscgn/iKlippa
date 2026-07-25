@@ -126,7 +126,10 @@ let currentHeight = 0;
 
 const MAX_DECODE_QUEUE = 8;
 const MAX_READS_PER_PUMP = 8;
-const AUDIO_LOOKAHEAD_MS = 1000;
+const MAX_AUDIO_DECODE_QUEUE = 32;
+const MAX_AUDIO_READS_PER_PUMP = 32;
+const AUDIO_LOOKAHEAD_MS = 3000;
+const AUDIO_PRIME_MS = 2000;
 
 // The primary source being decoded. Updated on seek/load.
 let primarySourceId: string | null = null;
@@ -803,7 +806,7 @@ async function primeAudioDecode(sourceId: string) {
   if (startIdx >= audioSamples.length) return;
 
   const startMs = Math.round((audioSamples[startIdx]!.cts * 1000) / audioSamples[startIdx]!.timescale);
-  const targetMs = startMs + 600;
+  const targetMs = startMs + AUDIO_PRIME_MS;
 
   for (let i = startIdx; i < audioSamples.length; i++) {
     const s = audioSamples[i]!;
@@ -842,7 +845,10 @@ async function decodeNextSamples(sourceId: string) {
   }
   if (state.audioDecoder && state.audioDecoder.state === 'configured' && state.audioSamples.length > 0) {
     let audioReads = 0;
-    while (state.audioDecoder.decodeQueueSize < MAX_DECODE_QUEUE && audioReads < MAX_READS_PER_PUMP) {
+    while (
+      state.audioDecoder.decodeQueueSize < MAX_AUDIO_DECODE_QUEUE &&
+      audioReads < MAX_AUDIO_READS_PER_PUMP
+    ) {
       const startIdx = state.lastDecodedAudioIdx + 1;
       if (startIdx >= state.audioSamples.length) break;
       const s = state.audioSamples[startIdx]!;

@@ -95,4 +95,44 @@ describe('pause→play audio recovery (Tier 2 - adapter ports)', () => {
     __TEST_HOOKS__.pendingAudio = new Map();
     __TEST_HOOKS__.isPlaying = false;
   });
+
+  it('gives audio scheduling runway and ignores duplicate worker packets', async () => {
+    setupStoppedPlayback();
+    __TEST_HOOKS__.playheadMs = 0;
+    __TEST_HOOKS__.pendingAudio = new Map();
+
+    togglePlayback();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const ctx = __TEST_HOOKS__.audioCtx as any;
+    const sourceSpy = vi.spyOn(ctx, 'createBufferSource');
+    const bufferSpy = vi.spyOn(ctx, 'createBuffer');
+    __TEST_HOOKS__.audioPlayStartMs = 0;
+    __TEST_HOOKS__.audioPlayStartCtxTime = 0;
+    __TEST_HOOKS__.nextAudioStartTime = 0;
+    __TEST_HOOKS__.lastScheduledChunkMs = -1;
+
+    const packet = {
+      type: 'audio_chunk' as const,
+      ms: 0,
+      channels: 1,
+      sampleRate: 48000,
+      length: 4800,
+      buffers: [new ArrayBuffer(4800 * 4)],
+      configVersion: 0,
+    };
+    handleWorkerMessage({ data: packet } as MessageEvent);
+    handleWorkerMessage({ data: packet } as MessageEvent);
+
+    expect(sourceSpy).toHaveBeenCalledTimes(1);
+    expect(__TEST_HOOKS__.scheduledAudioNodes).toHaveLength(1);
+    expect((sourceSpy.mock.results[0]!.value as any)._scheduleTime).toBeGreaterThanOrEqual(0.06);
+
+    const node = sourceSpy.mock.results[0]!.value;
+    node.close();
+    for (const result of bufferSpy.mock.results) (result.value as any).close();
+    __TEST_HOOKS__.scheduledAudioNodes = [];
+    __TEST_HOOKS__.pendingAudio = new Map();
+    __TEST_HOOKS__.isPlaying = false;
+  });
 });

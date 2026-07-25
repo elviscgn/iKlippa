@@ -137,6 +137,8 @@ let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
 let audioPlayStartCtxTime = 0;
 let audioPlayStartMs = 0;
+const AUDIO_SCHEDULE_LEAD_SEC = 0.06;
+const AUDIO_END_EPSILON_SEC = 0.001;
 
 // ── Audio Mixer ──────────────────────────────────────────────────────────
 let masterCompressor: DynamicsCompressorNode | null = null;
@@ -187,6 +189,18 @@ function findActiveAudioTrack(sourceMs: number): number | null {
     }
   }
   return null;
+}
+
+function isContinuousClipTransition(previousId: number | null, nextId: number | null): boolean {
+  if (previousId === null || nextId === null) return false;
+  const IKState = (window as any).IKState;
+  const previous = IKState?.findClip?.(previousId);
+  const next = IKState?.findClip?.(nextId);
+  if (!previous || !next || previous.source_id !== next.source_id) return false;
+
+  const timelineGapUs = Math.abs(previous.timeline_end_us - next.timeline_start_us);
+  const sourceGapUs = Math.abs(previous.source_end_us - next.source_start_us);
+  return timelineGapUs <= 1_000 && sourceGapUs <= 50_000;
 }
 
 // ── Thumbnail Capture State ─────────────────────────────────────────────
@@ -441,14 +455,6 @@ function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'aud
     return;
   }
   if (msg.configVersion !== audioConfigVersion) return;
-  // Anchor the audio clock to the moment the first chunk actually arrives,
-  // not the moment seekTo/startPlayback fired.  The video decode loop
-  // (seekAndDecodeFrame) can take 100-300ms; if we already set
-  // audioPlayStartCtxTime back then, every chunk arrives "stale" and gets
-  // dropped.  Setting it here means the first chunk always lands on time.
-  if (nextAudioStartTime === 0) {
-    audioPlayStartCtxTime = audioCtx.currentTime;
-  }
   const audioBuffer = audioCtx.createBuffer(msg.channels, msg.length, msg.sampleRate);
   for (let c = 0; c < msg.channels; c++) {
     audioBuffer.copyToChannel(new Float32Array(msg.buffers[c]!), c);
@@ -510,20 +516,28 @@ function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
   if (!audioCtx || !masterCompressor) return;
   const timelineMs = mapSourceToTimelineMs(chunkMs);
   if (timelineMs === null) return;
+  if (chunkMs <= lastScheduledChunkMs) return;
 
-  const idealCtxTime = audioPlayStartCtxTime + (timelineMs - audioPlayStartMs) / 1000;
-  if (nextAudioStartTime === 0 || nextAudioStartTime < audioCtx.currentTime) {
-    nextAudioStartTime = Math.max(audioCtx.currentTime, idealCtxTime);
+  if (nextAudioStartTime === 0) {
+    // Give Web Audio one render quantum of runway when video work is busy.
+    audioPlayStartCtxTime = audioCtx.currentTime + AUDIO_SCHEDULE_LEAD_SEC;
   }
-  if (idealCtxTime < audioCtx.currentTime - 0.15) {
+  const idealCtxTime = audioPlayStartCtxTime + (timelineMs - audioPlayStartMs) / 1000;
+  let startTime =
+    nextAudioStartTime === 0
+      ? idealCtxTime
+      : Math.max(idealCtxTime, nextAudioStartTime);
+  const safeStartTime = audioCtx.currentTime + AUDIO_SCHEDULE_LEAD_SEC;
+  const offsetSec = Math.max(0, safeStartTime - startTime);
+  if (offsetSec >= audioBuffer.duration - AUDIO_END_EPSILON_SEC) {
     logOnce(
       `audio-stale-${Math.round(chunkMs / 1000)}`,
       'audio',
-      `dropping stale chunk at source ${chunkMs}ms (timeline ${timelineMs.toFixed(0)}ms)`,
+      `dropping fully elapsed chunk at source ${chunkMs}ms`,
     );
     return;
   }
-  if (idealCtxTime > nextAudioStartTime + 0.05) nextAudioStartTime = idealCtxTime;
+  if (offsetSec > 0) startTime = safeStartTime;
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
 
@@ -544,8 +558,9 @@ function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
     const i = scheduledAudioNodes.indexOf(source);
     if (i >= 0) scheduledAudioNodes.splice(i, 1);
   };
-  source.start(nextAudioStartTime);
-  nextAudioStartTime += audioBuffer.duration;
+  source.start(startTime, offsetSec);
+  nextAudioStartTime = startTime + audioBuffer.duration - offsetSec;
+  lastScheduledChunkMs = chunkMs;
   scheduledAudioNodes.push(source);
 }
 
@@ -765,17 +780,21 @@ export function renderLoop(ts: number): void {
 
   if (newClipId !== currentActiveClipId) {
     log('play', `clip transition: ${currentActiveClipId} -> ${newClipId}`);
+    const isContinuous = isContinuousClipTransition(currentActiveClipId, newClipId);
     currentActiveClipId = newClipId;
-    if (newClipId !== null) {
+    if (!isContinuous) {
+      stopAllAudioNodes();
+      pendingAudio.clear();
+      nextAudioStartTime = 0;
+      lastScheduledChunkMs = -1;
+    }
+    if (newClipId !== null && !isContinuous) {
       const mapRes = mapTimelineToSource(playheadMs);
       if (mapRes) {
         worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId });
       }
       pendingFrames.clear();
-      pendingAudio.clear();
       audioPlayStartMs = playheadMs;
-      if (audioCtx) audioPlayStartCtxTime = audioCtx.currentTime;
-      nextAudioStartTime = 0;
     }
   }
 
@@ -807,6 +826,7 @@ export function renderLoop(ts: number): void {
         log('play', `buffering started — freezing playhead @ ${playheadMs.toFixed(0)}ms`);
         stopAllAudioNodes();
         nextAudioStartTime = 0;
+        lastScheduledChunkMs = -1;
         if (window.onBuffering) window.onBuffering(true);
       }
       // Still send sync so the worker keeps decoding
@@ -831,6 +851,7 @@ export function renderLoop(ts: number): void {
       audioPlayStartCtxTime = audioCtx!.currentTime;
       audioPlayStartMs = playheadMs;
       nextAudioStartTime = 0;
+      lastScheduledChunkMs = -1;
       // Re-schedule any pending audio chunks that are at or after the playhead
       for (const [chunkMs, buf] of pendingAudio) {
         if (chunkMs >= playheadMs) {
@@ -1055,6 +1076,8 @@ export const __TEST_HOOKS__ = {
   set nextAudioStartTime(val: number) { nextAudioStartTime = val; },
   get audioPlayStartCtxTime() { return audioPlayStartCtxTime; },
   set audioPlayStartCtxTime(val: number) { audioPlayStartCtxTime = val; },
+  get lastScheduledChunkMs() { return lastScheduledChunkMs; },
+  set lastScheduledChunkMs(val: number) { lastScheduledChunkMs = val; },
   get lastRafTs() { return lastRafTs; },
   set lastRafTs(val: number | null) { lastRafTs = val; },
   get rafHandle() { return rafHandle; },
@@ -1137,6 +1160,7 @@ async function startPlayback(opts?: { fromSeek?: boolean }): Promise<void> {
   audioPlayStartCtxTime = audioCtx!.currentTime;
   audioPlayStartMs = playheadMs;
   nextAudioStartTime = 0;
+  lastScheduledChunkMs = -1;
   // Never schedule leftover chunks from before a pause: the worker re-sends
   // everything from the playhead (resync_audio below), so scheduling the
   // leftovers as well would double-stack them — the "screech" class of bug.
@@ -1237,6 +1261,7 @@ export async function seekTo(ms: number): Promise<void> {
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
+  lastScheduledChunkMs = -1;
   // Show spinner while waiting for the first decoded frame
   if (pendingResumeAfterSeek && window.onBuffering) window.onBuffering(true);
   // Don't start playback immediately — wait for the first frame to arrive
