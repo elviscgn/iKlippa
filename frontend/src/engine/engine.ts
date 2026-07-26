@@ -19,6 +19,7 @@ import type { ClipWithMeta } from '../state/types';
 import { currentTier, getTierConfig } from './tier';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 import * as MP4Box from 'mp4box';
+import { registerSourceAudioBuffer, registerSourceFile } from '../media/sourceRegistry';
 
 const DECODE_LOOKAHEAD = 12;
 
@@ -731,6 +732,8 @@ export async function registerExternalAudio(
   const sourceId = preferredSourceId || 'audio_' + Date.now();
   const buffer = await audioCtx!.decodeAudioData(await file.arrayBuffer());
   externalAudioBuffers.set(sourceId, buffer);
+  registerSourceFile(sourceId, file);
+  registerSourceAudioBuffer(sourceId, buffer);
   return {
     sourceId,
     fileName: file.name,
@@ -880,6 +883,7 @@ export async function importFile(
   });
 
   const sourceId = preferredSourceId || 'imported_' + Date.now();
+  registerSourceFile(sourceId, file);
   sourceDimensions.set(sourceId, { width: payload.width, height: payload.height });
   timelineThumbnailsBySource.set(sourceId, []);
   lastThumbnailCaptureBySource.delete(sourceId);
