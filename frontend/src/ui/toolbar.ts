@@ -1,6 +1,6 @@
 import { $, $$, S, aiNodes } from './state';
 import { showToast, resizeCanvas, toggleOfflineMode } from './utils';
-import { calculateTimelineDuration, renderRuler, renderClips, updatePlayhead, applyAiAction } from './timeline';
+import { calculateTimelineDuration, renderRuler, renderClips, updatePlayhead } from './timeline';
 import {
   getGraniteLoadState,
   sendGranitePrompt,
@@ -8,6 +8,8 @@ import {
   warmGraniteModel,
   type GraniteLoadState,
 } from '../ai/granite';
+import { executeEditorCommand, selectMentionedClips } from '../commands/editorCommands';
+import { extractMentions, parseEditorCommand } from '../commands/parser';
 
 let isTextActive = false;
 let isEffectActive = false;
@@ -247,23 +249,26 @@ function initChat() {
   };
 
   const runLocalCommand = (val: string) => {
-    const command = val.toLowerCase();
-    setTimeout(() => {
-      if (command.includes('/trim-silence')) {
-        applyAiAction('silence');
-        appendChat('Trimmed the silences locally.');
-      } else if (command.includes('/sync-audio')) {
-        applyAiAction('sync');
-        appendChat('Matched the cut timing to the beat.');
-      } else if (command.includes('/add-captions')) {
-        applyAiAction('captions');
-        appendChat('Generated captions on the timeline.');
-      } else if (command.includes('/auto-broll')) {
-        appendChat('Auto b-roll is not wired yet, but I can still help plan it.');
-      } else {
-        appendChat('Try /trim-silence, /sync-audio, or /add-captions.');
-      }
-    }, 300);
+    const parsed = parseEditorCommand(val);
+    const aiBody = appendChat('Running locally...', false);
+    if (!parsed) {
+      aiBody.textContent = 'Use a command such as /trim-silence, /sync-audio, or /auto-broll.';
+      return;
+    }
+    setGraniteBusy(true);
+    void executeEditorCommand(parsed)
+      .then((result) => {
+        aiBody.textContent = result.message;
+        scrollChatToBottom();
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        aiBody.textContent = message;
+        showToast(message, 'alert-triangle');
+      })
+      .finally(() => {
+        setGraniteBusy(false);
+      });
   };
 
   const submitPrompt = (sourceInput: HTMLInputElement) => {
@@ -279,6 +284,7 @@ function initChat() {
       return;
     }
 
+    selectMentionedClips({ mentions: extractMentions(val) });
     const aiBody = appendChat('Loading Granite locally...', false);
     setGraniteBusy(true);
     void sendGranitePrompt(val, {
