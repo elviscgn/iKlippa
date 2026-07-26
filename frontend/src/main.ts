@@ -27,7 +27,10 @@ import {
   setPendingThumbCapture,
   requestThumbnailFrame,
   syncTimelineToRust,
+  registerExternalAudio,
 } from './engine/engine';
+import { loadStoredSourceFiles, requestDurableStorage } from './media/mediaStore';
+import { registerAppShell } from './offline/appShell';
 
 import type { EngineError, GradeParams } from './engine/types';
 import { USER_ERROR_MESSAGES, emitLocal } from './engine/errors';
@@ -44,6 +47,7 @@ const statusBadge = document.querySelector('.status-badge') as HTMLElement;
 const scoreValue = document.getElementById('score-value') as HTMLElement;
 
 let hasRealVideo = false;
+void registerAppShell();
 
 function setStatusBadge(icon: string, message: string): void {
   if (!statusBadge) return;
@@ -103,6 +107,7 @@ window.onThumbnailsUpdated = (sourceId, thumbnails): void => {
 
 // ── Import complete: build project model + sync to Rust ─────────────────
 let _restoredFromStorage = false;
+const _restoringCachedSourceIds = new Set<string>();
 
 function remapStaleSources(newSourceId: string): void {
   const IKState = window.IKState;
@@ -140,15 +145,26 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
     console.log('[iKlippa:app] IKState initialised');
   }
 
-  window.mediaPool.footage.push({
-    id: sourceId,
-    name: displayName,
-    isReal: true,
-    dur: durationSec.toFixed(1) + 's',
-    thumbDataUrl: null,
-    width,
-    height,
-  });
+  const existingMedia = window.mediaPool.footage.find((item) => item.id === sourceId);
+  if (existingMedia) {
+    Object.assign(existingMedia, {
+      name: displayName,
+      isReal: true,
+      dur: durationSec.toFixed(1) + 's',
+      width,
+      height,
+    });
+  } else {
+    window.mediaPool.footage.push({
+      id: sourceId,
+      name: displayName,
+      isReal: true,
+      dur: durationSec.toFixed(1) + 's',
+      thumbDataUrl: null,
+      width,
+      height,
+    });
+  }
   const activeMediaTab = document.querySelector('.media-tab.active') as HTMLElement | null;
   if (!activeMediaTab || activeMediaTab.dataset.tab === 'footage') {
     window.renderMedia('footage');
@@ -160,7 +176,9 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
 
   // If the project was restored (clips have stale source_ids from a previous
   // session), remap them to the newly imported source.
-  if (_restoredFromStorage) {
+  if (_restoringCachedSourceIds.delete(sourceId)) {
+    if (_restoringCachedSourceIds.size === 0) _restoredFromStorage = false;
+  } else if (_restoredFromStorage) {
     remapStaleSources(sourceId);
     _restoredFromStorage = false;
   }
@@ -579,23 +597,71 @@ window.addEventListener('ikl:reRender', () => {
   }
 })();
 
+async function restoreCachedProjectMedia(): Promise<number> {
+  if (!_restoredFromStorage || !window.IKState?.isReady()) return 0;
+  const sourceIds = new Set<string>();
+  for (const track of window.IKState.getTracks?.() ?? []) {
+    for (const clip of track.clips ?? []) {
+      if (clip.source_id) sourceIds.add(clip.source_id);
+    }
+  }
+  if (sourceIds.size === 0) return 0;
+
+  const stored = await loadStoredSourceFiles(sourceIds);
+  for (const source of stored) _restoringCachedSourceIds.add(source.sourceId);
+
+  for (const source of stored) {
+    if (source.file.type.startsWith('audio/')) {
+      await registerExternalAudio(source.file, source.sourceId);
+      _restoringCachedSourceIds.delete(source.sourceId);
+    } else {
+      await importFile(source.file, source.sourceId);
+    }
+  }
+
+  const missingCount = sourceIds.size - stored.length;
+  if (stored.length > 0) _restoredFromStorage = false;
+  if (missingCount > 0) {
+    window.showToast(
+      `${missingCount} project source${missingCount === 1 ? '' : 's'} not cached`,
+      'alert-triangle',
+    );
+  }
+  return stored.length;
+}
+
 // ── Engine Initialization ───────────────────────────────────────────────
 initEngine(canvasEl)
   .then(async () => {
     console.log('[iKlippa] Engine ready. Drop a video file to begin.');
     setStatusBadge('cloud-lightning', 'Engine ready');
+    void requestDurableStorage();
 
-    // Render restored project UI (no sync — wait for import to remap + sync)
+    let restoredMediaCount = 0;
     if (_restoredFromStorage) {
       window.calculateTimelineDuration();
       window.renderRuler();
       window.renderClips();
       window.updatePlayhead();
-      window.showToast('Project restored — import a video to continue', 'folder-open');
+      try {
+        restoredMediaCount = await restoreCachedProjectMedia();
+        if (restoredMediaCount > 0) {
+          window.showToast(
+            `Project restored with ${restoredMediaCount} cached source${restoredMediaCount === 1 ? '' : 's'}`,
+            'folder-open',
+          );
+          syncTimelineToRust();
+        } else {
+          window.showToast('Project restored — its media is not cached yet', 'folder-open');
+        }
+      } catch (error) {
+        console.warn('[iKlippa] Cached media restore failed:', error);
+        window.showToast('Project restored, but cached media could not open', 'alert-triangle');
+      }
     }
 
     // Dev auto-load helper
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV && restoredMediaCount === 0) {
       try {
         const res = await fetch('/test.mp4');
         if (res.ok) {
