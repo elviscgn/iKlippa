@@ -1,5 +1,8 @@
+import { persistSourceFile } from './mediaStore';
+
 const sourceFiles = new Map<string, File>();
 const sourceAudio = new Map<string, Promise<AudioBuffer>>();
+const sourcePersistence = new Map<string, Promise<boolean>>();
 let analysisContext: AudioContext | null = null;
 
 function getAnalysisContext(): AudioContext {
@@ -14,6 +17,18 @@ function getAnalysisContext(): AudioContext {
 export function registerSourceFile(sourceId: string, file: File): void {
   sourceFiles.set(sourceId, file);
   sourceAudio.delete(sourceId);
+  const persistence = persistSourceFile(sourceId, file)
+    .then(() => {
+      window.dispatchEvent(new CustomEvent('ikl:sourceCached', {
+        detail: { sourceId, fileName: file.name, size: file.size, type: file.type },
+      }));
+      return true;
+    })
+    .catch((error) => {
+      console.warn(`[iKlippa:media] Could not cache ${file.name}:`, error);
+      return false;
+    });
+  sourcePersistence.set(sourceId, persistence);
   window.dispatchEvent(new CustomEvent('ikl:sourceRegistered', {
     detail: { sourceId, fileName: file.name, size: file.size, type: file.type },
   }));
@@ -33,6 +48,12 @@ export function listRegisteredSourceIds(): string[] {
 
 export function hasRegisteredSource(sourceId: string): boolean {
   return sourceFiles.has(sourceId) || sourceAudio.has(sourceId);
+}
+
+export async function waitForSourcePersistence(sourceId: string): Promise<boolean> {
+  const pending = sourcePersistence.get(sourceId);
+  if (!pending) return false;
+  return pending;
 }
 
 export async function getSourceAudioBuffer(sourceId: string): Promise<AudioBuffer> {
@@ -60,4 +81,5 @@ export async function getSourceAudioBuffer(sourceId: string): Promise<AudioBuffe
 export function clearSourceRegistry(): void {
   sourceFiles.clear();
   sourceAudio.clear();
+  sourcePersistence.clear();
 }

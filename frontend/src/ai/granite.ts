@@ -53,11 +53,12 @@ const MAX_SELECTED_CLIPS = 5;
 const MAX_CURRENT_CLIPS = 4;
 const MAX_NEARBY_CLIPS = 5;
 const PLAYHEAD_CONTEXT_WINDOW_US = 5_000_000;
+const GRANITE_READY_KEY = 'iklippa.granite.nano.ready.v1';
 const GRANITE_CACHE_MISS_MESSAGE =
-  'Granite has not been cached in this browser yet. Open the app once while online so Transformers.js can download and cache the model, then offline chat will work.';
+  'Granite Nano has not been cached in this browser yet. Keep this tab online while the download progress completes, then offline chat will work.';
 const GRANITE_IDLE_STATE: GraniteLoadState = {
   phase: 'idle',
-  title: 'Granite is idle',
+  title: 'Granite Nano is idle',
   detail: 'Focus the chat box to warm the local model.',
   percent: null,
 };
@@ -139,9 +140,9 @@ function emitGraniteLoadState(next: GraniteLoadState) {
 }
 
 function progressLabel(progress: GraniteLoadProgress): string {
-  const raw = progress.file ?? progress.name ?? progress.model ?? progress.task ?? 'Granite';
+  const raw = progress.file ?? progress.name ?? progress.model ?? progress.task ?? 'Granite Nano';
   const cleaned = cleanText(raw);
-  if (!cleaned) return 'Granite';
+  if (!cleaned) return 'Granite Nano';
   return cleaned.length > 44 ? cleaned.slice(0, 43) + '...' : cleaned;
 }
 
@@ -173,42 +174,42 @@ function formatGraniteLoadState(progress: GraniteLoadProgress): GraniteLoadState
     case 'initiate':
       return {
         phase: 'loading',
-        title: 'Preparing Granite locally',
+        title: 'Preparing Granite Nano locally',
         detail: `Starting ${label}`,
         percent: percent ?? 0,
       };
     case 'download':
       return {
         phase: 'loading',
-        title: 'Downloading Granite locally',
+        title: 'Downloading Granite Nano locally',
         detail: byteSummary || `Fetching ${label}`,
         percent: percent ?? 0,
       };
     case 'progress':
       return {
         phase: 'loading',
-        title: 'Downloading Granite locally',
+        title: 'Downloading Granite Nano locally',
         detail: byteSummary || `${percent ?? 0}% complete`,
         percent: percent ?? 0,
       };
     case 'done':
       return {
         phase: 'loading',
-        title: 'Caching Granite locally',
+        title: 'Caching Granite Nano locally',
         detail: `Finalizing ${label}`,
         percent: 100,
       };
     case 'ready':
       return {
         phase: 'ready',
-        title: 'Granite is ready locally',
+        title: 'Granite Nano is ready locally',
         detail: 'Cached and ready to chat.',
         percent: 100,
       };
     default:
       return {
         phase: 'loading',
-        title: 'Loading Granite locally',
+        title: 'Loading Granite Nano locally',
         detail: `Warming ${label}`,
         percent,
       };
@@ -226,9 +227,14 @@ function resolveGraniteWarm() {
   resetGraniteWarmState();
   graniteWorkerReady = true;
   graniteLoadError = null;
+  try {
+    localStorage.setItem(GRANITE_READY_KEY, String(Date.now()));
+  } catch {
+    // Browser privacy settings can disable persistent storage.
+  }
   emitGraniteLoadState({
     phase: 'ready',
-    title: 'Granite is ready locally',
+    title: 'Granite Nano is ready locally',
     detail: 'Cached and ready to chat.',
     percent: 100,
   });
@@ -242,7 +248,7 @@ function rejectGraniteWarm(error: Error) {
   graniteLoadError = error;
   emitGraniteLoadState({
     phase: 'error',
-    title: 'Granite failed to load',
+    title: 'Granite Nano failed to load',
     detail: error.message,
     percent: null,
   });
@@ -445,13 +451,31 @@ function buildContextLines(): string[] {
   const frameRate = project.frame_rate?.den ? project.frame_rate.num / project.frame_rate.den : 0;
   const fpsLabel = frameRate > 0 ? `${frameRate % 1 === 0 ? frameRate.toFixed(0) : frameRate.toFixed(2)}fps` : 'fps unknown';
   const recentNodes = (window.aiNodes ?? []).slice(-5);
+  const setup = window.iklippaProjectSetup;
+  const cutScore = window.iklippaCutScore;
 
   const lines: string[] = [
     `Project: ${project.name ?? 'Untitled'} (${project.width}x${project.height}, ${selectedAr}, ${fpsLabel})`,
     `Timeline: ${durationSec.toFixed(2)}s total, playhead ${(playheadUs / 1_000_000).toFixed(2)}s`,
     `Tracks: ${tracks.length} total, ${entries.length} clips`,
-    'Track overview:',
   ];
+
+  if (setup) {
+    lines.push(
+      `Edit brief: ${setup.brandName}; tone=${setup.tone}; pacing=${setup.pacing}; caption font=${setup.captionFont}`,
+      `Palette: primary ${setup.primaryColor}; visual keywords=${setup.keywords.join(', ') || 'none'}`,
+      `Brand guidelines: ${shortText(setup.guidelines || 'none supplied', 500)}`,
+      `Script: ${shortText(setup.script, 900)}`,
+    );
+  }
+
+  if (cutScore?.clipCount) {
+    lines.push(
+      `Cut analysis: score ${cutScore.score}/100; ${cutScore.averageClipSec.toFixed(2)}s average clip; ${cutScore.gapSec.toFixed(2)}s gaps; ${cutScore.summary}`,
+    );
+  }
+
+  lines.push('Track overview:');
 
   const selectedIds = new Set(getSelectedClipIds());
   const currentEntries = entries.filter(
@@ -520,13 +544,13 @@ function formatClipSummary(): string {
 
 function buildSystemPrompt(): string {
   return [
-    'You are Granite, the local assistant inside iKlippa.',
-    'Answer in a concise, helpful way.',
-    'The app runs fully in the browser, so do not claim server access or internet access.',
-    'Use the edit context below when the user asks about the timeline, selected clips, captions, pacing, or export.',
-    'Treat the selected clips and playhead clips as the primary source of truth.',
-    'If the context is still too thin, ask the user to select a clip or move the playhead instead of saying you cannot see the video.',
-    'When you suggest edits, name the concrete clip, track, or timeline range you are referring to.',
+    'You are Granite Nano, the concise on-device editing assistant in iKlippa.',
+    'The project context is trusted metadata extracted from the current edit. Use it as your view of the video.',
+    'Prioritize selected clips, then clips at the playhead, then nearby clips.',
+    'Give specific, practical advice using clip names, tracks, time ranges, script, brand rules, and cut measurements.',
+    'Never say you cannot access the video when the context contains timeline or edit information.',
+    'If a required detail is absent, ask the user to select a clip or move the playhead.',
+    'Do not claim internet, server, or raw-pixel access. Keep answers under 120 words unless asked for detail.',
     '',
     'Project context:',
     formatClipSummary(),
@@ -613,7 +637,7 @@ async function loadGraniteModel(): Promise<void> {
   graniteLoadError = null;
   emitGraniteLoadState({
     phase: 'loading',
-    title: 'Loading Granite locally',
+    title: 'Loading Granite Nano locally',
     detail: 'Starting the browser model...',
     percent: null,
   });
