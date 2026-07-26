@@ -792,6 +792,24 @@ async function seekAndDecodeFrame(sourceId: string, targetMs: number) {
     // H.264 decoders may retain the first keyframe until another chunk arrives.
     // Flush so load/seek always delivers a paintable frame before reporting ready.
     await state.decoder.flush();
+
+    // WebCodecs requires a keyframe after flush(). Queue the seek keyframe
+    // again so continuous decoding can safely resume with the following sample.
+    if (latestSeekId !== currentSeekId) {
+      state.lastDecodedSampleIdx = vKeyIdx - 1;
+      return;
+    }
+    const seedSample = samples[vKeyIdx]!;
+    const seedData = await readSampleData(file, seedSample);
+    state.decoder.decode(
+      new EncodedVideoChunk({
+        type: 'key',
+        timestamp: (seedSample.cts * 1_000_000) / seedSample.timescale,
+        duration: (seedSample.duration * 1_000_000) / seedSample.timescale,
+        data: seedData,
+      })
+    );
+    state.lastDecodedSampleIdx = vKeyIdx;
     state.decoderSeeded = true;
   } finally {
     state.isSeeking = false;

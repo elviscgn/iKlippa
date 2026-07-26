@@ -118,6 +118,69 @@ describe('Worker Message Integration (Tier 2 - adapter ports)', () => {
     expect(postMessageMock).toHaveBeenCalled();
   });
 
+  it('flushes a buffered first frame and reseeds before posting ready', async () => {
+    let pendingFrame = false;
+    let needsKeyframe = true;
+    const decodedTypes: string[] = [];
+    vi.stubGlobal('EncodedVideoChunk', class {
+      type: string;
+      constructor(init: { type: string }) {
+        this.type = init.type;
+      }
+    });
+    vi.stubGlobal('VideoDecoder', class {
+      state = 'configured';
+      decodeQueueSize = 0;
+      private output: (frame: VideoFrame) => void;
+
+      constructor({ output }: { output: (frame: VideoFrame) => void }) {
+        this.output = output;
+      }
+
+      configure() {
+        needsKeyframe = true;
+      }
+      decode(chunk: { type: string }) {
+        if (needsKeyframe && chunk.type !== 'key') {
+          throw new Error('A key frame is required after configure() or flush()');
+        }
+        needsKeyframe = false;
+        decodedTypes.push(chunk.type);
+        pendingFrame = true;
+      }
+      async flush() {
+        if (!pendingFrame) return;
+        pendingFrame = false;
+        await this.output({ timestamp: 0, close: vi.fn() } as unknown as VideoFrame);
+        needsKeyframe = true;
+      }
+      reset() {
+        pendingFrame = false;
+        needsKeyframe = true;
+      }
+      close() {}
+    });
+
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        type: 'load',
+        file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(64)) }) },
+        codecConfig: { codec: 'avc' },
+        width: 4,
+        height: 4,
+        samples: [{ offset: 0, size: 64, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        durationMs: 1000,
+        sourceId: 'source-a',
+      },
+    });
+
+    const messageTypes = postMessageMock.mock.calls.map((call: any[]) => call[0]?.type);
+    expect(messageTypes.indexOf('frame')).toBeGreaterThan(-1);
+    expect(messageTypes.indexOf('frame')).toBeLessThan(messageTypes.indexOf('ready'));
+    expect(decodedTypes).toEqual(['key', 'key']);
+  });
+
   it('gracefully handles seek before init/load', async () => {
     await workerOnMessage({ data: { type: 'seek', ms: 1000 } });
     const messageTypes = postMessageMock.mock.calls.map((c: any[]) => c[0]?.type);
