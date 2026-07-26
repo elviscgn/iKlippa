@@ -10,6 +10,7 @@ import { initCaptionOverlay, initCaptionEditor } from './captions';
 import { initLutPanel } from './lut';
 import { initProjectOnboarding } from '../project/setup';
 import { initCutScore } from '../ai/cutScore';
+import { initEditorActions } from '../ai/editorActions';
 
 // Expose state and mediaPool globally to avoid breaking app.js / main.ts expectations
 declare global {
@@ -35,6 +36,7 @@ function initUI() {
   initCaptionEditor();
   initLutPanel();
   initCutScore();
+  initEditorActions();
 
   window.renderMedia('footage');
   calculateTimelineDuration();

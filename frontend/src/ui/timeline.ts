@@ -718,41 +718,39 @@ window.resetAiActions = resetAiActions;
 export function applyAiAction(type: 'silence' | 'captions' | 'sync') {
   const IKState = (window as any).IKState;
   const videoClips = IKState?.getVideoClips() || [];
-  if (type === 'silence' && !acts.trim) {
-    saveSnapshot();
-    if (videoClips.length === 1 && videoClips[0].isReal) {
-      const clip = videoClips[0];
-      const startUs = clip.timeline_start_us;
-      const origDurUs = clip.timeline_end_us - clip.timeline_start_us;
-      const trimmedDurUs = Math.round(origDurUs * 0.92);
-      IKState.trimClip(clip.id, startUs, startUs + trimmedDurUs, clip.source_start_us);
-      const trimmedDurSec = us2s(trimmedDurUs);
-      aiNodes.push({ time: trimmedDurSec, label: 'Silence Trimmed', icon: 'scissors' });
-      $('#insight-score')!.textContent = '93';
-      $('#insight-bar')!.style.width = '93%';
-      $('#insight-box')!.classList.add('optimized');
-      showToast('AI Smart Trim Applied', 'scissors');
-      acts.trim = true;
-    } else if (videoClips.length >= 2) {
-      const firstStartSec = us2s(videoClips[0].timeline_start_us);
-      let cursorUs = videoClips[0].timeline_end_us;
-      for (let i = 1; i < videoClips.length; i++) {
-        const clip = videoClips[i];
-        if (clip.timeline_start_us > cursorUs) IKState.moveClip(clip.id, cursorUs);
-        cursorUs = clip.timeline_end_us;
-      }
-      IKState.computeDuration();
-      aiNodes.push({ time: firstStartSec, label: 'Gaps Trimmed', icon: 'scissors' });
-      $('#insight-score')!.textContent = '96';
-      $('#insight-bar')!.style.width = '96%';
-      $('#insight-box')!.classList.add('optimized');
-      showToast('AI Smart Trim Applied', 'scissors');
-      acts.trim = true;
-    } else {
+  if (type === 'silence') {
+    if (videoClips.length === 0) {
       showToast('Import a video first', 'info');
       return;
     }
-  } else if (type === 'captions' && !acts.cap) {
+    showToast('Analyzing silence locally...', 'scissors');
+    void window.runSmartTrim?.([])
+      .then((result) => {
+        acts.trim = true;
+        showToast(result.message, 'scissors');
+      })
+      .catch((error) => {
+        showToast(error instanceof Error ? error.message : String(error), 'alert-triangle');
+      });
+    return;
+  }
+  if (type === 'sync') {
+    if (videoClips.length === 0) {
+      showToast('Import a video first', 'info');
+      return;
+    }
+    showToast('Detecting beats locally...', 'music');
+    void window.runBeatSync?.([])
+      .then((result) => {
+        acts.sync = true;
+        showToast(result.message, 'zap');
+      })
+      .catch((error) => {
+        showToast(error instanceof Error ? error.message : String(error), 'alert-triangle');
+      });
+    return;
+  }
+  if (type === 'captions' && !acts.cap) {
     if (videoClips.length === 0) { showToast('Import a video first', 'info'); return; }
     aiNodes.push({ time: Math.min(2.0, S.dur * 0.1), label: 'Captions Generated', icon: 'captions' });
     aiNodes.push({ time: Math.min(10.0, S.dur * 0.5), label: 'Captions Synced', icon: 'captions' });
@@ -760,13 +758,6 @@ export function applyAiAction(type: 'silence' | 'captions' | 'sync') {
     const capOverlay = $('#caption-overlay');
     if (capOverlay) capOverlay.style.display = 'block';
     acts.cap = true;
-  } else if (type === 'sync' && !acts.sync) {
-    if (videoClips.length === 0) { showToast('Import a video first', 'info'); return; }
-    const dur = S.dur;
-    aiNodes.push({ time: dur * 0.25, label: 'Beat Match', icon: 'zap' });
-    aiNodes.push({ time: dur * 0.6, label: 'Bass Drop', icon: 'zap' });
-    showToast('Rhythm Sync Complete', 'zap');
-    acts.sync = true;
   } else {
     showToast('Action already applied!', 'check');
     return;

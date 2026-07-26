@@ -21,10 +21,10 @@ type GraniteWorkerResponse =
 
 type GranitePipeline = any;
 
-// Smaller official browser build used by IBM's WebGPU demo.
-const MODEL_ID = 'onnx-community/granite-4.0-micro-ONNX-web';
+// IBM's browser-ready Granite 4.0 Nano 350M checkpoint.
+const MODEL_ID = 'onnx-community/granite-4.0-350m-ONNX-web';
 const GRANITE_CACHE_MISS_MESSAGE =
-  'Granite has not been cached in this browser yet. Open the app once while online so Transformers.js can download and cache the model, then offline chat will work.';
+  'Granite Nano has not been cached in this browser yet. Keep this tab online while the download progress completes, then offline chat will work.';
 
 let graniteModel: GranitePipeline | null = null;
 let graniteModelPromise: Promise<GranitePipeline> | null = null;
@@ -87,9 +87,10 @@ async function loadGraniteModel(): Promise<GranitePipeline> {
   if (graniteModel) return graniteModel;
   if (graniteModelPromise) return graniteModelPromise;
 
+  const device = chooseDevice();
   graniteModelPromise = pipeline('text-generation', MODEL_ID, {
-    device: chooseDevice(),
-    dtype: 'q4f16',
+    device,
+    dtype: device === 'webgpu' ? 'fp16' : 'q4',
     revision: 'main',
     progress_callback: (progress: GraniteLoadProgress) => {
       postMessage({ type: 'progress', progress } satisfies GraniteWorkerResponse);
