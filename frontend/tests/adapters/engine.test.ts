@@ -28,6 +28,8 @@ import { captureThumbnailFromBuffer, __TEST_HOOKS__ } from '../../src/engine/eng
 describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
   let mockCanvas: any;
   let mockCtx: any;
+  let mockThumbnailCanvas: any;
+  let mockThumbnailCtx: any;
 
   beforeEach(() => {
     mockCanvas = {
@@ -38,20 +40,31 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
     mockCtx = {
       putImageData: vi.fn(),
     };
+    mockThumbnailCanvas = {
+      width: 1920,
+      height: 1080,
+      toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,mockdata'),
+    };
+    mockThumbnailCtx = {
+      putImageData: vi.fn(),
+    };
 
     __TEST_HOOKS__.canvas = mockCanvas;
     __TEST_HOOKS__.ctx = mockCtx;
+    __TEST_HOOKS__.thumbnailCanvas = mockThumbnailCanvas;
+    __TEST_HOOKS__.thumbnailCtx = mockThumbnailCtx;
     __TEST_HOOKS__.pendingFrames = new Map();
     __TEST_HOOKS__.pendingFramesBySource = new Map();
   });
 
-  it('returns null if canvas or ctx is missing', () => {
+  it('captures without painting on the preview canvas', () => {
+    __TEST_HOOKS__.pendingFrames.set(100, {} as ImageData);
     __TEST_HOOKS__.canvas = null;
-    expect(captureThumbnailFromBuffer(100)).toBeNull();
-
-    __TEST_HOOKS__.canvas = mockCanvas;
     __TEST_HOOKS__.ctx = null;
-    expect(captureThumbnailFromBuffer(100)).toBeNull();
+
+    expect(captureThumbnailFromBuffer(100)).toBe('data:image/jpeg;base64,mockdata');
+    expect(mockThumbnailCtx.putImageData).toHaveBeenCalledWith({}, 0, 0);
+    expect(mockCtx.putImageData).not.toHaveBeenCalled();
   });
 
   it('returns null if pendingFrames is empty', () => {
@@ -62,7 +75,7 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
     __TEST_HOOKS__.pendingFrames.set(100, {} as ImageData);
     const result = captureThumbnailFromBuffer(100);
     expect(result).toBe('data:image/jpeg;base64,mockdata');
-    expect(mockCtx.putImageData).toHaveBeenCalledWith({}, 0, 0);
+    expect(mockThumbnailCtx.putImageData).toHaveBeenCalledWith({}, 0, 0);
   });
 
   it('returns closest previous frame if exact match not found', () => {
@@ -72,7 +85,7 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
 
     const result = captureThumbnailFromBuffer(100);
     expect(result).toBe('data:image/jpeg;base64,mockdata');
-    expect(mockCtx.putImageData).toHaveBeenCalledWith({ id: '80' }, 0, 0);
+    expect(mockThumbnailCtx.putImageData).toHaveBeenCalledWith({ id: '80' }, 0, 0);
   });
 
   it('returns smallest frame if all pending frames are after requested ms', () => {
@@ -81,7 +94,7 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
 
     const result = captureThumbnailFromBuffer(100);
     expect(result).toBe('data:image/jpeg;base64,mockdata');
-    expect(mockCtx.putImageData).toHaveBeenCalledWith({ id: '120' }, 0, 0);
+    expect(mockThumbnailCtx.putImageData).toHaveBeenCalledWith({ id: '120' }, 0, 0);
   });
 
   it('captures only from the requested source frame cache', () => {
@@ -97,7 +110,7 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
     const result = captureThumbnailFromBuffer(100, 'nature-video');
 
     expect(result).toBe('data:image/jpeg;base64,mockdata');
-    expect(mockCtx.putImageData).toHaveBeenCalledWith({ id: 'nature-frame' }, 0, 0);
+    expect(mockThumbnailCtx.putImageData).toHaveBeenCalledWith({ id: 'nature-frame' }, 0, 0);
   });
 
   it('returns null if pendingFrames.get magically returns undefined', () => {
@@ -107,7 +120,7 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
 
   it('handles toDataURL error gracefully', () => {
     __TEST_HOOKS__.pendingFrames.set(100, {} as ImageData);
-    mockCanvas.toDataURL.mockImplementation(() => {
+    mockThumbnailCanvas.toDataURL.mockImplementation(() => {
       throw new Error('Canvas error');
     });
 
