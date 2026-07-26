@@ -499,7 +499,16 @@
               </div>
 
               <div id="tab-script">
+                <div class="project-brief-card" id="project-brief-card" hidden>
+                  <div class="project-brief-heading">
+                    <i data-lucide="sparkles"></i>
+                    <span>Edit brief</span>
+                  </div>
+                  <p id="project-brief-summary"></p>
+                  <div class="project-brief-keywords" id="project-brief-keywords"></div>
+                </div>
                 <textarea
+                  id="project-script-input"
                   class="script-area"
                   placeholder="Paste your script here to auto-generate subtitles or find contextual stock footage..."
                 ></textarea>
@@ -544,6 +553,7 @@
                 <div class="brand-group">
                   <label>Caption Font</label
                   ><input
+                    id="project-caption-font"
                     type="text"
                     class="brand-input"
                     value="Plus Jakarta Sans"
@@ -552,10 +562,19 @@
                 <div class="brand-group">
                   <label>Brand Name</label
                   ><input
+                    id="project-brand-name"
                     type="text"
                     class="brand-input"
                     value="Vibrant City Studio"
                   />
+                </div>
+                <div class="brand-group">
+                  <label>Brand Guidelines</label>
+                  <textarea
+                    id="project-brand-guidelines"
+                    class="brand-input brand-textarea"
+                    placeholder="Tone, audience, visual rules..."
+                  ></textarea>
                 </div>
               </div>
             </div>
