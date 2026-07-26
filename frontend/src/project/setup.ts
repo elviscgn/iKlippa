@@ -166,6 +166,22 @@ function populateExistingPanels(setup: ProjectSetup): void {
   if (brandFont) brandFont.value = setup.captionFont;
 }
 
+function renderEditBrief(setup: ProjectSetup): void {
+  const card = document.querySelector<HTMLElement>('#project-brief-card');
+  const summary = document.querySelector<HTMLElement>('#project-brief-summary');
+  const keywords = document.querySelector<HTMLElement>('#project-brief-keywords');
+  if (!card || !summary || !keywords) return;
+  summary.textContent = `${setup.tone}. ${setup.pacing}. Use ${setup.brandName}'s guidelines as the creative guardrail for stock, captions, and cut suggestions.`;
+  keywords.replaceChildren(
+    ...setup.keywords.map((keyword) => {
+      const chip = document.createElement('span');
+      chip.textContent = keyword;
+      return chip;
+    }),
+  );
+  card.hidden = false;
+}
+
 export function applyProjectSetup(setup: ProjectSetup): void {
   window.iklippaProjectSetup = setup;
   const root = document.documentElement;
@@ -173,6 +189,7 @@ export function applyProjectSetup(setup: ProjectSetup): void {
   root.style.setProperty('--accent-hover', setup.accentHover);
   root.style.setProperty('--accent-glow', setup.accentGlow);
   populateExistingPanels(setup);
+  renderEditBrief(setup);
   window.dispatchEvent(new CustomEvent('ikl:projectSetupChanged', { detail: setup }));
 }
 
