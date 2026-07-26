@@ -25,6 +25,7 @@ import {
   perf,
   captureThumbnailFromBuffer,
   setPendingThumbCapture,
+  requestThumbnailFrame,
   syncTimelineToRust,
 } from './engine/engine';
 
@@ -164,8 +165,7 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
     _restoredFromStorage = false;
   }
 
-  syncTimelineToRust();
-
+  const thumbnailTargetMs = Math.max(0, Math.floor(durationMs / 2));
   // fallow-ignore-next-line complexity
   setPendingThumbCapture(sourceId, (frameMs: number, frameSourceId: string) => {
     try {
@@ -197,7 +197,12 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
     } catch (e) {
       console.error('[iKlippa:app] ✖ thumbnail capture threw', e);
     }
-  });
+  }, thumbnailTargetMs);
+  requestThumbnailFrame(sourceId, thumbnailTargetMs);
+
+  // Queue timeline sync after the thumbnail seek so it restores the playhead
+  // only after the midpoint frame has been captured.
+  syncTimelineToRust();
 };
 
 // ── Sync Rust project on any state mutation ──────────────────────────────

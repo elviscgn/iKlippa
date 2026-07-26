@@ -231,7 +231,10 @@ let lastSyncSig = '';
 // ── Pending thumbnail capture callbacks ─────────────────────────────────
 let _pendingThumbCaptures = new Map<
   string,
-  (frameMs: number, sourceId: string) => void
+  {
+    targetMs: number;
+    callback: (frameMs: number, sourceId: string) => void;
+  }
 >();
 
 // ── Reusable offscreen canvases for multi-track compositing ─────────────
@@ -347,18 +350,31 @@ function getCurrentFileName(): string {
 export function setPendingThumbCapture(
   sourceId: string,
   cb: (frameMs: number, sourceId: string) => void,
+  targetMs = 0,
 ): void {
   const existingFrames = pendingFramesBySource.get(sourceId);
   if (existingFrames && existingFrames.size > 0) {
-    const firstFrameMs = Math.min(...existingFrames.keys());
-    try {
-      cb(firstFrameMs, sourceId);
-    } catch (error) {
-      err('thumb', 'pendingThumbCapture callback threw', (error as Error).message);
+    const matchingFrameMs = [...existingFrames.keys()]
+      .filter((frameMs) => frameMs >= targetMs - 100)
+      .sort((a, b) => Math.abs(a - targetMs) - Math.abs(b - targetMs))[0];
+    if (matchingFrameMs !== undefined) {
+      try {
+        cb(matchingFrameMs, sourceId);
+      } catch (error) {
+        err('thumb', 'pendingThumbCapture callback threw', (error as Error).message);
+      }
+      return;
     }
-    return;
   }
-  _pendingThumbCaptures.set(sourceId, cb);
+  _pendingThumbCaptures.set(sourceId, { targetMs, callback: cb });
+}
+
+export function requestThumbnailFrame(sourceId: string, targetMs: number): void {
+  worker?.postMessage({
+    type: 'seek',
+    ms: Math.max(0, Math.round(targetMs)),
+    sourceId,
+  });
 }
 
 // ── Init & Worker Bridge ────────────────────────────────────────────────
@@ -463,10 +479,10 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
 
   // Fire pending thumbnail capture
   const pendingCapture = _pendingThumbCaptures.get(msg.sourceId);
-  if (pendingCapture) {
+  if (pendingCapture && msg.ms >= pendingCapture.targetMs - 100) {
     _pendingThumbCaptures.delete(msg.sourceId);
     try {
-      pendingCapture(msg.ms, msg.sourceId);
+      pendingCapture.callback(msg.ms, msg.sourceId);
     } catch (e) {
       err('thumb', 'pendingThumbCapture callback threw', (e as Error).message);
     }

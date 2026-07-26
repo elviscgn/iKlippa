@@ -32,6 +32,7 @@ import {
   renderLoop,
   importFile,
   setPendingThumbCapture,
+  requestThumbnailFrame,
   seekTo,
 } from '../../src/engine/engine';
 
@@ -407,6 +408,43 @@ describe('setPendingThumbCapture integration (Tier 2)', () => {
 
     expect(firstSource).not.toHaveBeenCalled();
     expect(secondSource).toHaveBeenCalledWith(100, 'source-b');
+  });
+
+  it('waits for the requested midpoint instead of accepting an early frame', () => {
+    const cb = vi.fn();
+    setPendingThumbCapture('source-a', cb, 2500);
+
+    handleWorkerMessage({
+      data: {
+        type: 'frame',
+        ms: 0,
+        gradeMs: 0,
+        buffer: new ArrayBuffer(100),
+        sourceId: 'source-a',
+      },
+    } as MessageEvent);
+    expect(cb).not.toHaveBeenCalled();
+
+    handleWorkerMessage({
+      data: {
+        type: 'frame',
+        ms: 2500,
+        gradeMs: 0,
+        buffer: new ArrayBuffer(100),
+        sourceId: 'source-a',
+      },
+    } as MessageEvent);
+    expect(cb).toHaveBeenCalledWith(2500, 'source-a');
+  });
+
+  it('requests a source seek at the chosen thumbnail time', () => {
+    requestThumbnailFrame('source-a', 2500.4);
+
+    expect((__TEST_HOOKS__.worker as any).postMessage).toHaveBeenCalledWith({
+      type: 'seek',
+      ms: 2500,
+      sourceId: 'source-a',
+    });
   });
 
   it('keeps a superseded seek frame available for its source thumbnail', async () => {
