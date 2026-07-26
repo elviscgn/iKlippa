@@ -7,6 +7,11 @@
 // Import state first (attaches to window.IKState, sets up videoClips/audioClips)
 import './state/state';
 import './ui/index';
+import {
+  MEDIA_DRAG_MIME,
+  materializeMediaPayload,
+  parseMediaDuration,
+} from './ui/mediaPool';
 
 import {
   initEngine,
@@ -20,6 +25,7 @@ import {
   perf,
   captureThumbnailFromBuffer,
   setPendingThumbCapture,
+  requestThumbnailFrame,
   syncTimelineToRust,
 } from './engine/engine';
 
@@ -79,12 +85,12 @@ window.onPlayheadUpdate = (ms: number): void => {
 // ── Thumbnail updates: debounced re-render ──────────────────────────────
 let thumbnailRenderDebounce: ReturnType<typeof setTimeout> | null = null;
 // fallow-ignore-next-line complexity
-window.onThumbnailsUpdated = (thumbnails): void => {
+window.onThumbnailsUpdated = (sourceId, thumbnails): void => {
   if (!hasRealVideo) return;
   // Don't re-render DOM during playback — it causes flicker
   const allClips = window.IKState.getAllVideoClips ? window.IKState.getAllVideoClips() : window.IKState.getVideoClips();
   for (const clip of allClips) {
-    if (clip.isReal) {
+    if (clip.isReal && clip.source_id === sourceId) {
       window.IKState.setClipMeta(clip.id, { thumbnails });
     }
   }
@@ -143,7 +149,10 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
     width,
     height,
   });
-  window.renderMedia('footage');
+  const activeMediaTab = document.querySelector('.media-tab.active') as HTMLElement | null;
+  if (!activeMediaTab || activeMediaTab.dataset.tab === 'footage') {
+    window.renderMedia('footage');
+  }
   window.calculateTimelineDuration();
   window.renderRuler();
   window.renderClips();
@@ -151,24 +160,31 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
 
   // If the project was restored (clips have stale source_ids from a previous
   // session), remap them to the newly imported source.
-  remapStaleSources(sourceId);
+  if (_restoredFromStorage) {
+    remapStaleSources(sourceId);
+    _restoredFromStorage = false;
+  }
 
-  syncTimelineToRust();
-
+  const thumbnailTargetMs = Math.max(0, Math.floor(durationMs / 2));
   // fallow-ignore-next-line complexity
-  setPendingThumbCapture((frameMs: number) => {
+  setPendingThumbCapture(sourceId, (frameMs: number, frameSourceId: string) => {
     try {
-      const thumb = captureThumbnailFromBuffer(frameMs);
+      const thumb = captureThumbnailFromBuffer(frameMs, frameSourceId);
       if (thumb && thumb.length > 500) {
-        const entry = window.mediaPool.footage.find((f) => f.id === sourceId);
+        const entry = window.mediaPool.footage.find((f) => f.id === frameSourceId);
         if (entry) {
           entry.thumbDataUrl = thumb;
-          window.renderMedia('footage');
-          console.log(`[iKlippa:app] thumbnail captured from frame ${frameMs}ms ✓`);
+          const activeTab = document.querySelector('.media-tab.active') as HTMLElement | null;
+          if (!activeTab || activeTab.dataset.tab === 'footage') {
+            window.renderMedia('footage');
+          }
+          console.log(
+            `[iKlippa:app] thumbnail captured [${frameSourceId}] from frame ${frameMs}ms ✓`,
+          );
         } else {
           console.warn(
             '[iKlippa:app] ⚠ thumbnail ready but media pool entry not found for',
-            sourceId,
+            frameSourceId,
           );
         }
       } else {
@@ -181,7 +197,12 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
     } catch (e) {
       console.error('[iKlippa:app] ✖ thumbnail capture threw', e);
     }
-  });
+  }, thumbnailTargetMs);
+  requestThumbnailFrame(sourceId, thumbnailTargetMs);
+
+  // Queue timeline sync after the thumbnail seek so it restores the playhead
+  // only after the midpoint frame has been captured.
+  syncTimelineToRust();
 };
 
 // ── Sync Rust project on any state mutation ──────────────────────────────
@@ -396,17 +417,49 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
     await importFile(file);
     return;
   }
-  const textData = e.dataTransfer?.getData('text/plain');
+  const textData =
+    e.dataTransfer?.getData(MEDIA_DRAG_MIME) ||
+    e.dataTransfer?.getData('text/plain');
   if (!textData) return;
   try {
     const data = JSON.parse(textData);
-    if (data.id && data.name) {
-      window.saveSnapshot();
-      window.IKState.addVideoClip('stock_' + data.id, 0, 4_000_000, {
+    if (data.kind === 'audio') {
+      window.showToast('Drop music onto an audio track', 'music');
+      return;
+    }
+    const sourceId =
+      typeof data.sourceId === 'string'
+        ? data.sourceId
+        : typeof data.id === 'string'
+          ? `stock_${data.id}`
+          : '';
+    if (sourceId && data.name) {
+      const durationSec = parseMediaDuration(data.durationSec ?? data.dur, 4);
+      const materialized = await materializeMediaPayload({
+        app: 'iklippa',
+        kind: 'video',
+        sourceId,
         name: data.name,
-        isReal: false,
-        picId: data.picId || 0,
+        durationSec,
+        isReal: Boolean(data.isReal),
+        ...(data.picId ? { picId: Number(data.picId) } : {}),
+        ...(typeof data.remoteUrl === 'string' ? { remoteUrl: data.remoteUrl } : {}),
+        ...(typeof data.thumbnailUrl === 'string' ? { thumbnailUrl: data.thumbnailUrl } : {}),
+        ...(typeof data.provider === 'string' ? { provider: data.provider } : {}),
+        ...(typeof data.creator === 'string' ? { creator: data.creator } : {}),
+        ...(typeof data.mimeType === 'string' ? { mimeType: data.mimeType } : {}),
       });
+      window.saveSnapshot();
+      window.IKState.addVideoClip(
+        materialized.sourceId,
+        0,
+        Math.round(materialized.durationSec * 1_000_000),
+        {
+          name: materialized.name,
+          isReal: materialized.isReal,
+          picId: materialized.picId || 0,
+        },
+      );
       window.IKState.computeDuration();
       window.calculateTimelineDuration();
       window.renderRuler();
@@ -414,8 +467,10 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
       window.updatePlayhead();
       window.showToast('Stock added via canvas', 'film');
     }
-  } catch {
-    // ignore invalid JSON
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      window.showToast((error as Error).message || 'Could not add stock media', 'alert-triangle');
+    }
   }
 });
 

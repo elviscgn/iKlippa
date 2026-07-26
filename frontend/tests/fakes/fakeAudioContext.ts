@@ -159,6 +159,11 @@ class FakeAudioContext {
     return new FakeAudioBuffer(channels, length, sampleRate) as unknown as AudioBuffer;
   }
 
+  async decodeAudioData(audioData: ArrayBuffer): Promise<AudioBuffer> {
+    const frames = Math.max(1, Math.floor(audioData.byteLength / (2 * Float32Array.BYTES_PER_ELEMENT)));
+    return this.createBuffer(2, frames, this._sampleRate);
+  }
+
   createBufferSource(): AudioBufferSourceNode {
     return new FakeAudioBufferSourceNode() as unknown as AudioBufferSourceNode;
   }

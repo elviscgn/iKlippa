@@ -5,6 +5,12 @@ export default defineConfig({
   root: '.',
   server: {
     port: 8080,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+      },
+    },
     headers: {
       // Required for SharedArrayBuffer / WASM threads / WebCodecs
       'Cross-Origin-Opener-Policy': 'same-origin',

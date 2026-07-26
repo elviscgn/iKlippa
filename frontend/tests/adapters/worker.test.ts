@@ -118,6 +118,69 @@ describe('Worker Message Integration (Tier 2 - adapter ports)', () => {
     expect(postMessageMock).toHaveBeenCalled();
   });
 
+  it('flushes a buffered first frame and reseeds before posting ready', async () => {
+    let pendingFrame = false;
+    let needsKeyframe = true;
+    const decodedTypes: string[] = [];
+    vi.stubGlobal('EncodedVideoChunk', class {
+      type: string;
+      constructor(init: { type: string }) {
+        this.type = init.type;
+      }
+    });
+    vi.stubGlobal('VideoDecoder', class {
+      state = 'configured';
+      decodeQueueSize = 0;
+      private output: (frame: VideoFrame) => void;
+
+      constructor({ output }: { output: (frame: VideoFrame) => void }) {
+        this.output = output;
+      }
+
+      configure() {
+        needsKeyframe = true;
+      }
+      decode(chunk: { type: string }) {
+        if (needsKeyframe && chunk.type !== 'key') {
+          throw new Error('A key frame is required after configure() or flush()');
+        }
+        needsKeyframe = false;
+        decodedTypes.push(chunk.type);
+        pendingFrame = true;
+      }
+      async flush() {
+        if (!pendingFrame) return;
+        pendingFrame = false;
+        await this.output({ timestamp: 0, close: vi.fn() } as unknown as VideoFrame);
+        needsKeyframe = true;
+      }
+      reset() {
+        pendingFrame = false;
+        needsKeyframe = true;
+      }
+      close() {}
+    });
+
+    await workerOnMessage({ data: { type: 'init' } });
+    await workerOnMessage({
+      data: {
+        type: 'load',
+        file: { slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(64)) }) },
+        codecConfig: { codec: 'avc' },
+        width: 4,
+        height: 4,
+        samples: [{ offset: 0, size: 64, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true }],
+        durationMs: 1000,
+        sourceId: 'source-a',
+      },
+    });
+
+    const messageTypes = postMessageMock.mock.calls.map((call: any[]) => call[0]?.type);
+    expect(messageTypes.indexOf('frame')).toBeGreaterThan(-1);
+    expect(messageTypes.indexOf('frame')).toBeLessThan(messageTypes.indexOf('ready'));
+    expect(decodedTypes).toEqual(['key', 'key']);
+  });
+
   it('gracefully handles seek before init/load', async () => {
     await workerOnMessage({ data: { type: 'seek', ms: 1000 } });
     const messageTypes = postMessageMock.mock.calls.map((c: any[]) => c[0]?.type);
@@ -498,7 +561,7 @@ describe('Worker Message Integration (Tier 2 - adapter ports)', () => {
     expect(decodeSpy).toHaveBeenCalled(); // re-primed from the resync target
   });
 
-  it('never decodes audio further than 1s past the playhead', async () => {
+  it('keeps audio buffered without decoding more than 3s past the playhead', async () => {
     const decodeSpy = stubAudioDecoderWithSpy();
     vi.stubGlobal('VideoDecoder', class {
       constructor(_init: any) {}
@@ -518,18 +581,17 @@ describe('Worker Message Integration (Tier 2 - adapter ports)', () => {
     await workerOnMessage({
       data: { ...loadMsg, audioConfig: audioCfg, audioSamples, audioConfigVersion: 1 },
     });
-    // load primes 600ms from 0 → only the 0ms sample
-    expect(decodeSpy.mock.calls.length).toBe(1);
+    // Initial load primes through 2s so playback starts with a safe cushion.
+    expect(decodeSpy.mock.calls.length).toBe(3);
     decodeSpy.mockClear();
 
-    // playhead 0 → only the 1000ms sample is within lookahead
+    // At playhead 0, the next 3s sample is inside the rolling lookahead.
     await workerOnMessage({ data: { type: 'sync', playheadMs: 0, isPlaying: true, framesAhead: 0 } });
     expect(decodeSpy.mock.calls.length).toBe(1);
 
-    // playhead 3000 → 2000, 3000, 4000ms samples decode; 5000ms stays gated
-    // (spy is cumulative: 1 from the first sync + 3 here)
+    // At playhead 3s the remaining 4s and 5s samples enter the window.
     await workerOnMessage({ data: { type: 'sync', playheadMs: 3000, isPlaying: true, framesAhead: 0 } });
-    expect(decodeSpy.mock.calls.length).toBe(4);
+    expect(decodeSpy.mock.calls.length).toBe(3);
   });
 
   it('posts WASM_PANIC when process_frame throws inside the decoder callback', async () => {

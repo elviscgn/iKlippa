@@ -118,6 +118,7 @@ let rafHandle: number | null = null;
 
 let pendingFrames = new Map<number, ImageData>();
 let pendingFramesBySource = new Map<string, Map<number, ImageData>>();
+let sourceDimensions = new Map<string, { width: number; height: number }>();
 let sourceVideoWidth = 0;
 let sourceVideoHeight = 0;
 let videoDurationMs = 0;
@@ -132,11 +133,15 @@ let pendingResumeAfterSeek = false;
 let audioCtx: AudioContextPort | null = null;
 let pendingAudio = new Map<number, AudioBuffer>();
 let scheduledAudioNodes: AudioBufferSourceNode[] = [];
+let scheduledExternalAudioNodes: AudioBufferSourceNode[] = [];
+let externalAudioBuffers = new Map<string, AudioBuffer>();
 let nextAudioStartTime = 0;
 let lastScheduledChunkMs = -1;
 let audioConfigVersion = 0;
 let audioPlayStartCtxTime = 0;
 let audioPlayStartMs = 0;
+const AUDIO_SCHEDULE_LEAD_SEC = 0.06;
+const AUDIO_END_EPSILON_SEC = 0.001;
 
 // ── Audio Mixer ──────────────────────────────────────────────────────────
 let masterCompressor: DynamicsCompressorNode | null = null;
@@ -189,10 +194,26 @@ function findActiveAudioTrack(sourceMs: number): number | null {
   return null;
 }
 
+function isContinuousClipTransition(previousId: number | null, nextId: number | null): boolean {
+  if (previousId === null || nextId === null) return false;
+  const IKState = (window as any).IKState;
+  const previous = IKState?.findClip?.(previousId);
+  const next = IKState?.findClip?.(nextId);
+  if (!previous || !next || previous.source_id !== next.source_id) return false;
+
+  const timelineGapUs = Math.abs(previous.timeline_end_us - next.timeline_start_us);
+  const sourceGapUs = Math.abs(previous.source_end_us - next.source_start_us);
+  return timelineGapUs <= 1_000 && sourceGapUs <= 50_000;
+}
+
 // ── Thumbnail Capture State ─────────────────────────────────────────────
 let currentFileName = '';
 let timelineThumbnails: Array<{ ms: number; dataUrl: string }> = [];
-let lastThumbnailCaptureMs = -Infinity;
+let timelineThumbnailsBySource = new Map<
+  string,
+  Array<{ ms: number; dataUrl: string }>
+>();
+let lastThumbnailCaptureBySource = new Map<string, number>();
 const THUMBNAIL_CAPTURE_INTERVAL = 800;
 const MAX_TIMELINE_THUMBNAILS = 60;
 
@@ -207,8 +228,14 @@ let seekGeneration = 0;
 // real decode work by seconds. Only post when something material changed.
 let lastSyncSig = '';
 
-// ── Pending thumbnail capture callback ──────────────────────────────────
-let _pendingThumbCapture: ((frameMs: number) => void) | null = null;
+// ── Pending thumbnail capture callbacks ─────────────────────────────────
+let _pendingThumbCaptures = new Map<
+  string,
+  {
+    targetMs: number;
+    callback: (frameMs: number, sourceId: string) => void;
+  }
+>();
 
 // ── Reusable offscreen canvases for multi-track compositing ─────────────
 let _compositeCanvas: HTMLCanvasElement | null = null;
@@ -241,13 +268,24 @@ if (typeof window !== 'undefined') {
 function maybeCaptureThumbnail(ms: number): void {
   if (!canvas || canvas.width === 0 || canvas.height === 0) return;
   if (videoDurationMs === 0) return;
-  if (ms - lastThumbnailCaptureMs < THUMBNAIL_CAPTURE_INTERVAL) return;
-  if (timelineThumbnails.length >= MAX_TIMELINE_THUMBNAILS) return;
+  const mapped = mapTimelineToSource(ms);
+  if (!mapped) return;
+  const lastCaptureMs = lastThumbnailCaptureBySource.get(mapped.sourceId) ?? -Infinity;
+  if (mapped.sourceMs - lastCaptureMs < THUMBNAIL_CAPTURE_INTERVAL) return;
+  let sourceThumbnails = timelineThumbnailsBySource.get(mapped.sourceId);
+  if (!sourceThumbnails) {
+    sourceThumbnails = [];
+    timelineThumbnailsBySource.set(mapped.sourceId, sourceThumbnails);
+  }
+  if (sourceThumbnails.length >= MAX_TIMELINE_THUMBNAILS) return;
   try {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.35);
-    timelineThumbnails.push({ ms, dataUrl });
-    lastThumbnailCaptureMs = ms;
-    if (window.onThumbnailsUpdated) window.onThumbnailsUpdated(timelineThumbnails);
+    sourceThumbnails.push({ ms: mapped.sourceMs, dataUrl });
+    timelineThumbnails = sourceThumbnails;
+    lastThumbnailCaptureBySource.set(mapped.sourceId, mapped.sourceMs);
+    if (window.onThumbnailsUpdated) {
+      window.onThumbnailsUpdated(mapped.sourceId, sourceThumbnails);
+    }
   } catch (e) {
     warn('thumb', 'canvas.toDataURL failed (tainted?)', (e as Error).message);
   }
@@ -263,31 +301,37 @@ function captureThumbnail(): string | null {
 }
 
 // fallow-ignore-next-line complexity
-export function captureThumbnailFromBuffer(ms: number): string | null {
+export function captureThumbnailFromBuffer(ms: number, sourceId?: string): string | null {
   if (!canvas || !ctx) {
     warn('thumb', 'captureThumbnailFromBuffer: canvas/ctx not ready');
     return null;
   }
-  if (pendingFrames.size === 0) return null;
+  const frames = sourceId
+    ? pendingFramesBySource.get(sourceId)
+    : pendingFrames;
+  if (!frames || frames.size === 0) return null;
 
   let bestMs = -1;
-  for (const [frameMs] of pendingFrames) {
+  for (const [frameMs] of frames) {
     if (frameMs <= ms && frameMs > bestMs) bestMs = frameMs;
   }
   if (bestMs < 0) {
-    for (const [frameMs] of pendingFrames) {
+    for (const [frameMs] of frames) {
       if (bestMs < 0 || frameMs < bestMs) bestMs = frameMs;
     }
   }
   if (bestMs < 0) return null;
 
-  const imageData = pendingFrames.get(bestMs);
+  const imageData = frames.get(bestMs);
   if (!imageData) return null;
 
   ctx.putImageData(imageData, 0, 0);
   try {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-    log('thumb', `captured from pendingFrames[${bestMs}ms] → ${dataUrl.length} bytes`);
+    log(
+      'thumb',
+      `captured ${sourceId ? `[${sourceId}] ` : ''}at ${bestMs}ms → ${dataUrl.length} bytes`,
+    );
     return dataUrl;
   } catch (e) {
     err('thumb', 'toDataURL failed', (e as Error).message);
@@ -303,8 +347,34 @@ function getCurrentFileName(): string {
   return currentFileName;
 }
 
-export function setPendingThumbCapture(cb: (frameMs: number) => void): void {
-  _pendingThumbCapture = cb;
+export function setPendingThumbCapture(
+  sourceId: string,
+  cb: (frameMs: number, sourceId: string) => void,
+  targetMs = 0,
+): void {
+  const existingFrames = pendingFramesBySource.get(sourceId);
+  if (existingFrames && existingFrames.size > 0) {
+    const matchingFrameMs = [...existingFrames.keys()]
+      .filter((frameMs) => frameMs >= targetMs - 100)
+      .sort((a, b) => Math.abs(a - targetMs) - Math.abs(b - targetMs))[0];
+    if (matchingFrameMs !== undefined) {
+      try {
+        cb(matchingFrameMs, sourceId);
+      } catch (error) {
+        err('thumb', 'pendingThumbCapture callback threw', (error as Error).message);
+      }
+      return;
+    }
+  }
+  _pendingThumbCaptures.set(sourceId, { targetMs, callback: cb });
+}
+
+export function requestThumbnailFrame(sourceId: string, targetMs: number): void {
+  worker?.postMessage({
+    type: 'seek',
+    ms: Math.max(0, Math.round(targetMs)),
+    sourceId,
+  });
 }
 
 // ── Init & Worker Bridge ────────────────────────────────────────────────
@@ -356,6 +426,7 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
   videoDurationMs = msg.durationMs;
   sourceVideoWidth = msg.width;
   sourceVideoHeight = msg.height;
+  sourceDimensions.set(msg.sourceId, { width: msg.width, height: msg.height });
   if (canvas) {
     canvas.width = sourceVideoWidth;
     canvas.height = sourceVideoHeight;
@@ -379,17 +450,18 @@ function handleWorkerReady(msg: Extract<WorkerIncomingMessage, { type: 'ready' }
 }
 
 function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }>): void {
-  // During export, accept all frames — seekGeneration races ahead.
-  if (!isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration) {
-    log('paint', `dropping stale frame from seek ${msg.seekId} (current: ${seekGeneration})`);
-    return;
-  }
+  // A superseded seek frame is stale for playback, but it is still a valid
+  // frame from its source and can safely seed that source's thumbnail.
+  const isStaleSeekFrame =
+    !isExporting && msg.seekId !== undefined && msg.seekId !== seekGeneration;
   perf.recordFrameArrival(msg.ms, msg.gradeMs);
   const arr = new Uint8ClampedArray(msg.buffer);
-  const img = new ImageData(arr, sourceVideoWidth, sourceVideoHeight);
+  const dimensions = sourceDimensions.get(msg.sourceId) ?? {
+    width: sourceVideoWidth,
+    height: sourceVideoHeight,
+  };
+  const img = new ImageData(arr, dimensions.width, dimensions.height);
 
-  // Store in both caches for backward compat during transition
-  pendingFrames.set(msg.ms, img);
   let sourceFrames = pendingFramesBySource.get(msg.sourceId);
   if (!sourceFrames) {
     sourceFrames = new Map();
@@ -406,15 +478,23 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
     exportFrames.push({ ms: msg.ms, imageData: img });
 
   // Fire pending thumbnail capture
-  if (_pendingThumbCapture) {
-    const cb = _pendingThumbCapture;
-    _pendingThumbCapture = null;
+  const pendingCapture = _pendingThumbCaptures.get(msg.sourceId);
+  if (pendingCapture && msg.ms >= pendingCapture.targetMs - 100) {
+    _pendingThumbCaptures.delete(msg.sourceId);
     try {
-      cb(msg.ms);
+      pendingCapture.callback(msg.ms, msg.sourceId);
     } catch (e) {
       err('thumb', 'pendingThumbCapture callback threw', (e as Error).message);
     }
   }
+
+  if (isStaleSeekFrame) {
+    log('paint', `ignoring stale playback frame from seek ${msg.seekId} (current: ${seekGeneration})`);
+    return;
+  }
+
+  // Keep the legacy active-source cache limited to current playback frames.
+  pendingFrames.set(msg.ms, img);
 
   if (seekTargetMs >= 0 && msg.ms >= seekTargetMs - 33) {
     log('seek', `frame ${msg.ms}ms reached target ${seekTargetMs}ms → painting`);
@@ -441,14 +521,6 @@ function handleWorkerAudioChunk(msg: Extract<WorkerIncomingMessage, { type: 'aud
     return;
   }
   if (msg.configVersion !== audioConfigVersion) return;
-  // Anchor the audio clock to the moment the first chunk actually arrives,
-  // not the moment seekTo/startPlayback fired.  The video decode loop
-  // (seekAndDecodeFrame) can take 100-300ms; if we already set
-  // audioPlayStartCtxTime back then, every chunk arrives "stale" and gets
-  // dropped.  Setting it here means the first chunk always lands on time.
-  if (nextAudioStartTime === 0) {
-    audioPlayStartCtxTime = audioCtx.currentTime;
-  }
   const audioBuffer = audioCtx.createBuffer(msg.channels, msg.length, msg.sampleRate);
   for (let c = 0; c < msg.channels; c++) {
     audioBuffer.copyToChannel(new Float32Array(msg.buffers[c]!), c);
@@ -510,20 +582,28 @@ function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
   if (!audioCtx || !masterCompressor) return;
   const timelineMs = mapSourceToTimelineMs(chunkMs);
   if (timelineMs === null) return;
+  if (chunkMs <= lastScheduledChunkMs) return;
 
-  const idealCtxTime = audioPlayStartCtxTime + (timelineMs - audioPlayStartMs) / 1000;
-  if (nextAudioStartTime === 0 || nextAudioStartTime < audioCtx.currentTime) {
-    nextAudioStartTime = Math.max(audioCtx.currentTime, idealCtxTime);
+  if (nextAudioStartTime === 0) {
+    // Give Web Audio one render quantum of runway when video work is busy.
+    audioPlayStartCtxTime = audioCtx.currentTime + AUDIO_SCHEDULE_LEAD_SEC;
   }
-  if (idealCtxTime < audioCtx.currentTime - 0.15) {
+  const idealCtxTime = audioPlayStartCtxTime + (timelineMs - audioPlayStartMs) / 1000;
+  let startTime =
+    nextAudioStartTime === 0
+      ? idealCtxTime
+      : Math.max(idealCtxTime, nextAudioStartTime);
+  const safeStartTime = audioCtx.currentTime + AUDIO_SCHEDULE_LEAD_SEC;
+  const offsetSec = Math.max(0, safeStartTime - startTime);
+  if (offsetSec >= audioBuffer.duration - AUDIO_END_EPSILON_SEC) {
     logOnce(
       `audio-stale-${Math.round(chunkMs / 1000)}`,
       'audio',
-      `dropping stale chunk at source ${chunkMs}ms (timeline ${timelineMs.toFixed(0)}ms)`,
+      `dropping fully elapsed chunk at source ${chunkMs}ms`,
     );
     return;
   }
-  if (idealCtxTime > nextAudioStartTime + 0.05) nextAudioStartTime = idealCtxTime;
+  if (offsetSec > 0) startTime = safeStartTime;
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
 
@@ -544,8 +624,9 @@ function scheduleAudioNode(chunkMs: number, audioBuffer: AudioBuffer): void {
     const i = scheduledAudioNodes.indexOf(source);
     if (i >= 0) scheduledAudioNodes.splice(i, 1);
   };
-  source.start(nextAudioStartTime);
-  nextAudioStartTime += audioBuffer.duration;
+  source.start(startTime, offsetSec);
+  nextAudioStartTime = startTime + audioBuffer.duration - offsetSec;
+  lastScheduledChunkMs = chunkMs;
   scheduledAudioNodes.push(source);
 }
 
@@ -558,18 +639,114 @@ function stopAllAudioNodes(): void {
     }
   });
   scheduledAudioNodes = [];
+  scheduledExternalAudioNodes.forEach((n) => {
+    try {
+      n.stop();
+    } catch {
+      // already stopped
+    }
+  });
+  scheduledExternalAudioNodes = [];
+}
+
+function stopWorkerAudioNodes(): void {
+  scheduledAudioNodes.forEach((n) => {
+    try {
+      n.stop();
+    } catch {
+      // already stopped
+    }
+  });
+  scheduledAudioNodes = [];
+}
+
+function scheduleExternalAudioClips(timelineMs: number): void {
+  if (!audioCtx || !masterCompressor) return;
+  const IKState = (window as any).IKState;
+  if (!IKState?.isReady?.()) return;
+
+  const tracks = IKState.getTracks?.() || [];
+  for (const track of tracks) {
+    if (track.track_type !== 'audio') continue;
+    for (const clip of track.clips) {
+      const buffer = externalAudioBuffers.get(clip.source_id);
+      if (!buffer) continue;
+
+      const clipStartMs = clip.timeline_start_us / 1000;
+      const clipEndMs = clip.timeline_end_us / 1000;
+      if (timelineMs >= clipEndMs) continue;
+
+      const playbackStartMs = Math.max(timelineMs, clipStartMs);
+      const speed = Math.max(0.01, Number(clip.speed) || 1);
+      const sourceOffsetSec =
+        clip.source_start_us / 1_000_000 +
+        ((playbackStartMs - clipStartMs) / 1000) * speed;
+      const sourceDurationSec = ((clipEndMs - playbackStartMs) / 1000) * speed;
+      const playableDurationSec = Math.min(
+        sourceDurationSec,
+        buffer.duration - sourceOffsetSec,
+      );
+      if (playableDurationSec <= AUDIO_END_EPSILON_SEC) continue;
+
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      if (source.playbackRate) source.playbackRate.value = speed;
+      try {
+        source.connect(getTrackGainPan(track.id).gain);
+      } catch {
+        source.connect(masterCompressor);
+      }
+      source.onended = () => {
+        const index = scheduledExternalAudioNodes.indexOf(source);
+        if (index >= 0) scheduledExternalAudioNodes.splice(index, 1);
+      };
+      const delaySec = Math.max(0, clipStartMs - timelineMs) / 1000;
+      source.start(
+        audioCtx.currentTime + AUDIO_SCHEDULE_LEAD_SEC + delaySec,
+        sourceOffsetSec,
+        playableDurationSec,
+      );
+      scheduledExternalAudioNodes.push(source);
+    }
+  }
+}
+
+export async function registerExternalAudio(
+  file: File,
+  preferredSourceId?: string,
+): Promise<ImportedMediaSource> {
+  await initAudio();
+  const sourceId = preferredSourceId || 'audio_' + Date.now();
+  const buffer = await audioCtx!.decodeAudioData(await file.arrayBuffer());
+  externalAudioBuffers.set(sourceId, buffer);
+  return {
+    sourceId,
+    fileName: file.name,
+    durationMs: Math.round(buffer.duration * 1000),
+    width: 0,
+    height: 0,
+  };
 }
 
 // ── Demux ─────────────────────────────────────────────────────────────
-export async function importFile(file: File): Promise<void> {
+export interface ImportedMediaSource {
+  sourceId: string;
+  fileName: string;
+  durationMs: number;
+  width: number;
+  height: number;
+}
+
+export async function importFile(
+  file: File,
+  preferredSourceId?: string,
+): Promise<ImportedMediaSource> {
   log('import', `importFile: "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
   logStatus(`Importing: ${file.name}`);
   currentFileName = file.name;
   timelineThumbnails = [];
-  lastThumbnailCaptureMs = -Infinity;
   seekTargetMs = -1;
   if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
-  _pendingThumbCapture = null;
   _loggedOnce.clear();
 
   initAudio();
@@ -690,8 +867,18 @@ export async function importFile(file: File): Promise<void> {
     throw e;
   });
 
-  const sourceId = 'imported_' + Date.now();
+  const sourceId = preferredSourceId || 'imported_' + Date.now();
+  sourceDimensions.set(sourceId, { width: payload.width, height: payload.height });
+  timelineThumbnailsBySource.set(sourceId, []);
+  lastThumbnailCaptureBySource.delete(sourceId);
   worker!.postMessage({ type: 'load', file, fileName: file.name, sourceId, ...payload });
+  return {
+    sourceId,
+    fileName: file.name,
+    durationMs: payload.durationMs,
+    width: payload.width,
+    height: payload.height,
+  };
 }
 
 function getDecoderDescription(
@@ -765,22 +952,26 @@ export function renderLoop(ts: number): void {
 
   if (newClipId !== currentActiveClipId) {
     log('play', `clip transition: ${currentActiveClipId} -> ${newClipId}`);
+    const isContinuous = isContinuousClipTransition(currentActiveClipId, newClipId);
     currentActiveClipId = newClipId;
-    if (newClipId !== null) {
+    if (!isContinuous) {
+      stopWorkerAudioNodes();
+      pendingAudio.clear();
+      nextAudioStartTime = 0;
+      lastScheduledChunkMs = -1;
+    }
+    if (newClipId !== null && !isContinuous) {
       const mapRes = mapTimelineToSource(playheadMs);
       if (mapRes) {
         worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId });
       }
       pendingFrames.clear();
-      pendingAudio.clear();
       audioPlayStartMs = playheadMs;
-      if (audioCtx) audioPlayStartCtxTime = audioCtx.currentTime;
-      nextAudioStartTime = 0;
     }
   }
 
   if (activeNow.length === 0 && scheduledAudioNodes.length > 0) {
-    stopAllAudioNodes();
+    stopWorkerAudioNodes();
     nextAudioStartTime = 0;
   }
 
@@ -807,6 +998,7 @@ export function renderLoop(ts: number): void {
         log('play', `buffering started — freezing playhead @ ${playheadMs.toFixed(0)}ms`);
         stopAllAudioNodes();
         nextAudioStartTime = 0;
+        lastScheduledChunkMs = -1;
         if (window.onBuffering) window.onBuffering(true);
       }
       // Still send sync so the worker keeps decoding
@@ -831,12 +1023,14 @@ export function renderLoop(ts: number): void {
       audioPlayStartCtxTime = audioCtx!.currentTime;
       audioPlayStartMs = playheadMs;
       nextAudioStartTime = 0;
+      lastScheduledChunkMs = -1;
       // Re-schedule any pending audio chunks that are at or after the playhead
       for (const [chunkMs, buf] of pendingAudio) {
         if (chunkMs >= playheadMs) {
           scheduleAudioNode(chunkMs, buf);
         }
       }
+      scheduleExternalAudioClips(playheadMs);
       if (window.onBuffering) window.onBuffering(false);
     }
   }
@@ -1051,10 +1245,18 @@ export const __TEST_HOOKS__ = {
   set sourceVideoHeight(val: number) { sourceVideoHeight = val; },
   get scheduledAudioNodes() { return scheduledAudioNodes; },
   set scheduledAudioNodes(val: AudioBufferSourceNode[]) { scheduledAudioNodes = val; },
+  get scheduledExternalAudioNodes() { return scheduledExternalAudioNodes; },
+  set scheduledExternalAudioNodes(val: AudioBufferSourceNode[]) {
+    scheduledExternalAudioNodes = val;
+  },
+  get externalAudioBuffers() { return externalAudioBuffers; },
+  set externalAudioBuffers(val: Map<string, AudioBuffer>) { externalAudioBuffers = val; },
   get nextAudioStartTime() { return nextAudioStartTime; },
   set nextAudioStartTime(val: number) { nextAudioStartTime = val; },
   get audioPlayStartCtxTime() { return audioPlayStartCtxTime; },
   set audioPlayStartCtxTime(val: number) { audioPlayStartCtxTime = val; },
+  get lastScheduledChunkMs() { return lastScheduledChunkMs; },
+  set lastScheduledChunkMs(val: number) { lastScheduledChunkMs = val; },
   get lastRafTs() { return lastRafTs; },
   set lastRafTs(val: number | null) { lastRafTs = val; },
   get rafHandle() { return rafHandle; },
@@ -1137,6 +1339,7 @@ async function startPlayback(opts?: { fromSeek?: boolean }): Promise<void> {
   audioPlayStartCtxTime = audioCtx!.currentTime;
   audioPlayStartMs = playheadMs;
   nextAudioStartTime = 0;
+  lastScheduledChunkMs = -1;
   // Never schedule leftover chunks from before a pause: the worker re-sends
   // everything from the playhead (resync_audio below), so scheduling the
   // leftovers as well would double-stack them — the "screech" class of bug.
@@ -1156,6 +1359,7 @@ async function startPlayback(opts?: { fromSeek?: boolean }): Promise<void> {
     const mapRes = mapTimelineToSource(playheadMs);
     worker?.postMessage({ type: 'resync_audio', ms: mapRes ? mapRes.sourceMs : playheadMs, sourceId: mapRes?.sourceId });
   }
+  scheduleExternalAudioClips(playheadMs);
   syncWorkerState();
   rafHandle = getPorts().rafScheduler.requestAnimationFrame(renderLoop);
 }
@@ -1237,6 +1441,7 @@ export async function seekTo(ms: number): Promise<void> {
   syncWorkerState();
   if (window.onPlayheadUpdate) window.onPlayheadUpdate(ms);
   nextAudioStartTime = 0;
+  lastScheduledChunkMs = -1;
   // Show spinner while waiting for the first decoded frame
   if (pendingResumeAfterSeek && window.onBuffering) window.onBuffering(true);
   // Don't start playback immediately — wait for the first frame to arrive

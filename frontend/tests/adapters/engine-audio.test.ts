@@ -7,7 +7,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setPorts, resetPorts, getPorts } from '../../src/adapters';
 import { fakeEnginePorts, expectNoLeaks, resetLeakRegistry } from '../fakes';
-import { togglePlayback, handleWorkerMessage, __TEST_HOOKS__ } from '../../src/engine/engine';
+import {
+  togglePlayback,
+  handleWorkerMessage,
+  registerExternalAudio,
+  __TEST_HOOKS__,
+} from '../../src/engine/engine';
 
 beforeEach(() => {
   resetLeakRegistry();
@@ -94,5 +99,108 @@ describe('pause→play audio recovery (Tier 2 - adapter ports)', () => {
     for (const buf of __TEST_HOOKS__.pendingAudio.values()) (buf as any).close?.();
     __TEST_HOOKS__.pendingAudio = new Map();
     __TEST_HOOKS__.isPlaying = false;
+  });
+
+  it('gives audio scheduling runway and ignores duplicate worker packets', async () => {
+    setupStoppedPlayback();
+    __TEST_HOOKS__.playheadMs = 0;
+    __TEST_HOOKS__.pendingAudio = new Map();
+
+    togglePlayback();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const ctx = __TEST_HOOKS__.audioCtx as any;
+    const sourceSpy = vi.spyOn(ctx, 'createBufferSource');
+    const bufferSpy = vi.spyOn(ctx, 'createBuffer');
+    __TEST_HOOKS__.audioPlayStartMs = 0;
+    __TEST_HOOKS__.audioPlayStartCtxTime = 0;
+    __TEST_HOOKS__.nextAudioStartTime = 0;
+    __TEST_HOOKS__.lastScheduledChunkMs = -1;
+
+    const packet = {
+      type: 'audio_chunk' as const,
+      ms: 0,
+      channels: 1,
+      sampleRate: 48000,
+      length: 4800,
+      buffers: [new ArrayBuffer(4800 * 4)],
+      configVersion: 0,
+    };
+    handleWorkerMessage({ data: packet } as MessageEvent);
+    handleWorkerMessage({ data: packet } as MessageEvent);
+
+    expect(sourceSpy).toHaveBeenCalledTimes(1);
+    expect(__TEST_HOOKS__.scheduledAudioNodes).toHaveLength(1);
+    expect((sourceSpy.mock.results[0]!.value as any)._scheduleTime).toBeGreaterThanOrEqual(0.06);
+
+    const node = sourceSpy.mock.results[0]!.value;
+    node.close();
+    for (const result of bufferSpy.mock.results) (result.value as any).close();
+    __TEST_HOOKS__.scheduledAudioNodes = [];
+    __TEST_HOOKS__.pendingAudio = new Map();
+    __TEST_HOOKS__.isPlaying = false;
+  });
+
+  it('registers and schedules an external music file on its audio track', async () => {
+    const postMessage = setupStoppedPlayback();
+    __TEST_HOOKS__.pendingAudio = new Map();
+    __TEST_HOOKS__.externalAudioBuffers = new Map();
+    __TEST_HOOKS__.scheduledExternalAudioNodes = [];
+    __TEST_HOOKS__.playheadMs = 0;
+
+    const imported = await registerExternalAudio(
+      new File([new Uint8Array(48000 * 2 * 4)], 'music.mp3', { type: 'audio/mpeg' }),
+      'stock_jamendo_42',
+    );
+    expect(imported).toMatchObject({
+      sourceId: 'stock_jamendo_42',
+      durationMs: 1000,
+    });
+
+    const clip = {
+      id: 42,
+      source_id: imported.sourceId,
+      source_start_us: 0,
+      source_end_us: 1_000_000,
+      timeline_start_us: 0,
+      timeline_end_us: 1_000_000,
+      speed: 1,
+    };
+    (window as any).IKState = {
+      isReady: () => true,
+      getTracks: () => [{
+        id: 7,
+        track_type: 'audio',
+        volume: 1,
+        pan: 0,
+        muted: false,
+        clips: [clip],
+      }],
+      getVideoClips: () => [],
+      getAudioClips: () => [clip],
+      getDurationSec: () => 1,
+    };
+
+    const ctx = __TEST_HOOKS__.audioCtx as any;
+    const sourceSpy = vi.spyOn(ctx, 'createBufferSource');
+    togglePlayback();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'resync_audio',
+      ms: 0,
+      sourceId: undefined,
+    });
+    expect(__TEST_HOOKS__.scheduledExternalAudioNodes).toHaveLength(1);
+    expect((sourceSpy.mock.results[0]!.value as any)._scheduleTime).toBeGreaterThanOrEqual(0.06);
+
+    togglePlayback();
+    const node = sourceSpy.mock.results[0]!.value;
+    node.close();
+    for (const buffer of __TEST_HOOKS__.externalAudioBuffers.values()) {
+      (buffer as any).close();
+    }
+    __TEST_HOOKS__.externalAudioBuffers = new Map();
+    __TEST_HOOKS__.scheduledExternalAudioNodes = [];
   });
 });

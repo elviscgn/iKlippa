@@ -9,7 +9,7 @@ This README explains the purpose of every backend file and provides the exact AP
 ## 🏗 Architecture Overview
 
 iKlippa uses a 3-tier backend microservice architecture:
-1. **Go API Gateway (`:8080`)**: The main entry point. Handles frontend traffic and orchestrates the other services.
+1. **Go API Gateway (`:8081`)**: The main entry point. Handles frontend traffic and orchestrates the other services. Vite proxies `/api` here while serving the editor on `:8080`.
 2. **IBM Granite / Ollama (`:11434`)**: Runs locally. Takes prompts and generates video scripts.
 3. **Python ML Engine (`:8000`)**: Runs NLP sentiment analysis, searches stock media APIs, and predicts virality.
 
@@ -34,11 +34,57 @@ iKlippa uses a 3-tier backend microservice architecture:
 
 ## 🔌 API Endpoints (For Frontend Integration)
 
-### 1. The Director Endpoint (Main)
+## Running Locally
+
+Keep the provider credentials in `ml/.env`:
+
+```dotenv
+PEXELS_API_KEY=your_key
+JAMENDO_CLIENT_ID=your_client_id
+```
+
+Start each service in its own terminal:
+
+```bash
+cd ml
+uv run --with fastapi --with uvicorn --with requests --with python-dotenv python app.py
+```
+
+```bash
+cd backend
+go run .
+```
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open `http://localhost:8080/`. Do not open `index.html` directly because the Vite proxy and worker asset loading are required.
+
+### 1. Stock Video Search
+
+The frontend calls the same-origin `/api` path, which Vite proxies to Go.
+
+```http
+GET /api/stock/videos?q=nature
+```
+
+Returns normalized Pexels video metadata in an `items` array. API credentials are never returned to the browser.
+
+### 2. Stock Music Search
+
+```http
+GET /api/stock/music?q=chill
+```
+
+Returns normalized Jamendo track metadata in an `items` array. The configured client ID must be authorized by Jamendo.
+
+### 3. The Director Endpoint
 This is the **only** endpoint the React frontend needs to call to get a complete video package.
 
 **Request:**
-*   **URL:** `POST http://localhost:8080/api/director/generate`
+*   **URL:** `POST http://localhost:8081/api/director/generate`
 *   **Content-Type:** `application/json`
 *   **Body:**
 ```json
@@ -83,7 +129,7 @@ This is the **only** endpoint the React frontend needs to call to get a complete
 }
 ```
 
-### 2. The Direct ML Endpoint (Optional Bypass)
+### 4. The Direct ML Endpoint (Optional Bypass)
 If you already have a script and just want the NLP metadata + stock media *without* asking the AI to write a new one, you can bypass Go and hit the Python server directly.
 
 **Request:**

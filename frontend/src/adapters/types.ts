@@ -56,6 +56,7 @@ export interface AudioContextPort {
   readonly sampleRate: number;
   readonly state: string;
   createBuffer(channels: number, length: number, sampleRate: number): AudioBuffer;
+  decodeAudioData(audioData: ArrayBuffer): Promise<AudioBuffer>;
   createBufferSource(): AudioBufferSourceNode;
   createGain(): GainNode;
   createStereoPanner(): StereoPannerNode;

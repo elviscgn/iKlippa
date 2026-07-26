@@ -42,6 +42,7 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
     __TEST_HOOKS__.canvas = mockCanvas;
     __TEST_HOOKS__.ctx = mockCtx;
     __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.pendingFramesBySource = new Map();
   });
 
   it('returns null if canvas or ctx is missing', () => {
@@ -81,6 +82,22 @@ describe('captureThumbnailFromBuffer (Tier 2 - adapter ports)', () => {
     const result = captureThumbnailFromBuffer(100);
     expect(result).toBe('data:image/jpeg;base64,mockdata');
     expect(mockCtx.putImageData).toHaveBeenCalledWith({ id: '120' }, 0, 0);
+  });
+
+  it('captures only from the requested source frame cache', () => {
+    __TEST_HOOKS__.pendingFramesBySource.set(
+      'test-video',
+      new Map([[100, { id: 'test-frame' } as any as ImageData]]),
+    );
+    __TEST_HOOKS__.pendingFramesBySource.set(
+      'nature-video',
+      new Map([[100, { id: 'nature-frame' } as any as ImageData]]),
+    );
+
+    const result = captureThumbnailFromBuffer(100, 'nature-video');
+
+    expect(result).toBe('data:image/jpeg;base64,mockdata');
+    expect(mockCtx.putImageData).toHaveBeenCalledWith({ id: 'nature-frame' }, 0, 0);
   });
 
   it('returns null if pendingFrames.get magically returns undefined', () => {
@@ -360,8 +377,8 @@ describe('setColorGrade (Tier 2 - adapter ports)', () => {
 describe('setPendingThumbCapture (Tier 2 - adapter ports)', () => {
   it('sets a pending thumbnail capture callback', () => {
     const cb = vi.fn();
-    setPendingThumbCapture(cb);
-    expect(() => setPendingThumbCapture(vi.fn())).not.toThrow();
+    setPendingThumbCapture('source-a', cb);
+    expect(() => setPendingThumbCapture('source-b', vi.fn())).not.toThrow();
   });
 });
 
@@ -1148,25 +1165,25 @@ describe('handleWorkerFrame with pending thumb capture (Tier 2)', () => {
 
   it('fires pending thumbnail capture callback on frame arrival', () => {
     const cb = vi.fn();
-    setPendingThumbCapture(cb);
+    setPendingThumbCapture('source-a', cb);
 
     const buf = new ArrayBuffer(100);
     handleWorkerMessage({
-      data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf },
+      data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf, sourceId: 'source-a' },
     } as MessageEvent);
 
-    expect(cb).toHaveBeenCalledWith(500);
+    expect(cb).toHaveBeenCalledWith(500, 'source-a');
   });
 
   it('handles callback throwing without crashing', () => {
-    setPendingThumbCapture(() => {
+    setPendingThumbCapture('source-a', () => {
       throw new Error('thumb error');
     });
 
     const buf = new ArrayBuffer(100);
     expect(() => {
       handleWorkerMessage({
-        data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf },
+        data: { type: 'frame', ms: 500, gradeMs: 2.0, buffer: buf, sourceId: 'source-a' },
       } as MessageEvent);
     }).not.toThrow();
   });

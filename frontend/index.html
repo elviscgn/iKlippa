@@ -93,7 +93,13 @@
             </div>
             <div class="search-box">
               <i data-lucide="search"></i>
-              <input type="text" placeholder="Search semantic footage..." />
+              <input
+                id="media-search"
+                type="search"
+                aria-label="Search project and stock media"
+                placeholder="Search project media..."
+                autocomplete="off"
+              />
             </div>
             <div class="media-tabs" id="media-tabs">
               <div class="media-tab active" data-tab="footage">Footage</div>
@@ -106,7 +112,6 @@
               <button class="stock-subtab active" data-sub="video">
                 Videos
               </button>
-              <button class="stock-subtab" data-sub="image">Images</button>
               <button class="stock-subtab" data-sub="music">Music</button>
             </div>
             <div class="media-content">

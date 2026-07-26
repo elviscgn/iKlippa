@@ -84,6 +84,12 @@ interface MediaPoolItem {
   isReal?: boolean;
   dur?: string;
   thumbDataUrl?: string | null;
+  thumbnailUrl?: string | null;
+  remoteUrl?: string;
+  provider?: string;
+  creator?: string | null;
+  pageUrl?: string | null;
+  mimeType?: string;
   width?: number;
   height?: number;
   picId?: number;
@@ -122,7 +128,7 @@ declare global {
     onEngineStatus?: (msg: string) => void;
     onEngineError?: (e: EngineError) => void;
     onPlayheadUpdate?: (ms: number) => void;
-    onThumbnailsUpdated?: (thumbnails: ThumbnailEntry[]) => void;
+    onThumbnailsUpdated?: (sourceId: string, thumbnails: ThumbnailEntry[]) => void;
     onClipImported?: (data: ClipImportedData) => void;
     onTrimApplied?: (data: { durationMs: number }) => void;
     onSplitResult?: (data: {

@@ -261,6 +261,7 @@ describe('renderMedia – dragstart handlers', () => {
       { id: 'f1', name: 'clip.mp4', isReal: true, dur: 5.0, thumbDataUrl: 'data:image/jpeg;base64,abc' },
     ];
     mockMediaPool.stock.video = [{ id: 'sv1', name: 'Neon.mp4', picId: 83 }];
+    mockMediaPool.stock.music = [{ id: 'sm1', name: 'Epic.mp3', dur: '2:10' }];
     vi.stubGlobal('lucide', { createIcons: vi.fn() });
     const mod = await import('../../src/ui/mediaPool');
     renderMedia = mod.renderMedia;
@@ -295,5 +296,23 @@ describe('renderMedia – dragstart handlers', () => {
       'text/plain',
       expect.stringContaining('picId')
     );
+  });
+
+  it('stock music sets an audio payload with its full duration', async () => {
+    await renderMedia('stock', 'music');
+    const item = document.querySelector('.audio-item') as HTMLElement;
+    const mockDataTransfer = { setData: vi.fn(), effectAllowed: 'none' };
+    item.ondragstart!({ dataTransfer: mockDataTransfer } as any);
+
+    const mediaCall = mockDataTransfer.setData.mock.calls.find(
+      ([type]) => type === 'application/x-iklippa-media',
+    );
+    expect(mediaCall).toBeDefined();
+    expect(JSON.parse(mediaCall![1])).toMatchObject({
+      kind: 'audio',
+      sourceId: 'stock_sm1',
+      durationSec: 130,
+    });
+    expect(mockDataTransfer.effectAllowed).toBe('copy');
   });
 });
