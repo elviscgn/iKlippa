@@ -1,5 +1,6 @@
 import { env, pipeline, TextStreamer } from '@huggingface/transformers';
 import type { GraniteLoadProgress } from './granite';
+import { chooseGraniteRuntime, GRANITE_MODEL_ID } from './graniteConfig';
 
 type GraniteRole = 'system' | 'user' | 'assistant';
 
@@ -21,8 +22,6 @@ type GraniteWorkerResponse =
 
 type GranitePipeline = any;
 
-// IBM's browser-ready Granite 4.0 Nano 350M checkpoint.
-const MODEL_ID = 'onnx-community/granite-4.0-350m-ONNX-web';
 const GRANITE_CACHE_MISS_MESSAGE =
   'Granite Nano has not been cached in this browser yet. Keep this tab online while the download progress completes, then offline chat will work.';
 
@@ -33,11 +32,6 @@ function configureGraniteRuntime() {
   env.allowLocalModels = false;
   env.allowRemoteModels = true;
   env.useBrowserCache = true;
-}
-
-function chooseDevice(): 'webgpu' | 'wasm' {
-  if (typeof navigator !== 'undefined' && 'gpu' in navigator) return 'webgpu';
-  return 'wasm';
 }
 
 function normalizeResponseText(output: unknown): string {
@@ -87,10 +81,10 @@ async function loadGraniteModel(): Promise<GranitePipeline> {
   if (graniteModel) return graniteModel;
   if (graniteModelPromise) return graniteModelPromise;
 
-  const device = chooseDevice();
-  graniteModelPromise = pipeline('text-generation', MODEL_ID, {
-    device,
-    dtype: device === 'webgpu' ? 'fp16' : 'q4',
+  const runtime = chooseGraniteRuntime(typeof navigator !== 'undefined' && 'gpu' in navigator);
+  graniteModelPromise = pipeline('text-generation', GRANITE_MODEL_ID, {
+    device: runtime.device,
+    dtype: runtime.dtype,
     revision: 'main',
     progress_callback: (progress: GraniteLoadProgress) => {
       postMessage({ type: 'progress', progress } satisfies GraniteWorkerResponse);
