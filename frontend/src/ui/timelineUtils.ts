@@ -2,10 +2,19 @@ import { $, S, us2s } from './state';
 
 export function getLaneW() {
   const tracks = $('#tl-tracks');
-  if (!tracks) return 100;
+  const lane =
+    (typeof tracks?.querySelector === 'function'
+      ? tracks.querySelector('.track-lane')
+      : null) as HTMLElement | null ??
+    ($('#lane-v1') as HTMLElement | null);
+  const measuredLaneWidth = lane?.getBoundingClientRect?.().width ?? 0;
+  if (measuredLaneWidth > 0) return measuredLaneWidth * S.zoom;
+  if (!tracks || typeof tracks.querySelector !== 'function') return 100;
 
   const trackGutter = tracks.querySelector('.track-gutter') as HTMLElement | null;
-  const styles = window.getComputedStyle(tracks);
+  const styles = typeof window.getComputedStyle === 'function'
+    ? window.getComputedStyle(tracks)
+    : ({ paddingLeft: '0', paddingRight: '0' } as CSSStyleDeclaration);
   const horizontalPadding =
     parseFloat(styles.paddingLeft || '0') + parseFloat(styles.paddingRight || '0');
   const gutterWidth = trackGutter?.offsetWidth ?? 96;
@@ -18,9 +27,11 @@ export function getTimelineLaneOffset() {
   const body = $('#tl-body');
   const tracks = $('#tl-tracks');
   const lane =
-    (tracks?.querySelector('.track:not(.ai-track) .track-lane') as HTMLElement | null) ??
+    (typeof tracks?.querySelector === 'function'
+      ? tracks.querySelector('.track:not(.ai-track) .track-lane')
+      : null) as HTMLElement | null ??
     ($('#lane-ai') as HTMLElement | null);
-  if (!body || !tracks || !lane) return 108;
+  if (!body || !tracks || !lane) return 100;
 
   const bodyRect = body.getBoundingClientRect();
   const laneRect = lane.getBoundingClientRect();

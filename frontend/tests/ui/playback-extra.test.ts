@@ -32,6 +32,7 @@ vi.mock('../../src/ui/timeline', () => ({
 
 vi.mock('../../src/ui/timelineUtils', () => ({
   getLaneW: () => 800,
+  getTimelineLaneOffset: () => 100,
   applySnap: () => null,
   showSnapGuide: vi.fn(),
   hideSnapGuide: vi.fn(),

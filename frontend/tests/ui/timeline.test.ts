@@ -44,6 +44,7 @@ vi.mock('../../src/ui/dragDrop', () => ({
 
 vi.mock('../../src/ui/timelineUtils', () => ({
   getLaneW: () => 800,
+  getTimelineLaneOffset: () => 100,
   applySnap: (_us: number) => null,
   showSnapGuide: vi.fn(),
   hideSnapGuide: vi.fn(),

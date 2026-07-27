@@ -146,7 +146,8 @@ function ensureGraniteStatusCard(): GraniteStatusElements | null {
         <span class="granite-status-percent"></span>
       </div>
     `;
-    chatTab.insertBefore(card, chatLog);
+    const statusHost = chatLog.parentElement ?? chatTab;
+    statusHost.insertBefore(card, chatLog);
     window.lucide?.createIcons({ nodes: [card] });
   }
 
