@@ -5,6 +5,7 @@ import { calculateTimelineDuration, renderRuler, renderClips, updatePlayhead } f
 import {
   getGraniteLoadState,
   sendGranitePrompt,
+  sendOnlineGranitePrompt,
   subscribeGraniteLoadState,
   warmGraniteModel,
   type GraniteLoadState,
@@ -175,6 +176,13 @@ function renderGraniteHeaderState(state: GraniteLoadState) {
   const label = $('#granite-header-label');
   if (!status || !label) return;
 
+  if (!window.appMode?.offline && (state.phase === 'idle' || state.phase === 'ready')) {
+    status.dataset.phase = 'online';
+    status.title = 'Granite is using the online service';
+    label.textContent = 'Granite online';
+    return;
+  }
+
   status.dataset.phase = state.phase;
   status.title = state.title;
   if (state.phase === 'loading') {
@@ -233,7 +241,7 @@ function initChat() {
 
   let warmupAttempted = false;
   const warmGranite = () => {
-    if (warmupAttempted) return;
+    if (!window.appMode?.offline || warmupAttempted) return;
     warmupAttempted = true;
     void warmGraniteModel().catch(() => {
       // Lazy fallback still works on submit.
@@ -287,11 +295,16 @@ function initChat() {
     }
 
     selectMentionedClips({ mentions: extractMentions(val) });
-    const aiBody = appendChat('Loading Granite locally...', false);
+    const useLocalGranite = !!window.appMode?.offline;
+    const pendingCopy = useLocalGranite
+      ? 'Loading Granite locally...'
+      : 'Contacting Granite online...';
+    const aiBody = appendChat(pendingCopy, false);
     setGraniteBusy(true);
-    void sendGranitePrompt(val, {
+    const sendPrompt = useLocalGranite ? sendGranitePrompt : sendOnlineGranitePrompt;
+    void sendPrompt(val, {
       onChunk: (chunk) => {
-        if (aiBody.textContent === 'Loading Granite locally...') {
+        if (aiBody.textContent === pendingCopy) {
           aiBody.textContent = '';
         }
         aiBody.textContent += chunk;
@@ -493,7 +506,17 @@ function initModeToggle() {
     btn.setAttribute('aria-pressed', offline ? 'true' : 'false');
     label.textContent = offline ? 'Offline' : 'Online';
     icon.setAttribute('data-lucide', offline ? 'cloud-off' : 'cloud');
-    window.lucide?.createIcons({ nodes: [btn] });
+    const provider = $('#granite-provider-label');
+    if (provider) {
+      const providerIcon = document.createElement('i');
+      providerIcon.dataset.lucide = offline ? 'cpu' : 'cloud';
+      provider.replaceChildren(
+        providerIcon,
+        document.createTextNode(offline ? ' On-device Granite' : ' Online Granite'),
+      );
+    }
+    renderGraniteHeaderState(getGraniteLoadState());
+    window.lucide?.createIcons({ nodes: provider ? [btn, provider] : [btn] });
   };
 
   btn.onclick = async () => {
@@ -507,8 +530,8 @@ function initModeToggle() {
 
     btn.setAttribute('aria-busy', 'true');
     btn.classList.add('checking');
-    label.textContent = 'Checking...';
-    showToast('Checking Granite and project media...', 'loader-circle');
+    label.textContent = 'Preparing...';
+    showToast('Preparing Offline mode and Granite Nano...', 'loader-circle');
     try {
       const readiness = await verifyOfflineReadiness();
       if (!readiness.ready) {

@@ -7,6 +7,33 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
+const graniteMocks = vi.hoisted(() => ({
+  sendGranitePrompt: vi.fn().mockResolvedValue('Local answer'),
+  sendOnlineGranitePrompt: vi.fn().mockResolvedValue('Online answer'),
+  warmGraniteModel: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../src/ai/granite', () => ({
+  getGraniteLoadState: () => ({
+    phase: 'idle',
+    title: 'Granite Nano is idle',
+    detail: 'Enable Offline mode to download the browser model.',
+    percent: null,
+  }),
+  sendGranitePrompt: graniteMocks.sendGranitePrompt,
+  sendOnlineGranitePrompt: graniteMocks.sendOnlineGranitePrompt,
+  subscribeGraniteLoadState: vi.fn((listener) => {
+    listener({
+      phase: 'idle',
+      title: 'Granite Nano is idle',
+      detail: 'Enable Offline mode to download the browser model.',
+      percent: null,
+    });
+    return vi.fn();
+  }),
+  warmGraniteModel: graniteMocks.warmGraniteModel,
+}));
+
 vi.mock('../../src/ui/state', () => ({
   S: {
     time: 0, dur: 10, zoom: 1, tool: 'select', selectedAR: '16/9',
@@ -239,6 +266,10 @@ describe('initChat – autocomplete and submitCmd', () => {
   beforeEach(async () => {
     document.body.innerHTML = FIXTURE;
     vi.stubGlobal('lucide', { createIcons: vi.fn() });
+    window.appMode = { offline: false };
+    graniteMocks.sendGranitePrompt.mockClear();
+    graniteMocks.sendOnlineGranitePrompt.mockClear();
+    graniteMocks.warmGraniteModel.mockClear();
     // Set up IKState on real window
     (window as any).IKState = {
       getVideoClips: () => [{ name: 'MyClip.mp4' }],
@@ -316,6 +347,39 @@ describe('initChat – autocomplete and submitCmd', () => {
     const chatLog = document.getElementById('chat-log')!;
     expect(chatLog.children.length).toBeGreaterThan(0);
     vi.useRealTimers();
+  });
+
+  it('uses online Granite without warming Nano while online', async () => {
+    const input = document.getElementById('ai-cmd') as HTMLInputElement;
+    input.dispatchEvent(new Event('focus'));
+    input.value = 'Review my edit';
+    (window as any).submitCmd();
+
+    await vi.waitFor(() => {
+      expect(graniteMocks.sendOnlineGranitePrompt).toHaveBeenCalledWith(
+        'Review my edit',
+        expect.any(Object),
+      );
+    });
+    expect(graniteMocks.sendGranitePrompt).not.toHaveBeenCalled();
+    expect(graniteMocks.warmGraniteModel).not.toHaveBeenCalled();
+  });
+
+  it('warms and uses Nano only while offline mode is active', async () => {
+    window.appMode = { offline: true };
+    const input = document.getElementById('ai-cmd') as HTMLInputElement;
+    input.dispatchEvent(new Event('focus'));
+    input.value = 'Review this offline';
+    (window as any).submitCmd();
+
+    await vi.waitFor(() => {
+      expect(graniteMocks.sendGranitePrompt).toHaveBeenCalledWith(
+        'Review this offline',
+        expect.any(Object),
+      );
+    });
+    expect(graniteMocks.warmGraniteModel).toHaveBeenCalledTimes(1);
+    expect(graniteMocks.sendOnlineGranitePrompt).not.toHaveBeenCalled();
   });
 
   it('insertAC replaces last word in input', () => {
