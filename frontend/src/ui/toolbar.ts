@@ -1,5 +1,6 @@
 import { $, $$, S, aiNodes } from './state';
-import { showToast, resizeCanvas, toggleOfflineMode } from './utils';
+import { showToast, resizeCanvas, setOfflineMode } from './utils';
+import { verifyOfflineReadiness } from '../offline/readiness';
 import { calculateTimelineDuration, renderRuler, renderClips, updatePlayhead } from './timeline';
 import {
   getGraniteLoadState,
@@ -494,11 +495,34 @@ function initModeToggle() {
     window.lucide?.createIcons({ nodes: [btn] });
   };
 
-  btn.onclick = () => {
-    toggleOfflineMode();
-    sync();
-    showToast(window.appMode?.offline ? 'Offline mode enabled' : 'Online mode enabled', window.appMode?.offline ? 'cloud-off' : 'cloud');
-    refreshActiveView();
+  btn.onclick = async () => {
+    if (window.appMode?.offline) {
+      setOfflineMode(false);
+      sync();
+      showToast('Online mode enabled', 'cloud');
+      refreshActiveView();
+      return;
+    }
+
+    btn.setAttribute('aria-busy', 'true');
+    btn.classList.add('checking');
+    label.textContent = 'Checking...';
+    showToast('Checking Granite and project media...', 'loader-circle');
+    try {
+      const readiness = await verifyOfflineReadiness();
+      if (!readiness.ready) {
+        setOfflineMode(false);
+        showToast(readiness.detail, 'alert-triangle');
+        return;
+      }
+      setOfflineMode(true);
+      showToast('Offline mode verified and enabled', 'cloud-off');
+    } finally {
+      btn.removeAttribute('aria-busy');
+      btn.classList.remove('checking');
+      sync();
+      refreshActiveView();
+    }
   };
 
   window.addEventListener('ikl:modeChanged', () => {
@@ -507,4 +531,17 @@ function initModeToggle() {
   });
 
   sync();
+  if (window.appMode?.offline) {
+    btn.setAttribute('aria-busy', 'true');
+    void verifyOfflineReadiness()
+      .then((readiness) => {
+        if (readiness.ready) return;
+        setOfflineMode(false);
+        showToast(`Offline mode paused. ${readiness.detail}`, 'alert-triangle');
+      })
+      .finally(() => {
+        btn.removeAttribute('aria-busy');
+        sync();
+      });
+  }
 }
