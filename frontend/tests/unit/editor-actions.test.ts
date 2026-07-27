@@ -103,7 +103,7 @@ describe('local editor actions', () => {
 
     const result = await window.runBeatSync!([left.id, right.id]);
 
-    expect(result.message).toContain('Amapiano beats');
+    expect(result.message).toContain('amapiano beats');
     expect(left.timeline_end_us).toBe(3_000_000);
     expect(right.timeline_start_us).toBe(3_000_000);
     expect(right.source_start_us).toBe(3_000_000);
@@ -111,4 +111,3 @@ describe('local editor actions', () => {
     expect(actionMocks.saveSnapshot).toHaveBeenCalledTimes(1);
   });
 });
-

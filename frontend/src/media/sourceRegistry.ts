@@ -17,11 +17,15 @@ function getAnalysisContext(): AudioContext {
 export function registerSourceFile(sourceId: string, file: File): void {
   sourceFiles.set(sourceId, file);
   sourceAudio.delete(sourceId);
-  const persistence = persistSourceFile(sourceId, file)
+  const persistence = typeof indexedDB === 'undefined'
+    ? Promise.resolve(false)
+    : persistSourceFile(sourceId, file)
     .then(() => {
-      window.dispatchEvent(new CustomEvent('ikl:sourceCached', {
-        detail: { sourceId, fileName: file.name, size: file.size, type: file.type },
-      }));
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ikl:sourceCached', {
+          detail: { sourceId, fileName: file.name, size: file.size, type: file.type },
+        }));
+      }
       return true;
     })
     .catch((error) => {
@@ -29,9 +33,11 @@ export function registerSourceFile(sourceId: string, file: File): void {
       return false;
     });
   sourcePersistence.set(sourceId, persistence);
-  window.dispatchEvent(new CustomEvent('ikl:sourceRegistered', {
-    detail: { sourceId, fileName: file.name, size: file.size, type: file.type },
-  }));
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ikl:sourceRegistered', {
+      detail: { sourceId, fileName: file.name, size: file.size, type: file.type },
+    }));
+  }
 }
 
 export function registerSourceAudioBuffer(sourceId: string, buffer: AudioBuffer): void {

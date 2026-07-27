@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyProjectSetup,
   buildProjectSetup,
@@ -9,6 +9,17 @@ import {
 
 describe('project setup', () => {
   beforeEach(() => {
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      get length() {
+        return values.size;
+      },
+      clear: () => values.clear(),
+      getItem: (key: string) => values.get(key) ?? null,
+      key: (index: number) => [...values.keys()][index] ?? null,
+      removeItem: (key: string) => values.delete(key),
+      setItem: (key: string, value: string) => values.set(key, String(value)),
+    } satisfies Storage);
     localStorage.clear();
     document.body.innerHTML = `
       <textarea id="project-script-input"></textarea>
@@ -59,4 +70,3 @@ describe('project setup', () => {
     expect(document.querySelector('#project-brief-card')?.hasAttribute('hidden')).toBe(false);
   });
 });
-
