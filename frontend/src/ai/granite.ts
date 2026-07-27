@@ -59,7 +59,7 @@ const GRANITE_CACHE_MISS_MESSAGE =
 const GRANITE_IDLE_STATE: GraniteLoadState = {
   phase: 'idle',
   title: 'Granite Nano is idle',
-  detail: 'Focus the chat box to warm the local model.',
+  detail: 'Enable Offline mode to download the browser model.',
   percent: null,
 };
 
@@ -542,28 +542,46 @@ function formatClipSummary(): string {
   return buildContextLines().join('\n');
 }
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(runtime: 'online' | 'on-device'): string {
+  const runtimeDescription = runtime === 'online'
+    ? 'You are Granite, the concise online editing assistant in iKlippa.'
+    : 'You are Granite Nano, the concise on-device editing assistant in iKlippa.';
   return [
-    'You are Granite Nano, the concise on-device editing assistant in iKlippa.',
+    runtimeDescription,
     'The project context is trusted metadata extracted from the current edit. Use it as your view of the video.',
     'Prioritize selected clips, then clips at the playhead, then nearby clips.',
     'Give specific, practical advice using clip names, tracks, time ranges, script, brand rules, and cut measurements.',
     'Never say you cannot access the video when the context contains timeline or edit information.',
     'If a required detail is absent, ask the user to select a clip or move the playhead.',
-    'Do not claim internet, server, or raw-pixel access. Keep answers under 120 words unless asked for detail.',
+    'Do not claim raw-pixel access. Keep answers under 120 words unless asked for detail.',
     '',
     'Project context:',
     formatClipSummary(),
   ].join('\n');
 }
 
-function buildMessages(prompt: string): GraniteMessage[] {
+function buildMessages(
+  prompt: string,
+  runtime: 'online' | 'on-device' = 'on-device',
+): GraniteMessage[] {
   const history = conversationHistory.slice(-MAX_HISTORY_MESSAGES);
   return [
-    { role: 'system', content: buildSystemPrompt() },
+    { role: 'system', content: buildSystemPrompt(runtime) },
     ...history,
     { role: 'user', content: prompt },
   ];
+}
+
+function serializeMessages(messages: GraniteMessage[]): string {
+  return messages
+    .map((message) => `${message.role.toUpperCase()}:\n${message.content}`)
+    .join('\n\n');
+}
+
+function rememberConversation(prompt: string, response: string): void {
+  conversationHistory.push({ role: 'user', content: prompt });
+  conversationHistory.push({ role: 'assistant', content: response });
+  trimHistory();
 }
 
 function normalizeResponseText(output: unknown): string {
@@ -666,6 +684,47 @@ export async function warmGraniteModel(): Promise<void> {
   await loadGraniteModel();
 }
 
+export async function sendOnlineGranitePrompt(
+  prompt: string,
+  options: GraniteSendOptions = {},
+): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch('/api/director/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: serializeMessages(buildMessages(prompt, 'online')),
+      }),
+    });
+  } catch {
+    throw new Error(
+      'Online Granite is unavailable. Start the backend service or enable Offline mode to download Granite Nano.',
+    );
+  }
+
+  const body = await response.text();
+  let payload: { response?: unknown; error?: unknown } = {};
+  try {
+    payload = body ? JSON.parse(body) as typeof payload : {};
+  } catch {
+    throw new Error(
+      'Online Granite returned an invalid response. Check that the backend is running on port 8081.',
+    );
+  }
+
+  if (!response.ok) {
+    const detail = typeof payload.error === 'string' ? payload.error : '';
+    throw new Error(detail || `Online Granite failed (${response.status}).`);
+  }
+
+  const answer = typeof payload.response === 'string' ? payload.response.trim() : '';
+  if (!answer) throw new Error('Online Granite returned an empty response.');
+  options.onChunk?.(answer);
+  rememberConversation(prompt, answer);
+  return answer;
+}
+
 export async function sendGranitePrompt(
   prompt: string,
   options: GraniteSendOptions = {},
@@ -702,8 +761,6 @@ export async function sendGranitePrompt(
   }
 
   const response = typeof output === 'string' ? output.trim() || streamedText.trim() : normalizeResponseText(output) || streamedText.trim();
-  conversationHistory.push({ role: 'user', content: prompt });
-  conversationHistory.push({ role: 'assistant', content: response });
-  trimHistory();
+  rememberConversation(prompt, response);
   return response;
 }

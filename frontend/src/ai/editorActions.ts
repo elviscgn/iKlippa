@@ -2,6 +2,7 @@ import { analyzeSourceAudio } from './audioAnalysis';
 import type { AudioRegion, BeatProfile } from './audioMath';
 import type { EditorActionResult } from '../commands/editorCommands';
 import { selectedClipIds, saveSnapshot } from '../ui/dragDrop';
+import { resolveSourceForAnalysis } from '../media/sourceRegistry';
 
 interface ContentRange {
   startUs: number;
@@ -84,6 +85,44 @@ function rippleAfter(
   }
 }
 
+function hasCloseableTimelineGap(tracks: any[], targetTrackIds: Set<number>): boolean {
+  return tracks.some((track) => {
+    if (!targetTrackIds.has(Number(track.id))) return false;
+    const clips = [...(track.clips ?? [])]
+      .sort((a: any, b: any) => a.timeline_start_us - b.timeline_start_us);
+    let coveredUntilUs = 0;
+    for (const clip of clips) {
+      if (clip.timeline_start_us - coveredUntilUs > 1000) return true;
+      coveredUntilUs = Math.max(coveredUntilUs, clip.timeline_end_us);
+    }
+    return false;
+  });
+}
+
+function closeTimelineGaps(
+  tracks: any[],
+  targetTrackIds: Set<number>,
+): { count: number; removedUs: number } {
+  let count = 0;
+  let removedUs = 0;
+  for (const track of tracks) {
+    if (!targetTrackIds.has(Number(track.id))) continue;
+    const clips = [...(track.clips ?? [])]
+      .sort((a: any, b: any) => a.timeline_start_us - b.timeline_start_us);
+    let coveredUntilUs = 0;
+    for (const clip of clips) {
+      const gapUs = clip.timeline_start_us - coveredUntilUs;
+      if (gapUs > 1000) {
+        rippleAfter(tracks, clip.timeline_start_us, gapUs, new Set());
+        count += 1;
+        removedUs += gapUs;
+      }
+      coveredUntilUs = Math.max(coveredUntilUs, clip.timeline_end_us);
+    }
+  }
+  return { count, removedUs };
+}
+
 async function smartTrim(targetIds: number[]): Promise<EditorActionResult> {
   const state = (window as any).IKState;
   if (!state?.isReady?.()) throw new Error('Import a video before using Smart Trim.');
@@ -93,6 +132,9 @@ async function smartTrim(targetIds: number[]): Promise<EditorActionResult> {
     .filter((clip: any) => clip && state.findClipTrack?.(clip.id)?.track_type === 'video')
     .sort((a: any, b: any) => a.timeline_start_us - b.timeline_start_us);
   if (candidates.length === 0) throw new Error('Select a video clip with an audio track first.');
+  const targetTrackIds = new Set<number>(candidates.map((clip: any) => {
+    return Number(state.findClipTrack?.(clip.id)?.id);
+  }));
 
   const plans: Array<{
     id: number;
@@ -100,15 +142,20 @@ async function smartTrim(targetIds: number[]): Promise<EditorActionResult> {
     silence: ContentRange[];
   }> = [];
   for (const clip of candidates) {
-    const analysis = await analyzeSourceAudio(clip.source_id, 'default');
+    const sourceId = await resolveSourceForAnalysis(clip.source_id, 'video');
+    if (!sourceId) {
+      throw new Error('This restored clip is not linked to loaded media. Re-import its video once, then Smart Trim will work normally.');
+    }
+    const analysis = await analyzeSourceAudio(sourceId, 'default');
     const silence = removableSilenceRanges(
       analysis.silenceRegions,
       clip.source_start_us,
       clip.source_end_us,
     );
-    if (silence.length > 0) plans.push({ id: Number(clip.id), sourceId: clip.source_id, silence });
+    if (silence.length > 0) plans.push({ id: Number(clip.id), sourceId, silence });
   }
-  if (plans.length === 0) {
+  const tracks = state.getTracks?.() ?? [];
+  if (plans.length === 0 && !hasCloseableTimelineGap(tracks, targetTrackIds)) {
     return { message: 'Smart Trim found no removable silence in the selected clip.' };
   }
 
@@ -139,7 +186,7 @@ async function smartTrim(targetIds: number[]): Promise<EditorActionResult> {
       const timelineDurationUs = Math.round((range.endUs - range.startUs) / (original.speed || 1));
       const created = state.addClip(
         track.id,
-        original.source_id,
+        plan.sourceId,
         cursorUs,
         cursorUs + timelineDurationUs,
         meta,
@@ -157,19 +204,38 @@ async function smartTrim(targetIds: number[]): Promise<EditorActionResult> {
     regionCount += plan.silence.length;
     rippleAfter(state.getTracks?.() ?? [], originalEndUs, removedUs, createdIds);
   }
+  const gaps = closeTimelineGaps(state.getTracks?.() ?? [], targetTrackIds);
 
   state.computeDuration?.();
   const markerTime = Math.max(0, ((window as any).S?.time ?? 0));
+  const markerParts: string[] = [];
+  if (regionCount > 0) {
+    markerParts.push(`${regionCount} silence region${regionCount === 1 ? '' : 's'} trimmed`);
+  }
+  if (gaps.count > 0) {
+    markerParts.push(`${gaps.count} timeline gap${gaps.count === 1 ? '' : 's'} closed`);
+  }
   window.aiNodes?.push({
     time: markerTime,
-    label: `${regionCount} silence region${regionCount === 1 ? '' : 's'} trimmed`,
+    label: markerParts.join(', '),
     icon: 'scissors',
   });
   window.dispatchEvent(new CustomEvent('ikl:reRender', {
     detail: { activeClipId: affectedClipIds[0] },
   }));
+  const summaryParts: string[] = [];
+  if (regionCount > 0) {
+    summaryParts.push(
+      `Removed ${regionCount} silent region${regionCount === 1 ? '' : 's'} (${(removedUsTotal / 1_000_000).toFixed(1)}s)`,
+    );
+  }
+  if (gaps.count > 0) {
+    summaryParts.push(
+      `${regionCount > 0 ? 'closed' : 'Closed'} ${gaps.count} timeline gap${gaps.count === 1 ? '' : 's'} (${(gaps.removedUs / 1_000_000).toFixed(1)}s)`,
+    );
+  }
   return {
-    message: `Removed ${regionCount} silent region${regionCount === 1 ? '' : 's'} (${(removedUsTotal / 1_000_000).toFixed(1)}s) locally.`,
+    message: `${summaryParts.join(' and ')} locally.`,
     affectedClipIds,
   };
 }
@@ -231,7 +297,12 @@ async function beatSync(targetIds: number[]): Promise<EditorActionResult> {
   const music = selectedAudioClip(state);
   if (!music) throw new Error('Add a music track before using Beat Sync.');
   const profile = beatProfile();
-  const analysis = await analyzeSourceAudio(music.source_id, profile);
+  const sourceId = await resolveSourceForAnalysis(music.source_id, 'any');
+  if (!sourceId) {
+    throw new Error('This music clip is not linked to loaded media. Re-import it once, then Beat Sync will work normally.');
+  }
+  if (sourceId !== music.source_id) music.source_id = sourceId;
+  const analysis = await analyzeSourceAudio(sourceId, profile);
   const markers = timelineBeatMarkers(music, analysis.beatMarkersSec);
   const drops = timelineBeatMarkers(music, analysis.dropMarkersSec);
   if (markers.length === 0) throw new Error('No clear beats were detected in the selected music.');

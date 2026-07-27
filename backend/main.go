@@ -69,6 +69,30 @@ func main() {
 			})
 		})
 
+		api.POST("/director/chat", func(c *gin.Context) {
+			type RequestBody struct {
+				Prompt string `json:"prompt"`
+			}
+
+			var requestBody RequestBody
+			if err := c.ShouldBindJSON(&requestBody); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON!"})
+				return
+			}
+			requestBody.Prompt = strings.TrimSpace(requestBody.Prompt)
+			if requestBody.Prompt == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Prompt is required."})
+				return
+			}
+
+			result, err := watsonClient.GenerateText(requestBody.Prompt)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"response": result})
+		})
+
 		api.GET("/stock/videos", proxyStockSearch(httpClient, mlAPIURL, "/stock/videos"))
 		api.GET("/stock/music", proxyStockSearch(httpClient, mlAPIURL, "/stock/music"))
 		api.GET("/health", func(c *gin.Context) {

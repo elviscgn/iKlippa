@@ -1,4 +1,4 @@
-import { persistSourceFile } from './mediaStore';
+import { loadStoredSourceFiles, persistSourceFile } from './mediaStore';
 
 const sourceFiles = new Map<string, File>();
 const sourceAudio = new Map<string, Promise<AudioBuffer>>();
@@ -56,6 +56,30 @@ export function hasRegisteredSource(sourceId: string): boolean {
   return sourceFiles.has(sourceId) || sourceAudio.has(sourceId);
 }
 
+async function restoreSourceFile(sourceId: string): Promise<File | null> {
+  if (sourceFiles.has(sourceId)) return sourceFiles.get(sourceId) ?? null;
+  const stored = await loadStoredSourceFiles([sourceId]).catch(() => []);
+  const restored = stored[0]?.file ?? null;
+  if (restored) sourceFiles.set(sourceId, restored);
+  return restored;
+}
+
+export async function resolveSourceForAnalysis(
+  preferredSourceId: string,
+  kind: 'video' | 'audio' | 'any' = 'any',
+): Promise<string | null> {
+  if (hasRegisteredSource(preferredSourceId)) return preferredSourceId;
+  if (await restoreSourceFile(preferredSourceId)) return preferredSourceId;
+
+  const candidates = [...sourceFiles.entries()]
+    .filter(([, file]) => {
+      if (kind === 'any') return file.type.startsWith('video/') || file.type.startsWith('audio/');
+      return file.type.startsWith(`${kind}/`);
+    })
+    .map(([sourceId]) => sourceId);
+  return candidates.length === 1 ? candidates[0]! : null;
+}
+
 export async function waitForSourcePersistence(sourceId: string): Promise<boolean> {
   const pending = sourcePersistence.get(sourceId);
   if (!pending) return false;
@@ -65,7 +89,7 @@ export async function waitForSourcePersistence(sourceId: string): Promise<boolea
 export async function getSourceAudioBuffer(sourceId: string): Promise<AudioBuffer> {
   const existing = sourceAudio.get(sourceId);
   if (existing) return existing;
-  const file = sourceFiles.get(sourceId);
+  const file = sourceFiles.get(sourceId) ?? await restoreSourceFile(sourceId);
   if (!file) throw new Error('The original media file is not available for audio analysis.');
 
   const decode = (async () => {

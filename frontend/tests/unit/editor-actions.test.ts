@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const actionMocks = vi.hoisted(() => ({
   analyzeSourceAudio: vi.fn(),
+  resolveSourceForAnalysis: vi.fn(),
   saveSnapshot: vi.fn(),
   selectedClipIds: new Set<number | string>(),
 }));
@@ -14,6 +15,10 @@ vi.mock('../../src/ai/audioAnalysis', () => ({
 vi.mock('../../src/ui/dragDrop', () => ({
   saveSnapshot: actionMocks.saveSnapshot,
   selectedClipIds: actionMocks.selectedClipIds,
+}));
+
+vi.mock('../../src/media/sourceRegistry', () => ({
+  resolveSourceForAnalysis: actionMocks.resolveSourceForAnalysis,
 }));
 
 import { IKState } from '../../src/state/state';
@@ -42,6 +47,8 @@ describe('local editor actions', () => {
     actionMocks.selectedClipIds.clear();
     actionMocks.saveSnapshot.mockReset();
     actionMocks.analyzeSourceAudio.mockReset();
+    actionMocks.resolveSourceForAnalysis.mockReset();
+    actionMocks.resolveSourceForAnalysis.mockImplementation(async (sourceId: string) => sourceId);
     initEditorActions();
   });
 
@@ -71,7 +78,29 @@ describe('local editor actions', () => {
     expect(clips[0]?.name).toBe('Interview');
     expect(clips[0]?.effects).toEqual(primary.effects);
     expect(clips[1]?.source_start_us).toBe(1_915_000);
-    expect(IKState.findClip(later.id)?.timeline_start_us).toBe(5_170_000);
+    expect(IKState.findClip(later.id)?.timeline_start_us).toBe(4_170_000);
+    expect(result.message).toContain('closed 1 timeline gap');
+    expect(actionMocks.saveSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes leading and between-clip gaps even when no audio silence is found', async () => {
+    const first = IKState.addVideoClip('interview.mp4', 1_000_000, 3_000_000, {
+      name: 'Interview',
+      isReal: true,
+    })!;
+    const second = IKState.addVideoClip('outro.mp4', 4_500_000, 6_000_000, {
+      name: 'Outro',
+      isReal: true,
+    })!;
+    actionMocks.analyzeSourceAudio.mockResolvedValue(analysis());
+
+    const result = await window.runSmartTrim!([]);
+
+    expect(first.timeline_start_us).toBe(0);
+    expect(first.timeline_end_us).toBe(2_000_000);
+    expect(second.timeline_start_us).toBe(2_000_000);
+    expect(second.timeline_end_us).toBe(3_500_000);
+    expect(result.message).toContain('Closed 2 timeline gaps (2.5s)');
     expect(actionMocks.saveSnapshot).toHaveBeenCalledTimes(1);
   });
 
@@ -109,5 +138,26 @@ describe('local editor actions', () => {
     expect(right.source_start_us).toBe(3_000_000);
     expect(window.iklippaBeatMarkers).toEqual([3]);
     expect(actionMocks.saveSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('relinks a restored clip to the only loaded source before trimming', async () => {
+    const stale = IKState.addVideoClip('stale-stock-id', 0, 5_000_000, {
+      name: 'Restored stock clip',
+      isReal: true,
+    })!;
+    actionMocks.resolveSourceForAnalysis.mockResolvedValue('imported-current-video');
+    actionMocks.analyzeSourceAudio.mockResolvedValue(analysis({
+      silenceRegions: [{ startSec: 1, endSec: 2 }],
+    }));
+
+    await window.runSmartTrim!([stale.id]);
+
+    expect(actionMocks.analyzeSourceAudio).toHaveBeenCalledWith(
+      'imported-current-video',
+      'default',
+    );
+    expect(IKState.getVideoClips().every((clip) => {
+      return clip.source_id === 'imported-current-video';
+    })).toBe(true);
   });
 });
