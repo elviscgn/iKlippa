@@ -51,7 +51,7 @@ describe('local editor actions', () => {
       isReal: true,
       thumbnails: ['frame-a'],
     })!;
-    primary.effects = [{ effect_type: 'blur', params: { amount: 0.2 }, enabled: true }];
+    primary.effects = [{ id: 1, effect_type: 'blur', params: { amount: 0.2 }, enabled: true }];
     const later = IKState.addVideoClip('outro.mp4', 6_000_000, 8_000_000, {
       name: 'Outro',
       isReal: true,
