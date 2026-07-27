@@ -1,87 +1,214 @@
-# IBM Bob Usage Log
+# How We Used IBM Bob
 
-A chronological and architectural ledger of how the iKlippa engineering team collaborated with **IBM Bob (powered by watsonx Code Assistant)** to design, optimize, and secure our browser-native video editing engine.
+This document records how the iKlippa team used IBM Bob while building the project. It focuses on the work Bob helped with and the results that can be checked in the repository.
 
----
+Bob was used as a development partner. The team chose the product direction, reviewed the plans, tested the editor in a real browser, and decided which suggestions to keep.
 
-## Team Division of Labor
+## What we asked Bob to help with
 
-To maximize our development speed during this sprint, we divided the engineering responsibilities into two distinct domains:
+The project combines browser media APIs, TypeScript, Rust, WebAssembly, Go, Python, and local AI. Changes often affected several parts of the system at once.
 
-*   **Elvis Chege (Systems & Render Architecture):** Focused on frontend UI, Web Worker threading, WebCodecs integration, WASM linear memory allocations, and optimized Rust graphics loops.
-*   **Mphele (Backend & AI Model Orchestration):** Focused on scaffolding the API gateways, integrating IBM watsonx / Granite LLM microservices, optimizing semantic metadata search, and managing asynchronous task queues.
+We used Bob for five main jobs:
 
-**IBM Bob** acted as a force multiplier for both of us, serving as a systems architect for Elvis and a backend/ML orchestrator for Mphele.
+1. understanding the existing codebase;
+2. planning changes before editing;
+3. implementing work across related files;
+4. debugging browser video and audio problems;
+5. running tests and checking the result.
 
----
+## How we worked with Bob
 
-##  Day 1: Architectural Scaffolding & The Memory Bridge
+### Understand
 
-### Systems & Render Pipeline (Elvis with IBM Bob)
-*   **The Bottleneck:** Video processing requires copying raw pixel arrays across the JavaScript/WASM boundary. At 1080p/30fps, copying 8.2MB of uncompressed RGBA pixel data per frame between threads creates nearly 500MB of garbage memory every second. This thrashes the browser's Garbage Collector (GC), dropping playback below 10 FPS.
-*   **The Collaboration:**
-    *   Elvis consulted Bob on WebAssembly memory layouts. Bob suggested bypass-allocation through a **stable pre-allocated memory pool** (`FramePool`) inside Rust's linear memory.
-    *   Bob helped write the stable pointer references in `lib.rs`, which expose the memory location via `frame_ptr()`.
-    *   In `engine.js`, we wrapped this pointer in a `Uint8ClampedArray` view. By calling WebCodecs' `copyTo()` directly onto this view, the hardware-decoded frame is written straight into WASM memory. 
-*   **Result:** Reduced JavaScript-to-WASM memory copies to **exactly zero**, completely eliminating GC thrashing.
+We first used Bob to trace the code rather than immediately change it. Important questions included:
 
-### Backend & API Gateway (Mphele with IBM Bob)
-*   **The Challenge:** The NLE needs to call IBM watsonx / Granite APIs for our "AI Director" features (smart subtitle generation, semantic cut suggestions). We had to securely scaffold the API gateway so that our private API keys were never exposed to the client browser.
-*   **The Collaboration:**
-    *   Mphele worked with Bob to scaffold a lightweight Node.js/Express gateway. 
-    *   Bob pointed out that because we are running in **Cross-Origin Isolated** mode (which our high-performance WASM memory requires), our backend proxy server must strictly serve specific security headers (`Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`).
-    *   Bob helped draft the server code to inject these headers onto every resource request, preventing the browser from instantly blocking our asset loads.
-*   **Result:** Scaffolding complete with 100% security compliance.
+- How does a timestamp move from the UI to the decoder?
+- Which code owns timeline time and which code owns source time?
+- What happens when a clip is split, moved, or trimmed?
+- Which work belongs on the main thread and which work belongs in a worker?
+- Where should provider keys and model calls live?
 
----
+This helped the team map the boundary between the editor UI, the media engine, the Rust/WASM module, and the backend services.
 
-## Day 2: Multithreading & Hardware Resilience
+The result is documented in:
 
-### Systems & Render Pipeline (Elvis with IBM Bob)
-*   **The Bottleneck:** Running colorspace conversions on the browser's Main Thread caused the UI to stutter. Furthermore, importing HEVC files on Apple Silicon (M1) threw crashes due to opaque `null` format frames blocking WebCodecs' `copyTo()` function.
-*   **The Collaboration:**
-    *   Bob directed Elvis to isolate the video decoding and WASM grading pipelines inside a dedicated **Web Worker** (`worker.js`).
-    *   To solve the input lag, Bob designed a **Lookahead Backpressure Loop**. Instead of flooding the worker, the main thread now only requests top-up frames when the buffer drops below 15 frames.
-    *   For the M1 HEVC crash, Bob guided us to build an **`OffscreenCanvas` fallback** in the worker, configuring the canvas with `{ willReadFrequently: true }` to keep memory on unified system RAM, enabling rapid colorspace readbacks.
-*   **Result:** Playback achieved a locked **16.67ms (60 FPS)** rendering rate on the main thread, and HEVC crashes were fully resolved.
+- [`frontend/architecture.md`](../frontend/architecture.md)
+- [`frontend/plan.md`](../frontend/plan.md)
+- [`backend/README.md`](../backend/README.md)
 
-### Backend & AI Model Orchestration (Mphele with IBM Bob)
-*   **The Challenge:** Aligning the AI transcription output (sentences and timestamps) to our video timeline required matching speech timestamps with our demuxed video presentation timestamps (CTS). A mismatch would cause captions to drift out of sync.
-*   **The Collaboration:**
-    *   Mphele used Bob to write a parsing utility that maps transcription sentences directly to the video's millisecond markers.
-    *   Bob suggested an optimized search tree in our backend JSON parser to quickly query the current caption based on `playheadMs`, keeping timeline lookups lightning fast.
-*   **Result:** Real-time subtitle rendering with zero drift, fully synchronized with the playhead.
+### Plan
 
----
+For larger work, we asked Bob to break the goal into ordered tasks with dependencies and checks.
 
-## Day 3: State Synchronization & Rust Optimizations
+The frontend plan covered:
 
-### Systems & Render Pipeline (Elvis with IBM Bob)
-*   **The Bottleneck:** Rapidly scrubbing the timeline caused the player to throw an unhandled exception: `Uncaught DataError: A key frame is required after configure()`. Additionally, the Rust pixel loop was taking 65ms per frame, which was too slow.
-*   **The Collaboration:**
-    *   Bob designed a **Generation Counter** (Concurrency Shield) to solve the seek crash. Every time a seek occurs, we increment a generation ID. When an async disk read completes, the task verifies its generation. If it does not match, the stale frame is silently discarded, preventing WebCodecs alignment crashes.
-    *   Bob analyzed the flat 1D pixel loop in `lib.rs` and helped refactor it into a nested 2D loop. This removed costly integer modulo (`%`) and division (`/`) operations on every pixel.
-*   **Result:** Eliminated WebCodecs state crashes during rapid scrubbing, and drastically optimized the Rust pixel processing to ~15ms per frame.
+- the Rust timeline model;
+- multi-track compositing;
+- per-clip colour grading;
+- captions;
+- project persistence;
+- the audio mixer;
+- export;
+- undo and redo;
+- testing.
 
----
+The plan gave the team a shared sequence and made it easier to check whether a feature was actually complete.
 
-## Technical Performance Impact
+### Build
 
-Through the dual-developer workflow and targeted optimization loops with IBM Bob, we achieved the following metrics on an Apple M1 target:
+Bob helped the team work across the TypeScript, Rust, Go, and Python parts of the repository.
 
-| Performance Metric | Initial Naive Pipeline | Optimized Background Web Worker Pipeline (Current) |
-| :--- | :--- | :--- |
-| **Main Thread Smoothness** | 721.11 ms/frame (1 FPS) | **16.67 ms/frame (60 FPS - Perfect)** |
-| **Grade Performance** | 290.27 ms/grade | **~15.00 ms/grade** (Off the main thread) |
-| **Decode Latency** | 3296.18 ms | **~340.00 ms** (Off the main thread, fully buffered) |
-| **Dropped Frames Rate** | 67.3% dropped | **0.0% dropped** |
-| **Input & Play/Pause Lag** | ~4.5 seconds delay | **0 ms (Instantaneous response)** |
+The main areas were:
 
----
+- the WebCodecs decode worker;
+- timeline and source-time mapping;
+- Rust/WASM state and frame processing;
+- the multi-track editor;
+- the Go API gateway;
+- the Python analysis and stock-provider service;
+- the Granite integration.
 
-## Key Takeaways on AI-Assisted Development
+The final backend is a Go service using Gin. It proxies Granite chat and provider requests so credentials do not need to be exposed to the browser. The Python FastAPI service handles script analysis, Pexels search, Jamendo search, and the XGBoost model.
 
-Our experience using **IBM Bob (watsonx Code Assistant)** redefined our development speed and safety. Bob proved uniquely powerful at:
-1.  **Low-Level API Standards:** Bob demonstrated a deep, accurate understanding of raw browser specifications, specifically the state-machine rules of WebCodecs.
-2.  **Concurrency Planning:** Rather than just writing syntax, Bob excelled at analyzing asynchronous lifecycles, identifying race conditions across the JS/WASM thread boundary, and proposing standard multi-threading patterns like the Generation Counter.
-3.  **Rust Memory Best Practices:** Bob steered us away from unnecessary allocations, helping us write cache-friendly, memory-safe code that maximizes the performance of compiled WebAssembly.
+The first backend draft changed during development. Older notes referred to Node and Express, but that is not the implementation in this repository.
+
+### Debug
+
+Browser video editing has strict state rules. Bob was especially useful when an error crossed several asynchronous systems.
+
+#### VideoDecoder keyframe errors
+
+Rapid seeks and decoder resets produced this browser error:
+
+```text
+A key frame is required after configure() or flush().
+```
+
+Bob helped trace the problem through the seek path. The worker now resets and reseeds the decoder from a valid keyframe, rejects stale seek work, and keeps message handling serial.
+
+#### Audio falling behind or breaking up
+
+The UI was sending synchronization work faster than the worker could finish it. Old requests built up, so decoded audio reached the main thread too late.
+
+The current design:
+
+- serializes worker operations;
+- replaces stale sync requests with the newest one;
+- limits audio decode-ahead;
+- clears old scheduled audio after pause and seek;
+- resynchronizes audio when playback starts again.
+
+#### Wrong or black thumbnails
+
+Thumbnail capture originally reused the wrong source frame and sometimes took a frame from the beginning of a clip. Bob helped the team separate thumbnail capture from the preview canvas and keep frame caches tied to their source.
+
+The editor now asks for a middle frame and captures it without repainting the main preview.
+
+#### Backend HTML parsed as JSON
+
+When the frontend was opened as a raw HTML file, API calls returned an HTML page instead of JSON. Bob helped trace this to the missing Vite proxy.
+
+The development flow now uses `npm run dev` at `http://localhost:8080/`. Vite proxies `/api` to the Go gateway on port `8081` and serves the worker and WASM assets correctly.
+
+### Verify
+
+Bob was used to run the test suite and production build after changes. The team also tested the browser workflow with real video and audio files.
+
+At the time of this update, the frontend verification result is:
+
+```text
+35 test files passed
+391 tests passed
+TypeScript build passed
+Vite production build passed
+Go backend tests passed
+```
+
+The tests include:
+
+- decoder and worker messages;
+- timeline state and time mapping;
+- audio scheduling;
+- thumbnails;
+- drag and drop;
+- onboarding persistence;
+- command parsing and `@clip` targeting;
+- local silence and beat measurements;
+- Smart Trim and Beat Sync timeline changes;
+- cut scoring;
+- Granite runtime selection;
+- offline readiness;
+- stock provider failures.
+
+See [`frontend/qa-report.md`](../frontend/qa-report.md) for the earlier engine QA record. The current automated suite has grown since that report was written.
+
+## How Bob supported the AI-native editor
+
+The important product decision was to avoid treating AI as a separate text generator.
+
+Bob helped the team reason about a system with three connected layers:
+
+1. **Context:** onboarding, brand rules, timeline state, selected clips, playhead position, captions, and recent edits.
+2. **Analysis:** Granite reasoning plus local silence, beat, gap, and pacing measurements.
+3. **Action:** deterministic commands that target clips and apply undoable timeline changes.
+
+This structure keeps the model informed while keeping the editor state predictable.
+
+Examples in the current product include:
+
+- `@clip` mentions resolving to real timeline clips;
+- Smart Trim turning decoded PCM measurements into ripple cuts;
+- Beat Sync aligning clips to locally detected beats and drops;
+- Auto B-Roll using project keywords to search Pexels and insert footage;
+- Granite reading the same project context in online and on-device modes.
+
+## IBM Bob and IBM Granite have different roles
+
+IBM Bob was the tool used to help build and debug iKlippa.
+
+IBM Granite is part of the product:
+
+- Granite Code 3B runs through Ollama for the online local-development path;
+- Granite 4.0 350M runs inside the browser when Offline mode is prepared;
+- both paths receive structured context from the current edit.
+
+Keeping these roles separate makes the architecture easier to explain and the IBM technology use easier to verify.
+
+## What the team learned
+
+### Give Bob the goal and the relevant context
+
+Bob was most useful when it could inspect the files involved in a problem. Short, targeted tasks produced better results than pasting large, unrelated logs.
+
+### Plan cross-file changes first
+
+Media bugs often involve the UI, worker, decoder, timeline state, and tests. A written plan helped the team avoid fixing one layer while breaking another.
+
+### Treat generated code as a starting point
+
+The team reviewed Bob's changes, tested them in the browser, and kept the final decision. This was important for WebCodecs because a solution can look correct while still breaking under rapid seeking or repeated playback.
+
+### Make the result measurable
+
+Tests, build checks, visible error handling, and a reproducible local setup made Bob's work easier to review and made the final prototype more reliable.
+
+## Evidence in the repository
+
+| Area | Evidence |
+|---|---|
+| Architecture understanding | [`frontend/architecture.md`](../frontend/architecture.md) |
+| Implementation plan | [`frontend/plan.md`](../frontend/plan.md) |
+| Engine QA | [`frontend/qa-report.md`](../frontend/qa-report.md) |
+| Browser engine | `frontend/src/engine` and `frontend/rust-engine` |
+| AI context and local model | `frontend/src/ai` |
+| Editing commands | `frontend/src/commands` |
+| Offline support | `frontend/src/offline` and `frontend/src/media` |
+| API gateway | `backend/main.go` |
+| ML and provider services | `ml/app.py` and `ml/scripts` |
+| Automated verification | `frontend/tests` |
+
+## Summary
+
+IBM Bob helped the team move from an ambitious browser-editor idea to an implemented and tested system. Its strongest contribution was not a single generated file. It helped the team understand a complex codebase, plan work across several languages, debug asynchronous media problems, and verify the result.
+
+The team remained responsible for the product decisions, technical review, browser testing, and final implementation.
