@@ -11,6 +11,7 @@ declare global {
     saveSnapshot: () => void;
     undo: () => void;
     redo: () => void;
+    selectedClipIds: Set<number | string>;
   }
 }
 
@@ -48,6 +49,7 @@ function redo() {
 window.redo = redo;
 
 export const selectedClipIds = new Set<number | string>();
+window.selectedClipIds = selectedClipIds;
 
 function syncActiveClasses() {
   $$('.tl-clip').forEach((c) => {

@@ -8,6 +8,9 @@ import { initKeyboardShortcuts } from './keyboard';
 import { resizeCanvas } from './utils';
 import { initCaptionOverlay, initCaptionEditor } from './captions';
 import { initLutPanel } from './lut';
+import { initProjectOnboarding } from '../project/setup';
+import { initCutScore } from '../ai/cutScore';
+import { initEditorActions } from '../ai/editorActions';
 
 // Expose state and mediaPool globally to avoid breaking app.js / main.ts expectations
 declare global {
@@ -23,6 +26,7 @@ window.mediaPool = mediaPool;
 window.aiNodes = aiNodes;
 
 function initUI() {
+  initProjectOnboarding();
   initMediaPoolTabs();
   initToolbar();
   initTimelineUI();
@@ -31,6 +35,8 @@ function initUI() {
   initCaptionOverlay();
   initCaptionEditor();
   initLutPanel();
+  initCutScore();
+  initEditorActions();
 
   window.renderMedia('footage');
   calculateTimelineDuration();

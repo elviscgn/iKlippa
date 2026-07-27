@@ -1,6 +1,7 @@
 import { $, $$, S, aiNodes } from './state';
-import { showToast, resizeCanvas, toggleOfflineMode } from './utils';
-import { calculateTimelineDuration, renderRuler, renderClips, updatePlayhead, applyAiAction } from './timeline';
+import { showToast, resizeCanvas, setOfflineMode } from './utils';
+import { verifyOfflineReadiness } from '../offline/readiness';
+import { calculateTimelineDuration, renderRuler, renderClips, updatePlayhead } from './timeline';
 import {
   getGraniteLoadState,
   sendGranitePrompt,
@@ -8,6 +9,8 @@ import {
   warmGraniteModel,
   type GraniteLoadState,
 } from '../ai/granite';
+import { executeEditorCommand, selectMentionedClips } from '../commands/editorCommands';
+import { extractMentions, parseEditorCommand } from '../commands/parser';
 
 let isTextActive = false;
 let isEffectActive = false;
@@ -143,7 +146,8 @@ function ensureGraniteStatusCard(): GraniteStatusElements | null {
         <span class="granite-status-percent"></span>
       </div>
     `;
-    chatTab.insertBefore(card, chatLog);
+    const statusHost = chatLog.parentElement ?? chatTab;
+    statusHost.insertBefore(card, chatLog);
     window.lucide?.createIcons({ nodes: [card] });
   }
 
@@ -247,23 +251,26 @@ function initChat() {
   };
 
   const runLocalCommand = (val: string) => {
-    const command = val.toLowerCase();
-    setTimeout(() => {
-      if (command.includes('/trim-silence')) {
-        applyAiAction('silence');
-        appendChat('Trimmed the silences locally.');
-      } else if (command.includes('/sync-audio')) {
-        applyAiAction('sync');
-        appendChat('Matched the cut timing to the beat.');
-      } else if (command.includes('/add-captions')) {
-        applyAiAction('captions');
-        appendChat('Generated captions on the timeline.');
-      } else if (command.includes('/auto-broll')) {
-        appendChat('Auto b-roll is not wired yet, but I can still help plan it.');
-      } else {
-        appendChat('Try /trim-silence, /sync-audio, or /add-captions.');
-      }
-    }, 300);
+    const parsed = parseEditorCommand(val);
+    const aiBody = appendChat('Running locally...', false);
+    if (!parsed) {
+      aiBody.textContent = 'Use a command such as /trim-silence, /sync-audio, or /auto-broll.';
+      return;
+    }
+    setGraniteBusy(true);
+    void executeEditorCommand(parsed)
+      .then((result) => {
+        aiBody.textContent = result.message;
+        scrollChatToBottom();
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        aiBody.textContent = message;
+        showToast(message, 'alert-triangle');
+      })
+      .finally(() => {
+        setGraniteBusy(false);
+      });
   };
 
   const submitPrompt = (sourceInput: HTMLInputElement) => {
@@ -279,6 +286,7 @@ function initChat() {
       return;
     }
 
+    selectMentionedClips({ mentions: extractMentions(val) });
     const aiBody = appendChat('Loading Granite locally...', false);
     setGraniteBusy(true);
     void sendGranitePrompt(val, {
@@ -488,11 +496,34 @@ function initModeToggle() {
     window.lucide?.createIcons({ nodes: [btn] });
   };
 
-  btn.onclick = () => {
-    toggleOfflineMode();
-    sync();
-    showToast(window.appMode?.offline ? 'Offline mode enabled' : 'Online mode enabled', window.appMode?.offline ? 'cloud-off' : 'cloud');
-    refreshActiveView();
+  btn.onclick = async () => {
+    if (window.appMode?.offline) {
+      setOfflineMode(false);
+      sync();
+      showToast('Online mode enabled', 'cloud');
+      refreshActiveView();
+      return;
+    }
+
+    btn.setAttribute('aria-busy', 'true');
+    btn.classList.add('checking');
+    label.textContent = 'Checking...';
+    showToast('Checking Granite and project media...', 'loader-circle');
+    try {
+      const readiness = await verifyOfflineReadiness();
+      if (!readiness.ready) {
+        setOfflineMode(false);
+        showToast(readiness.detail, 'alert-triangle');
+        return;
+      }
+      setOfflineMode(true);
+      showToast('Offline mode verified and enabled', 'cloud-off');
+    } finally {
+      btn.removeAttribute('aria-busy');
+      btn.classList.remove('checking');
+      sync();
+      refreshActiveView();
+    }
   };
 
   window.addEventListener('ikl:modeChanged', () => {
@@ -501,4 +532,17 @@ function initModeToggle() {
   });
 
   sync();
+  if (window.appMode?.offline) {
+    btn.setAttribute('aria-busy', 'true');
+    void verifyOfflineReadiness()
+      .then((readiness) => {
+        if (readiness.ready) return;
+        setOfflineMode(false);
+        showToast(`Offline mode paused. ${readiness.detail}`, 'alert-triangle');
+      })
+      .finally(() => {
+        btn.removeAttribute('aria-busy');
+        sync();
+      });
+  }
 }

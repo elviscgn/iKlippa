@@ -19,6 +19,7 @@ import type { ClipWithMeta } from '../state/types';
 import { currentTier, getTierConfig } from './tier';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 import * as MP4Box from 'mp4box';
+import { registerSourceAudioBuffer, registerSourceFile } from '../media/sourceRegistry';
 
 const DECODE_LOOKAHEAD = 12;
 
@@ -242,6 +243,8 @@ let _compositeCanvas: HTMLCanvasElement | null = null;
 let _compositeCtx: CanvasRenderingContext2D | null = null;
 let _frameCanvas: HTMLCanvasElement | null = null;
 let _frameCtx: CanvasRenderingContext2D | null = null;
+let _thumbnailCanvas: HTMLCanvasElement | null = null;
+let _thumbnailCtx: CanvasRenderingContext2D | null = null;
 
 // ── Rust composite output cache ─────────────────────────────────────────
 let _rustCompositeBuffer: ArrayBuffer | null = null;
@@ -302,10 +305,6 @@ function captureThumbnail(): string | null {
 
 // fallow-ignore-next-line complexity
 export function captureThumbnailFromBuffer(ms: number, sourceId?: string): string | null {
-  if (!canvas || !ctx) {
-    warn('thumb', 'captureThumbnailFromBuffer: canvas/ctx not ready');
-    return null;
-  }
   const frames = sourceId
     ? pendingFramesBySource.get(sourceId)
     : pendingFrames;
@@ -325,9 +324,23 @@ export function captureThumbnailFromBuffer(ms: number, sourceId?: string): strin
   const imageData = frames.get(bestMs);
   if (!imageData) return null;
 
-  ctx.putImageData(imageData, 0, 0);
+  const width = imageData.width || sourceDimensions.get(sourceId || '')?.width || sourceVideoWidth || 1;
+  const height = imageData.height || sourceDimensions.get(sourceId || '')?.height || sourceVideoHeight || 1;
+  if (!_thumbnailCanvas) {
+    _thumbnailCanvas = getPorts().canvasFactory.createCanvas() as unknown as HTMLCanvasElement;
+    _thumbnailCtx = _thumbnailCanvas.getContext('2d');
+  }
+  if (!_thumbnailCtx) {
+    warn('thumb', 'captureThumbnailFromBuffer: thumbnail canvas unavailable');
+    return null;
+  }
+  if (_thumbnailCanvas.width !== width || _thumbnailCanvas.height !== height) {
+    _thumbnailCanvas.width = width;
+    _thumbnailCanvas.height = height;
+  }
+  _thumbnailCtx.putImageData(imageData, 0, 0);
   try {
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+    const dataUrl = _thumbnailCanvas.toDataURL('image/jpeg', 0.5);
     log(
       'thumb',
       `captured ${sourceId ? `[${sourceId}] ` : ''}at ${bestMs}ms → ${dataUrl.length} bytes`,
@@ -719,6 +732,8 @@ export async function registerExternalAudio(
   const sourceId = preferredSourceId || 'audio_' + Date.now();
   const buffer = await audioCtx!.decodeAudioData(await file.arrayBuffer());
   externalAudioBuffers.set(sourceId, buffer);
+  registerSourceFile(sourceId, file);
+  registerSourceAudioBuffer(sourceId, buffer);
   return {
     sourceId,
     fileName: file.name,
@@ -868,6 +883,7 @@ export async function importFile(
   });
 
   const sourceId = preferredSourceId || 'imported_' + Date.now();
+  registerSourceFile(sourceId, file);
   sourceDimensions.set(sourceId, { width: payload.width, height: payload.height });
   timelineThumbnailsBySource.set(sourceId, []);
   lastThumbnailCaptureBySource.delete(sourceId);
@@ -1267,6 +1283,10 @@ export const __TEST_HOOKS__ = {
   set lastSyncSig(val: string) { lastSyncSig = val; },
   get pendingFramesBySource() { return pendingFramesBySource; },
   set pendingFramesBySource(val: Map<string, Map<number, ImageData>>) { pendingFramesBySource = val; },
+  get thumbnailCanvas() { return _thumbnailCanvas; },
+  set thumbnailCanvas(val: HTMLCanvasElement | null) { _thumbnailCanvas = val; },
+  get thumbnailCtx() { return _thumbnailCtx; },
+  set thumbnailCtx(val: CanvasRenderingContext2D | null) { _thumbnailCtx = val; },
   get isBuffering() { return isBuffering; },
   set isBuffering(val: boolean) { isBuffering = val; },
   setTimeline,

@@ -260,11 +260,11 @@ describe('renderLoop – no clips (Tier 2)', () => {
 
 describe('captureThumbnailFromBuffer toDataURL error path (Tier 2)', () => {
   it('returns null when toDataURL throws', () => {
-    __TEST_HOOKS__.canvas = {
+    __TEST_HOOKS__.thumbnailCanvas = {
       width: 100, height: 100,
       toDataURL: () => { throw new Error('tainted'); },
     } as any;
-    __TEST_HOOKS__.ctx = { putImageData: vi.fn() } as any;
+    __TEST_HOOKS__.thumbnailCtx = { putImageData: vi.fn() } as any;
     __TEST_HOOKS__.pendingFrames = new Map([[100, {} as ImageData]]);
 
     expect(captureThumbnailFromBuffer(100)).toBeNull();
