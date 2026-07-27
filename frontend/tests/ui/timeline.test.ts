@@ -353,12 +353,16 @@ describe('applyAiAction', () => {
     mockS.dur = 10;
     mockAiNodes.splice(0, mockAiNodes.length);
     delete (window as any).IKState;
+    window.runSmartTrim = vi.fn().mockResolvedValue({ message: 'Silence trimmed' });
+    window.runBeatSync = vi.fn().mockResolvedValue({ message: 'Cuts synced' });
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.resetModules();
     delete (window as any).IKState;
+    delete window.runSmartTrim;
+    delete window.runBeatSync;
     mockAiNodes.splice(0, mockAiNodes.length);
   });
 
@@ -371,37 +375,37 @@ describe('applyAiAction', () => {
   });
 
   it('trims single real clip on silence action', async () => {
-    const trimClipMock = vi.fn();
+    const trimAction = vi.fn().mockResolvedValue({ message: 'Silence trimmed' });
+    window.runSmartTrim = trimAction;
     (window as any).IKState = {
       getVideoClips: () => [{
         id: 'v1', isReal: true,
         timeline_start_us: 0, timeline_end_us: 10_000_000, source_start_us: 0,
       }],
       getAudioClips: () => [],
-      trimClip: trimClipMock,
       computeDuration: vi.fn(),
       isReady: () => true,
     };
     window.lucide = { createIcons: vi.fn() };
     applyAiAction('silence');
-    expect(trimClipMock).toHaveBeenCalled();
+    expect(trimAction).toHaveBeenCalledWith([]);
   });
 
-  it('moves clips to trim gaps when multiple clips exist', async () => {
-    const moveClipMock = vi.fn();
+  it('passes multiple clips to local silence analysis', async () => {
+    const trimAction = vi.fn().mockResolvedValue({ message: 'Silence trimmed' });
+    window.runSmartTrim = trimAction;
     (window as any).IKState = {
       getVideoClips: () => [
         { id: 'v1', isReal: true, timeline_start_us: 0, timeline_end_us: 4_000_000, source_start_us: 0 },
         { id: 'v2', isReal: true, timeline_start_us: 8_000_000, timeline_end_us: 12_000_000, source_start_us: 0 },
       ],
       getAudioClips: () => [],
-      moveClip: moveClipMock,
       computeDuration: vi.fn(),
       isReady: () => true,
     };
     window.lucide = { createIcons: vi.fn() };
     applyAiAction('silence');
-    expect(moveClipMock).toHaveBeenCalled();
+    expect(trimAction).toHaveBeenCalledWith([]);
   });
 
   it('applies captions action', async () => {
@@ -426,7 +430,8 @@ describe('applyAiAction', () => {
   });
 
   it('applies sync action', async () => {
-    const { showToast } = await import('../../src/ui/utils');
+    const syncAction = vi.fn().mockResolvedValue({ message: 'Cuts synced' });
+    window.runBeatSync = syncAction;
     (window as any).IKState = {
       getVideoClips: () => [{ id: 'v1', isReal: true, timeline_start_us: 0, timeline_end_us: 4_000_000 }],
       getAudioClips: () => [],
@@ -435,7 +440,7 @@ describe('applyAiAction', () => {
     };
     window.lucide = { createIcons: vi.fn() };
     applyAiAction('sync');
-    expect(showToast).toHaveBeenCalledWith('Rhythm Sync Complete', 'zap');
+    expect(syncAction).toHaveBeenCalledWith([]);
   });
 
   it('shows already applied toast on repeated action', async () => {

@@ -31,7 +31,13 @@ export function getTimelineLaneOffset() {
       ? tracks.querySelector('.track:not(.ai-track) .track-lane')
       : null) as HTMLElement | null ??
     ($('#lane-ai') as HTMLElement | null);
-  if (!body || !tracks || !lane) return 100;
+  if (
+    !body ||
+    !tracks ||
+    !lane ||
+    typeof body.getBoundingClientRect !== 'function' ||
+    typeof lane.getBoundingClientRect !== 'function'
+  ) return 100;
 
   const bodyRect = body.getBoundingClientRect();
   const laneRect = lane.getBoundingClientRect();

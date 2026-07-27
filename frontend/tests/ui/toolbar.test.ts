@@ -36,6 +36,11 @@ vi.mock('../../src/ui/timeline', () => ({
   applyAiAction: vi.fn(),
 }));
 
+vi.mock('../../src/commands/editorCommands', () => ({
+  executeEditorCommand: vi.fn().mockResolvedValue({ message: 'Command complete' }),
+  selectMentionedClips: vi.fn(),
+}));
+
 const FIXTURE = `
   <button id="t-text"></button>
   <button id="t-effects"></button>
@@ -221,10 +226,10 @@ describe('initToolbar – aspect ratio', () => {
     expect(document.getElementById('ar-label')!.textContent).toBe('9:16');
   });
 
-  it('sets panel-right width to 340px for portrait AR', () => {
+  it('widens panel-right for portrait AR', () => {
     const portraitOpt = document.querySelector('.ar-option[data-ar="9/16"]') as HTMLElement;
     portraitOpt.click();
-    expect(document.getElementById('panel-right')!.style.width).toBe('340px');
+    expect(document.getElementById('panel-right')!.style.width).toBe('360px');
   });
 });
 
@@ -274,36 +279,33 @@ describe('initChat – autocomplete and submitCmd', () => {
   });
 
   it('submitCmd dispatches AI action for trim-silence command', async () => {
-    vi.useFakeTimers();
-    const { applyAiAction } = await import('../../src/ui/timeline');
+    const { executeEditorCommand } = await import('../../src/commands/editorCommands');
     const input = document.getElementById('ai-cmd') as HTMLInputElement;
     input.value = '/trim-silence';
     (window as any).submitCmd();
-    vi.advanceTimersByTime(700);
-    expect(applyAiAction).toHaveBeenCalledWith('silence');
-    vi.useRealTimers();
+    expect(executeEditorCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'trim-silence' }),
+    );
   });
 
   it('submitCmd dispatches AI action for sync-audio command', async () => {
-    vi.useFakeTimers();
-    const { applyAiAction } = await import('../../src/ui/timeline');
+    const { executeEditorCommand } = await import('../../src/commands/editorCommands');
     const input = document.getElementById('ai-cmd') as HTMLInputElement;
     input.value = '/sync-audio';
     (window as any).submitCmd();
-    vi.advanceTimersByTime(700);
-    expect(applyAiAction).toHaveBeenCalledWith('sync');
-    vi.useRealTimers();
+    expect(executeEditorCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'sync-audio' }),
+    );
   });
 
   it('submitCmd dispatches AI action for add-captions command', async () => {
-    vi.useFakeTimers();
-    const { applyAiAction } = await import('../../src/ui/timeline');
+    const { executeEditorCommand } = await import('../../src/commands/editorCommands');
     const input = document.getElementById('ai-cmd') as HTMLInputElement;
     input.value = '/add-captions';
     (window as any).submitCmd();
-    vi.advanceTimersByTime(700);
-    expect(applyAiAction).toHaveBeenCalledWith('captions');
-    vi.useRealTimers();
+    expect(executeEditorCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'add-captions' }),
+    );
   });
 
   it('submitCmd with AI chat (not slash command) adds chat msg', () => {
