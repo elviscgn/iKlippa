@@ -1430,13 +1430,17 @@ export async function seekTo(ms: number): Promise<void> {
   // Preserve across rapid seeks (scrubbing): once set, stays true until frame arrives or pause.
   pendingResumeAfterSeek = pendingResumeAfterSeek || wasPlaying;
 
-  seekTargetMs = ms;
+  const mapRes = mapTimelineToSource(ms);
+  const sourceTargetMs = mapRes ? mapRes.sourceMs : ms;
+  // Worker frames are timestamped in source time, which can differ from the
+  // timeline after a trim. Match the incoming frame against the source target.
+  seekTargetMs = sourceTargetMs;
   if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
   seekPaintTimeout = setTimeout(() => {
     if (seekTargetMs >= 0) {
       warn(
         'seek',
-        `fallback timeout fired — no frame reached ${ms.toFixed(0)}ms within 2000ms`,
+        `fallback timeout fired — no frame reached source ${sourceTargetMs.toFixed(0)}ms within 2000ms`,
       );
       seekTargetMs = -1;
       pendingResumeAfterSeek = false;
@@ -1454,8 +1458,6 @@ export async function seekTo(ms: number): Promise<void> {
   pendingAudio.clear();
   audioConfigVersion++;
   worker!.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
-  const mapRes = mapTimelineToSource(ms);
-  const sourceTargetMs = mapRes ? mapRes.sourceMs : ms;
   const sourceId = mapRes ? mapRes.sourceId : undefined;
   seekGeneration++;
   worker!.postMessage({ type: 'seek', ms: sourceTargetMs, sourceId, seekId: seekGeneration });
@@ -1777,8 +1779,15 @@ export function syncTimelineToRust(): void {
     // match against in stage_frame_broadcast.
     const mapRes = mapTimelineToSource(playheadMs);
     if (mapRes) {
-      seekGeneration++;
-      worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId, seekId: seekGeneration });
+      if (!isPlaying) {
+        // The load seek already gave JS a raw frame, so paint it immediately
+        // instead of leaving the canvas black while the compositor re-seeds.
+        paintFrameAtTime(playheadMs);
+        void seekTo(playheadMs);
+      } else {
+        seekGeneration++;
+        worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId, seekId: seekGeneration });
+      }
     }
   });
 }

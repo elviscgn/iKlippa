@@ -697,6 +697,14 @@ function initTimelineDrop() {
       name: data.name,
       isReal: data.isReal,
       picId: data.picId || 0,
+      ...(data.thumbDataUrl
+        ? {
+            thumbnails: [{
+              ms: Math.round(data.durationSec * 500),
+              dataUrl: data.thumbDataUrl,
+            }],
+          }
+        : {}),
     });
     if (!clip) return;
     showToast(

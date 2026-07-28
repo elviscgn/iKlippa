@@ -192,6 +192,10 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
         const entry = window.mediaPool.footage.find((f) => f.id === frameSourceId);
         if (entry) {
           entry.thumbDataUrl = thumb;
+          // Reuse the import thumbnail on any restored/existing timeline clips.
+          // Previously it only updated the media card, leaving the clip blank.
+          window.onThumbnailsUpdated?.(frameSourceId, [{ ms: frameMs, dataUrl: thumb }]);
+          autoSave();
           const activeTab = document.querySelector('.media-tab.active') as HTMLElement | null;
           if (!activeTab || activeTab.dataset.tab === 'footage') {
             window.renderMedia('footage');

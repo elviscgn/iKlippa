@@ -23,6 +23,7 @@ export interface MediaDragPayload {
   durationSec: number;
   isReal: boolean;
   picId?: number;
+  thumbDataUrl?: string;
   remoteUrl?: string;
   thumbnailUrl?: string;
   provider?: string;
@@ -63,6 +64,7 @@ function createDragPayload(item: any, kind: MediaDragKind): MediaDragPayload {
     durationSec: parseMediaDuration(item.dur, 4),
     isReal,
     ...(item.picId ? { picId: item.picId } : {}),
+    ...(item.thumbDataUrl ? { thumbDataUrl: item.thumbDataUrl } : {}),
     ...(item.remoteUrl ? { remoteUrl: item.remoteUrl } : {}),
     ...(item.thumbnailUrl ? { thumbnailUrl: item.thumbnailUrl } : {}),
     ...(item.provider ? { provider: item.provider } : {}),
@@ -162,6 +164,14 @@ async function insertAtPlayhead(sourcePayload: MediaDragPayload) {
       name: payload.name,
       isReal: payload.isReal,
       picId: payload.picId || 0,
+      ...(payload.thumbDataUrl
+        ? {
+            thumbnails: [{
+              ms: Math.round(payload.durationSec * 500),
+              dataUrl: payload.thumbDataUrl,
+            }],
+          }
+        : {}),
     },
   );
   if (!clip) return;
