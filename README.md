@@ -6,8 +6,7 @@
 
 [![Built with IBM Bob](https://img.shields.io/badge/built_with-IBM_Bob-0f62fe?style=flat-square)](docs/bob-usage-log.md)
 [![Powered by IBM Granite](https://img.shields.io/badge/powered_by-IBM_Granite-161616?style=flat-square)](#how-ibm-technology-is-used)
-[![Tests](https://img.shields.io/badge/tests-391_passing-198754?style=flat-square)](#verification)
-[![CPU benchmark](https://img.shields.io/badge/4x_CPU_playback-real_time-0f766e?style=flat-square)](docs/performance-benchmark.md)
+[![Tests](https://img.shields.io/badge/tests-passing-198754?style=flat-square)](#verification)
 [![Offline capable](https://img.shields.io/badge/editor-offline_capable-0f766e?style=flat-square)](#offline-design)
 [![License](https://img.shields.io/badge/license-Apache_2.0-d22128?style=flat-square)](LICENSE)
 
