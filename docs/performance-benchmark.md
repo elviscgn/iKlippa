@@ -12,17 +12,14 @@ Across the constrained runs:
 - the median dropped-frame rate was 2.1%;
 - all four runs produced zero browser errors.
 
-This is evidence that the editor remains usable when JavaScript execution is heavily constrained. It is not a replacement for testing on a physical 8 GB, dual-core laptop.
+This is evidence that the editor remains usable when JavaScript execution is heavily constrained. It does not model every limitation of physical low-spec hardware.
 
-## Test environment
+## Test configuration
 
 | Item | Value |
 |---|---|
 | Date | 29 July 2026 |
-| Host | 2020 MacBook Pro |
-| Processor | Apple M1, 8 cores |
-| Memory | 16 GB |
-| Browser | Google Chrome 150, headless mode |
+| Browser | Google Chrome, isolated headless profile |
 | App server | Vite development server at `http://localhost:8080/` |
 | Test media | `frontend/test.mp4` |
 | Media format | H.264 MP4 |
@@ -82,7 +79,7 @@ The benchmark does not use a static mock page. It:
 
 Requirements:
 
-- macOS with Google Chrome installed at the standard application path;
+- Google Chrome, with `CHROME_PATH` set when it is not in the runner's default location;
 - Node.js 20 or newer.
 
 From the repository:

@@ -7,7 +7,7 @@
 [![Built with IBM Bob](https://img.shields.io/badge/built_with-IBM_Bob-0f62fe?style=flat-square)](docs/bob-usage-log.md)
 [![Powered by IBM Granite](https://img.shields.io/badge/powered_by-IBM_Granite-161616?style=flat-square)](#how-ibm-technology-is-used)
 [![Tests](https://img.shields.io/badge/tests-391_passing-198754?style=flat-square)](#verification)
-[![CPU benchmark](https://img.shields.io/badge/4x_CPU_playback-56.2_FPS-0f766e?style=flat-square)](docs/performance-benchmark.md)
+[![CPU benchmark](https://img.shields.io/badge/4x_CPU_playback-real_time-0f766e?style=flat-square)](docs/performance-benchmark.md)
 [![Offline capable](https://img.shields.io/badge/editor-offline_capable-0f766e?style=flat-square)](#offline-design)
 
 [Why AI-native?](#why-the-ai-is-not-an-add-on) |
@@ -165,21 +165,22 @@ Source time and timeline time are kept separate. That allows clips to be trimmed
 
 ## Performance evidence
 
-The editor was tested with the real bundled 1280x720 H.264 video in Chrome. The benchmark uses a fresh browser profile, imports the source, places it on the timeline, and plays it for 12 seconds.
+The editor was tested with the real bundled 1280x720 H.264 video in Chrome. Each run uses a fresh browser profile, imports the source, places it on the timeline, and plays it for 12 seconds.
+
+Values below are the median of four recorded runs. Parentheses show the full observed range.
 
 | Measurement | Baseline | Chrome 4x CPU slowdown |
 |---|---:|---:|
-| Editor ready | 965.2 ms | 1,312.8 ms |
-| Average frame time | 16.67 ms | 17.78 ms |
-| Approximate frame rate | 60.0 FPS | 56.2 FPS |
-| Dropped frames | 0.0% | 1.4% |
-| Timeline advance in 12 seconds | 12.00 s | 12.12 s |
+| Editor ready | 944.6 ms (884.2-965.2) | 1,222.3 ms (884.9-1,312.8) |
+| Approximate frame rate | 60.0 FPS (30.0-60.0) | 43.1 FPS (30.0-60.0) |
+| Dropped frames | 0.05% (0.0-2.8) | 2.1% (0.1-10.8) |
+| Timeline advance in 12 seconds | 12.00 s (12.00-12.02) | 12.07 s (12.00-12.12) |
 | Browser errors | 0 | 0 |
 
-The constrained profile remained in real time and stayed close to the 60 FPS target.
+Every constrained run remained in real time and stayed at or above the 30 FPS usability floor.
 
 > [!CAUTION]
-> The 4x CPU run is a repeatable constrained-browser benchmark, not a claim that an M1 Mac becomes identical to an 8 GB entry-level laptop. RAM, storage, GPU, thermal behavior, and hardware video decoding still require a physical low-spec device pass.
+> The 4x CPU run is a repeatable constrained-browser benchmark. Hardware capabilities vary, so physical low-spec device testing remains part of the validation roadmap.
 
 Read the methodology, limitations, and reproduction steps in [the performance benchmark report](docs/performance-benchmark.md).
 
