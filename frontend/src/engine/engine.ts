@@ -257,6 +257,8 @@ let _lastCompositeRequestMs = -1000;
 export const perf = new PerformanceMonitor();
 if (typeof window !== 'undefined') {
   (window as any).iklippaScore = () => perf.report();
+  (window as any).iklippaPerfSnapshot = () => perf.score();
+  (window as any).iklippaPerfReset = () => perf.reset();
   // Last-resort net: any main-thread rejection we didn't funnel explicitly
   // still becomes a visible toast (deduped via wasReported).
   window.addEventListener('unhandledrejection', (ev: PromiseRejectionEvent) => {
