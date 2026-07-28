@@ -7,6 +7,7 @@
 [![Built with IBM Bob](https://img.shields.io/badge/built_with-IBM_Bob-0f62fe?style=flat-square)](docs/bob-usage-log.md)
 [![Powered by IBM Granite](https://img.shields.io/badge/powered_by-IBM_Granite-161616?style=flat-square)](#how-ibm-technology-is-used)
 [![Tests](https://img.shields.io/badge/tests-391_passing-198754?style=flat-square)](#verification)
+[![CPU benchmark](https://img.shields.io/badge/4x_CPU_playback-real_time-0f766e?style=flat-square)](docs/performance-benchmark.md)
 [![Offline capable](https://img.shields.io/badge/editor-offline_capable-0f766e?style=flat-square)](#offline-design)
 
 [Why AI-native?](#why-the-ai-is-not-an-add-on) |
@@ -45,7 +46,7 @@ iKlippa helps creators turn raw footage into a finished cut without needing an e
 | AI actions change the real project | Smart Trim, Beat Sync, Auto B-Roll, `@clip` targeting, undo, and redo |
 | Video processing stays local | WebCodecs, Web Audio, workers, Rust/WASM, IndexedDB, and browser export |
 | Offline mode is verified | App shell, model, workers, WASM, and current media are checked before switching |
-| The implementation is tested | 391 frontend tests, a passing production build, and passing Go tests |
+| The implementation is tested | 391 frontend tests, passing builds, and repeatable baseline and 4x CPU playback benchmarks |
 
 ## The problem
 
@@ -162,6 +163,27 @@ The editor is not a collection of embedded media players. It has a custom non-li
 
 Source time and timeline time are kept separate. That allows clips to be trimmed, split, moved, and repeated while the decoder still reads the correct section of the original file.
 
+## Performance evidence
+
+The editor was tested with the real bundled 1280x720 H.264 video in Chrome. Each run uses a fresh browser profile, imports the source, places it on the timeline, and plays it for 12 seconds.
+
+Values below are the median of four recorded runs. Parentheses show the full observed range.
+
+| Measurement | Baseline | Chrome 4x CPU slowdown |
+|---|---:|---:|
+| Editor ready | 944.6 ms (884.2-965.2) | 1,222.3 ms (884.9-1,312.8) |
+| Approximate frame rate | 60.0 FPS (30.0-60.0) | 43.1 FPS (30.0-60.0) |
+| Dropped frames | 0.05% (0.0-2.8) | 2.1% (0.1-10.8) |
+| Timeline advance in 12 seconds | 12.00 s (12.00-12.02) | 12.07 s (12.00-12.12) |
+| Browser errors | 0 | 0 |
+
+Every constrained run remained in real time and stayed at or above the 30 FPS usability floor.
+
+> [!CAUTION]
+> The 4x CPU run is a repeatable constrained-browser benchmark. Hardware capabilities vary, so physical low-spec device testing remains part of the validation roadmap.
+
+Read the methodology, limitations, and reproduction steps in [the performance benchmark report](docs/performance-benchmark.md).
+
 ## Offline design
 
 Offline mode is a product feature, not just a disconnected UI state.
@@ -174,6 +196,21 @@ When it is enabled, iKlippa verifies that:
 - browser storage is available for reopening the project.
 
 Imported media stays on the device. Pexels and Jamendo search remain online-only because they depend on external providers.
+
+### The Granite download is a one-time setup cost
+
+The current Granite Nano package is approximately 676-678 MB. iKlippa does not download it during normal Online mode. The download starts only when the creator chooses Offline mode.
+
+Transformers.js stores the model in the browser cache, and iKlippa requests durable browser storage. Later offline sessions reuse those local files without downloading the model again or sending prompts over the network.
+
+A new download is needed only when:
+
+- the creator clears the site's browser data;
+- the browser evicts the stored model;
+- the creator uses a different browser profile or device;
+- iKlippa upgrades to a different model version.
+
+This makes the model a larger first-time preparation step in exchange for private, repeatable inference without per-edit data use.
 
 ## Architecture
 
@@ -366,13 +403,20 @@ TypeScript and production build passed
 
 The test suite covers the editor state, worker protocol, playback, audio scheduling, thumbnails, timeline controls, drag and drop, onboarding persistence, command targeting, local audio math, AI timeline actions, cut scoring, stock provider errors, Granite runtime selection, and offline readiness.
 
+Run the repeatable Chrome playback benchmark:
+
+```bash
+cd frontend
+node scripts/benchmark.mjs
+```
+
 ## Known limits
 
 - The first Offline mode setup requires an internet connection to download Granite 4.0 350M.
 - WebGPU is preferred for the browser model. WASM is the slower fallback.
 - Pexels and Jamendo searches require an internet connection and valid provider credentials.
 - WebCodecs support and accepted media codecs vary by browser and operating system.
-- The prototype has not completed a formal performance benchmark on the lowest-end target laptop.
+- The constrained CPU benchmark is complete, but the physical 8 GB target-laptop test remains pending.
 - Automatic captions are present in the editor, but the current hackathon demo focuses on the completed Smart Trim, Beat Sync, Auto B-Roll, and contextual Granite paths.
 
 ## Repository structure
@@ -380,7 +424,7 @@ The test suite covers the editor state, worker protocol, playback, audio schedul
 ```text
 iKlippa/
 |-- backend/       Go API gateway
-|-- docs/          IBM Bob usage record and submission images
+|-- docs/          IBM Bob record, benchmark report, and submission images
 |-- frontend/      Browser editor, workers, tests, and Rust/WASM engine
 |-- ml/            Script analysis, stock providers, and XGBoost model
 |-- Cargo.toml     Rust workspace
