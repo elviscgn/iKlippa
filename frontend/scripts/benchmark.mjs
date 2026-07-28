@@ -11,11 +11,12 @@ const CHROME_PATH =
   process.env.CHROME_PATH ||
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PLAYBACK_MS = Number(process.env.IKLIPPA_BENCHMARK_PLAYBACK_MS || 12_000);
+const RUN_COUNT = Number(process.env.IKLIPPA_BENCHMARK_RUNS || 3);
 const READY_TIMEOUT_MS = 45_000;
 
 const profiles = [
-  { name: 'baseline', cpuSlowdown: 1, port: 9331 },
-  { name: 'constrained-cpu', cpuSlowdown: 4, port: 9332 },
+  { name: 'baseline', cpuSlowdown: 1, port: 9330 },
+  { name: 'constrained-cpu', cpuSlowdown: 4, port: 9360 },
 ];
 
 class CdpClient {
@@ -350,25 +351,75 @@ async function runProfile(profile) {
   }
 }
 
+function summarizeValues(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+  return {
+    median: Number(median.toFixed(2)),
+    min: Number(sorted[0].toFixed(2)),
+    max: Number(sorted[sorted.length - 1].toFixed(2)),
+  };
+}
+
+function summarizeProfile(profile, runs) {
+  const profileRuns = runs.filter((run) => run.profile === profile.name);
+  return {
+    profile: profile.name,
+    cpuSlowdown: profile.cpuSlowdown,
+    runs: profileRuns.length,
+    editorReadyMs: summarizeValues(profileRuns.map((run) => run.startup.editorReadyMs)),
+    timelineAdvanceSec: summarizeValues(
+      profileRuns.map((run) => run.playback.timelineAdvanceSec),
+    ),
+    avgFrameMs: summarizeValues(
+      profileRuns.map((run) => Number(run.playback.metrics.avgFrameMs)),
+    ),
+    approximateFps: summarizeValues(
+      profileRuns.map((run) => 1000 / Number(run.playback.metrics.avgFrameMs)),
+    ),
+    droppedFramesPct: summarizeValues(
+      profileRuns.map((run) => Number(run.playback.metrics.dropRatePct)),
+    ),
+    decodeToOutputMs: summarizeValues(
+      profileRuns.map((run) => Number(run.playback.metrics.avgDecodeMs)),
+    ),
+    monitorScore: summarizeValues(
+      profileRuns.map((run) => Number(run.playback.metrics.composite)),
+    ),
+    browserErrorCount: profileRuns.reduce((sum, run) => sum + run.browserErrorCount, 0),
+  };
+}
+
 async function main() {
   const vite = await startViteIfNeeded();
   const startedAt = new Date().toISOString();
   try {
     const results = [];
     for (const profile of profiles) {
-      results.push(await runProfile(profile));
+      for (let runNumber = 1; runNumber <= RUN_COUNT; runNumber++) {
+        const result = await runProfile({
+          ...profile,
+          port: profile.port + runNumber,
+        });
+        results.push({ ...result, runNumber });
+      }
     }
     console.log(JSON.stringify({
       benchmark: 'iKlippa editor playback',
       startedAt,
       appUrl: APP_URL,
       media: 'frontend/test.mp4',
+      runCountPerProfile: RUN_COUNT,
       methodology: {
         browser: 'Installed Google Chrome, headless mode',
         baseline: 'No CPU slowdown',
         constrained: 'Chrome DevTools 4x CPU slowdown',
         note: 'CPU slowdown is a repeatable constraint, not a full emulation of low RAM, storage, GPU, or hardware video decoding.',
       },
+      summaries: profiles.map((profile) => summarizeProfile(profile, results)),
       results,
     }, null, 2));
   } finally {
