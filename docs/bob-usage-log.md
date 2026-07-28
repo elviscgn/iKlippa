@@ -212,3 +212,24 @@ Tests, build checks, visible error handling, and a reproducible local setup made
 IBM Bob helped the team move from an ambitious browser-editor idea to an implemented and tested system. Its strongest contribution was not a single generated file. It helped the team understand a complex codebase, plan work across several languages, debug asynchronous media problems, and verify the result.
 
 The team remained responsible for the product decisions, technical review, browser testing, and final implementation.
+
+## Backend & ML Generative AI Usage
+
+To support the Go/Python microservice architecture, we heavily utilized Bob to architect the system and draft the initial scripts.
+
+### 1. Project Architecture & Microservices
+We used Bob to determine the best way to structure a 3-tier application (Go API Gateway -> Python ML Engine -> React Frontend) locally.
+![Bob Architecture](images/bob-architecture.png)
+
+### 2. Data Engineering & API Integrations
+Bob generated the exact scaffolding required to interact with the YouTube Data API v3, allowing us to safely fetch metadata for ML training.
+![Bob YouTube API 1](images/bob-youtube-api-1.png)
+![Bob YouTube API 2](images/bob-youtube-api-2.png)
+
+### 3. Machine Learning (XGBoost)
+We prompted Bob to create a pipeline for loading our CSV data and training an XGBoost Regressor to predict our `virality_score` targets.
+![Bob XGBoost](images/bob-xgboost.png)
+
+### 4. FastAPI Orchestration
+Once our individual Python scripts were ready, Bob helped us structure the FastAPI wrapper so the Go API gateway could consume them via REST endpoints.
+![Bob FastAPI](images/bob-fastapi.png)
