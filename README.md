@@ -9,12 +9,14 @@
 [![Tests](https://img.shields.io/badge/tests-391_passing-198754?style=flat-square)](#verification)
 [![CPU benchmark](https://img.shields.io/badge/4x_CPU_playback-real_time-0f766e?style=flat-square)](docs/performance-benchmark.md)
 [![Offline capable](https://img.shields.io/badge/editor-offline_capable-0f766e?style=flat-square)](#offline-design)
+[![License](https://img.shields.io/badge/license-Apache_2.0-d22128?style=flat-square)](LICENSE)
 
 [Why AI-native?](#why-the-ai-is-not-an-add-on) |
 [Features](#working-ai-features) |
 [Architecture](#architecture) |
 [Run locally](#run-locally) |
-[IBM Bob](docs/bob-usage-log.md)
+[IBM Bob](docs/bob-usage-log.md) |
+[License](#license)
 
 </div>
 
@@ -439,3 +441,7 @@ iKlippa/
 ## Project status
 
 iKlippa is a working hackathon prototype. The editor, AI context path, local editing actions, offline readiness checks, stock media workflow, and export pipeline are implemented. The next stage is broader codec testing, low-end hardware benchmarking, and creator testing.
+
+## License
+
+iKlippa is licensed under the [Apache License 2.0](LICENSE).
