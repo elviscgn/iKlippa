@@ -5,6 +5,7 @@ const MAX_THUMBNAILS = 20;
 const THUMBNAIL_INTERVAL_MS = 3_000;
 const THUMBNAIL_WIDTH = 160;
 const SEEK_TIMEOUT_MS = 4_000;
+const FRAME_MATCH_TOLERANCE_SEC = 0.5;
 
 export function buildThumbnailTimes(durationMs: number): number[] {
   if (!Number.isFinite(durationMs) || durationMs <= 0) return [];
@@ -48,9 +49,49 @@ function waitForEvent(
 }
 
 async function seekVideo(video: HTMLVideoElement, timeSec: number): Promise<void> {
-  const ready = waitForEvent(video, 'seeked');
+  const seeked = waitForEvent(video, 'seeked');
+  const supportsFrameCallbacks =
+    typeof video.requestVideoFrameCallback === 'function';
+  const presented = supportsFrameCallbacks
+    ? waitForPresentedFrame(video, timeSec)
+    : null;
   video.currentTime = timeSec;
-  await ready;
+  await seeked;
+  if (presented) {
+    await presented;
+  } else {
+    await waitForBrowserPaint();
+  }
+}
+
+function waitForPresentedFrame(
+  video: HTMLVideoElement,
+  targetTimeSec: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let callbackId = 0;
+    const timeout = window.setTimeout(() => {
+      video.cancelVideoFrameCallback(callbackId);
+      reject(new Error('Video thumbnail frame presentation timed out'));
+    }, SEEK_TIMEOUT_MS);
+    const onFrame: VideoFrameRequestCallback = (_now, metadata) => {
+      if (Math.abs(metadata.mediaTime - targetTimeSec) <= FRAME_MATCH_TOLERANCE_SEC) {
+        window.clearTimeout(timeout);
+        resolve();
+        return;
+      }
+      callbackId = video.requestVideoFrameCallback(onFrame);
+    };
+    callbackId = video.requestVideoFrameCallback(onFrame);
+  });
+}
+
+function waitForBrowserPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
 }
 
 export async function generateVideoThumbnails(
