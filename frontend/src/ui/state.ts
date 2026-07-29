@@ -1,3 +1,5 @@
+import type { ThumbnailEntry } from '../state/types';
+
 export const S = {
   time: 0,
   dur: 10,
@@ -17,6 +19,7 @@ interface MediaItem {
   dur?: string;
   isReal?: boolean;
   thumbDataUrl?: string | null;
+  thumbnails?: ThumbnailEntry[];
   thumbnailUrl?: string | null;
   remoteUrl?: string;
   provider?: string;

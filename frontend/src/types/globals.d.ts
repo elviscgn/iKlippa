@@ -84,6 +84,7 @@ interface MediaPoolItem {
   isReal?: boolean;
   dur?: string;
   thumbDataUrl?: string | null;
+  thumbnails?: import('../state/types').ThumbnailEntry[];
   thumbnailUrl?: string | null;
   remoteUrl?: string;
   provider?: string;
