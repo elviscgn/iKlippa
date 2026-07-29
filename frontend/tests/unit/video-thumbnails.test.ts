@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildClipThumbnailStrip,
   buildThumbnailTimes,
   pickPosterThumbnail,
 } from '../../src/media/videoThumbnails';
@@ -34,5 +35,26 @@ describe('video thumbnail sampling', () => {
     ];
 
     expect(pickPosterThumbnail(thumbnails, 36_000)?.dataUrl).toBe('middle');
+  });
+
+  it('maps split clips to their own source range', () => {
+    const thumbnails = [
+      { ms: 1_000, dataUrl: 'opening' },
+      { ms: 5_000, dataUrl: 'middle' },
+      { ms: 9_000, dataUrl: 'ending' },
+    ];
+
+    const strip = buildClipThumbnailStrip(
+      thumbnails,
+      7_000_000,
+      10_000_000,
+      3,
+    );
+
+    expect(strip.map((thumbnail) => thumbnail.dataUrl)).toEqual([
+      'ending',
+      'ending',
+      'ending',
+    ]);
   });
 });

@@ -83,6 +83,50 @@ describe('local editor actions', () => {
     expect(actionMocks.saveSnapshot).toHaveBeenCalledTimes(1);
   });
 
+  it('merges nearby silence cuts instead of creating tiny clip fragments', async () => {
+    const primary = IKState.addVideoClip('interview.mp4', 0, 10_000_000, {
+      name: 'Interview',
+      isReal: true,
+    })!;
+    actionMocks.analyzeSourceAudio.mockResolvedValue(analysis({
+      silenceRegions: [
+        { startSec: 1, endSec: 2 },
+        { startSec: 2.3, endSec: 3.3 },
+        { startSec: 3.6, endSec: 4.6 },
+      ],
+    }));
+
+    const result = await window.runSmartTrim!([primary.id]);
+    const clips = IKState.getVideoClips().slice().sort((a, b) => {
+      return a.timeline_start_us - b.timeline_start_us;
+    });
+
+    expect(result.message).toContain('Removed 1 silent region');
+    expect(clips).toHaveLength(2);
+    expect(clips.every((clip) => {
+      return clip.timeline_end_us - clip.timeline_start_us >= 700_000;
+    })).toBe(true);
+  });
+
+  it('caps pathological silence detection to eight cuts per clip', async () => {
+    const primary = IKState.addVideoClip('long-interview.mp4', 0, 30_000_000, {
+      name: 'Long interview',
+      isReal: true,
+    })!;
+    actionMocks.analyzeSourceAudio.mockResolvedValue(analysis({
+      durationSec: 30,
+      silenceRegions: Array.from({ length: 12 }, (_, index) => ({
+        startSec: 1 + index * 2,
+        endSec: 1.5 + index * 2,
+      })),
+    }));
+
+    const result = await window.runSmartTrim!([primary.id]);
+
+    expect(result.message).toContain('Removed 8 silent regions');
+    expect(IKState.getVideoClips()).toHaveLength(9);
+  });
+
   it('closes leading and between-clip gaps even when no audio silence is found', async () => {
     const first = IKState.addVideoClip('interview.mp4', 1_000_000, 3_000_000, {
       name: 'Interview',
