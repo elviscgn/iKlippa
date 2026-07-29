@@ -273,7 +273,9 @@ describe('renderMedia – dragstart handlers', () => {
   });
 
   it('real footage item sets drag data with sourceId', async () => {
-    mockMediaPool.footage[0]!.thumbnails = [
+    (mockMediaPool.footage[0]! as typeof mockMediaPool.footage[number] & {
+      thumbnails: Array<{ ms: number; dataUrl: string }>;
+    }).thumbnails = [
       { ms: 500, dataUrl: 'data:image/jpeg;base64,first' },
       { ms: 2500, dataUrl: 'data:image/jpeg;base64,second' },
     ];

@@ -763,6 +763,28 @@ export interface ImportedMediaSource {
   height: number;
 }
 
+function getTrackSamples(mp4: MP4BoxFile, trackId: number): MP4Sample[] {
+  const track = mp4.getTrackById(trackId) as unknown as {
+    samples?: Array<Partial<MP4Sample>>;
+  };
+  return (track.samples ?? [])
+    .filter((sample) =>
+      Number.isFinite(sample.cts) &&
+      Number.isFinite(sample.duration) &&
+      Number.isFinite(sample.timescale) &&
+      Number.isFinite(sample.offset) &&
+      Number.isFinite(sample.size),
+    )
+    .map((sample) => ({
+      cts: sample.cts!,
+      duration: sample.duration!,
+      timescale: sample.timescale!,
+      is_sync: Boolean(sample.is_sync),
+      offset: sample.offset!,
+      size: sample.size!,
+    }));
+}
+
 export async function importFile(
   file: File,
   preferredSourceId?: string,
@@ -803,8 +825,6 @@ export async function importFile(
     let audioTrackInfo: MP4BoxAudioTrack | null = null;
     let codecConfigResult: (VideoDecoderConfig & { description?: ArrayBuffer }) | null = null;
     let audioConfigResult: AudioDecoderConfig | null = null;
-    const samplesArray: MP4Sample[] = [];
-    const audioSamplesArray: MP4Sample[] = [];
 
     mp4.onReady = (info: MP4BoxInfo) => {
       const track = info.videoTracks[0];
@@ -821,7 +841,6 @@ export async function importFile(
         codedHeight: track.track_height,
         description: getDecoderDescription(mp4, track),
       };
-      mp4.setExtractionOptions(track.id, null, { nbSamples: Infinity });
       if (aTrack) {
         const audioDesc = getAudioDescription(mp4, aTrack);
         audioConfigResult = {
@@ -830,14 +849,7 @@ export async function importFile(
           numberOfChannels: aTrack.audio.channel_count,
           ...(audioDesc ? { description: audioDesc } : {}),
         };
-        mp4.setExtractionOptions(aTrack.id, null, { nbSamples: Infinity });
       }
-      mp4.start();
-    };
-
-    mp4.onSamples = (id: number, _user: unknown, s: MP4Sample[]) => {
-      if (trackInfo && id === trackInfo.id) samplesArray.push(...s);
-      else if (audioTrackInfo && id === audioTrackInfo.id) audioSamplesArray.push(...s);
     };
 
     mp4.onError = (e: string) => reject(new Error('MP4Box error: ' + e));
@@ -848,14 +860,22 @@ export async function importFile(
       if (offset >= file.size) {
         mp4.flush();
         if (trackInfo && codecConfigResult) {
+          const videoSamples = getTrackSamples(mp4, trackInfo.id);
+          const audioSamples = audioTrackInfo
+            ? getTrackSamples(mp4, audioTrackInfo.id)
+            : [];
+          if (videoSamples.length === 0) {
+            reject(new Error('No decodable video samples found in this MP4'));
+            return;
+          }
           let durationSec = (trackInfo as MP4BoxVideoTrack & { duration: number; timescale: number }).duration /
             (trackInfo as MP4BoxVideoTrack & { duration: number; timescale: number }).timescale;
-          if (durationSec === 0 && samplesArray.length > 0) {
-            const last = samplesArray[samplesArray.length - 1]!;
+          if (durationSec === 0) {
+            const last = videoSamples[videoSamples.length - 1]!;
             durationSec = (last.cts + last.duration) / last.timescale;
           }
-          if (durationSec === 0 && audioSamplesArray.length > 0) {
-            const last = audioSamplesArray[audioSamplesArray.length - 1]!;
+          if (durationSec === 0 && audioSamples.length > 0) {
+            const last = audioSamples[audioSamples.length - 1]!;
             durationSec = (last.cts + last.duration) / last.timescale;
           }
           resolve({
@@ -863,9 +883,9 @@ export async function importFile(
             width: trackInfo.track_width,
             height: trackInfo.track_height,
             durationMs: Math.round(durationSec * 1000),
-            samples: samplesArray,
+            samples: videoSamples,
             audioConfig: audioConfigResult,
-            audioSamples: audioSamplesArray,
+            audioSamples,
             audioConfigVersion,
           });
         } else {
