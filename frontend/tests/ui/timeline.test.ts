@@ -232,8 +232,9 @@ describe('renderClips', () => {
       getVideoClips: () => [{
         id: 'vc1', group_id: 'g1', name: 'film.mp4',
         timeline_start_us: 0, timeline_end_us: 4_000_000,
+        source_start_us: 0, source_end_us: 4_000_000,
         isReal: true,
-        thumbnails: [{ dataUrl: 'data:image/jpeg;base64,abc' }],
+        thumbnails: [{ ms: 2_000, dataUrl: 'data:image/jpeg;base64,abc' }],
       }],
       getAudioClips: () => [],
     };

@@ -448,13 +448,10 @@ impl Project {
         self.tracks.iter().position(|t| t.id == track_id)
     }
 
-<<<<<<< HEAD
-=======
     pub fn find_track_by_clip(&self, clip_id: u32) -> Option<&Track> {
         self.tracks.iter().find(|t| t.clips.iter().any(|c| c.id == clip_id))
     }
 
->>>>>>> refs/rewritten/merge-sync-frontend-changes-from-teammate
     /// Add a track as-is (the track keeps its own `id`). Callers that need an
     /// auto-allocated id should call `alloc_track_id()` first. Returns the
     /// track's id for convenience.

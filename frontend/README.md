@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-# run
-
-node server.js 
-
-wasm-pack build --target web --out-dir ../pkg --dev
-=======
 # iKlippa Frontend
 
 ## Running locally
@@ -32,4 +25,3 @@ If you make changes to the Rust engine:
 cd rust-engine
 wasm-pack build --target web --out-dir ../public/pkg --dev
 ```
->>>>>>> refs/rewritten/merge-sync-frontend-changes-from-teammate

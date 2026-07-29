@@ -291,6 +291,14 @@ describe('importFile success path (Tier 2)', () => {
   });
 
   it('resolves and posts load message on valid MP4 with audio', async () => {
+    const fakeSample = {
+      offset: 0,
+      size: 100,
+      timescale: 1000,
+      duration: 1000,
+      cts: 0,
+      is_sync: true,
+    };
     const mp4Mock = {
       onReady: null as any,
       onSamples: null as any,
@@ -300,6 +308,7 @@ describe('importFile success path (Tier 2)', () => {
       appendBuffer: vi.fn(),
       flush: vi.fn(),
       getTrackById: vi.fn().mockReturnValue({
+        samples: [fakeSample],
         mdia: { minf: { stbl: { stsd: { entries: [] } } } }
       }),
     };
@@ -315,14 +324,7 @@ describe('importFile success path (Tier 2)', () => {
 
     // We need the flush to trigger onReady + resolve
     mp4Mock.flush.mockImplementation(function(this: any) {
-      // Trigger onReady first
       if (mp4Mock.onReady) mp4Mock.onReady({ videoTracks: [videoTrack], audioTracks: [audioTrack] });
-      // Simulate samples
-      if (mp4Mock.onSamples) {
-        const fakeSample = { offset: 0, size: 100, timescale: 1000, duration: 1000, cts: 0, dts: 0, is_sync: true };
-        mp4Mock.onSamples(1, null, [fakeSample]);
-        mp4Mock.onSamples(2, null, [{ ...fakeSample, cts: 0 }]);
-      }
     });
 
     const mockFile = {
@@ -341,6 +343,7 @@ describe('importFile success path (Tier 2)', () => {
     expect(loadCalls.length).toBe(1);
     expect(loadCalls[0][0].width).toBe(640);
     expect(loadCalls[0][0].height).toBe(480);
+    expect(loadCalls[0][0].samples).toEqual([fakeSample]);
   });
 });
 

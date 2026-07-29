@@ -152,7 +152,4 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
-<<<<<<< HEAD
-=======
 test.mp4
->>>>>>> refs/rewritten/merge-sync-frontend-changes-from-teammate
