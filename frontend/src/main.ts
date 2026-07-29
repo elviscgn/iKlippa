@@ -23,13 +23,15 @@ import {
   syncAllTrackAudio,
   exportVideo,
   perf,
-  captureThumbnailFromBuffer,
-  setPendingThumbCapture,
-  requestThumbnailFrame,
   syncTimelineToRust,
   registerExternalAudio,
 } from './engine/engine';
 import { loadStoredSourceFiles, requestDurableStorage } from './media/mediaStore';
+import { getRegisteredSourceFile } from './media/sourceRegistry';
+import {
+  generateVideoThumbnails,
+  pickPosterThumbnail,
+} from './media/videoThumbnails';
 import { registerAppShell } from './offline/appShell';
 
 import type { EngineError, GradeParams } from './engine/types';
@@ -91,6 +93,8 @@ let thumbnailRenderDebounce: ReturnType<typeof setTimeout> | null = null;
 // fallow-ignore-next-line complexity
 window.onThumbnailsUpdated = (sourceId, thumbnails): void => {
   if (!hasRealVideo) return;
+  const mediaItem = window.mediaPool.footage.find((item) => item.id === sourceId);
+  if (mediaItem) mediaItem.thumbnails = thumbnails;
   // Don't re-render DOM during playback — it causes flicker
   const allClips = window.IKState.getAllVideoClips ? window.IKState.getAllVideoClips() : window.IKState.getVideoClips();
   for (const clip of allClips) {
@@ -183,47 +187,32 @@ window.onClipImported = async ({ width, height, durationMs, fileName, sourceId }
     _restoredFromStorage = false;
   }
 
-  const thumbnailTargetMs = Math.max(0, Math.floor(durationMs / 2));
-  // fallow-ignore-next-line complexity
-  setPendingThumbCapture(sourceId, (frameMs: number, frameSourceId: string) => {
-    try {
-      const thumb = captureThumbnailFromBuffer(frameMs, frameSourceId);
-      if (thumb && thumb.length > 500) {
-        const entry = window.mediaPool.footage.find((f) => f.id === frameSourceId);
+  const sourceFile = getRegisteredSourceFile(sourceId);
+  if (sourceFile) {
+    void generateVideoThumbnails(sourceFile, durationMs)
+      .then((thumbnails) => {
+        if (thumbnails.length === 0) return;
+        const entry = window.mediaPool.footage.find((item) => item.id === sourceId);
+        const poster = pickPosterThumbnail(thumbnails, durationMs);
         if (entry) {
-          entry.thumbDataUrl = thumb;
-          // Reuse the import thumbnail on any restored/existing timeline clips.
-          // Previously it only updated the media card, leaving the clip blank.
-          window.onThumbnailsUpdated?.(frameSourceId, [{ ms: frameMs, dataUrl: thumb }]);
-          autoSave();
-          const activeTab = document.querySelector('.media-tab.active') as HTMLElement | null;
-          if (!activeTab || activeTab.dataset.tab === 'footage') {
-            window.renderMedia('footage');
-          }
-          console.log(
-            `[iKlippa:app] thumbnail captured [${frameSourceId}] from frame ${frameMs}ms ✓`,
-          );
-        } else {
-          console.warn(
-            '[iKlippa:app] ⚠ thumbnail ready but media pool entry not found for',
-            frameSourceId,
-          );
+          entry.thumbnails = thumbnails;
+          entry.thumbDataUrl = poster?.dataUrl ?? null;
         }
-      } else {
-        console.warn(
-          '[iKlippa:app] ⚠ captureThumbnailFromBuffer returned empty result at',
-          frameMs,
-          'ms',
+        window.onThumbnailsUpdated?.(sourceId, thumbnails);
+        autoSave();
+        const activeTab = document.querySelector('.media-tab.active') as HTMLElement | null;
+        if (!activeTab || activeTab.dataset.tab === 'footage') {
+          window.renderMedia('footage');
+        }
+        console.log(
+          `[iKlippa:app] captured ${thumbnails.length} timeline thumbnails [${sourceId}]`,
         );
-      }
-    } catch (e) {
-      console.error('[iKlippa:app] ✖ thumbnail capture threw', e);
-    }
-  }, thumbnailTargetMs);
-  requestThumbnailFrame(sourceId, thumbnailTargetMs);
+      })
+      .catch((error) => {
+        console.warn('[iKlippa:app] Could not build the thumbnail strip:', error);
+      });
+  }
 
-  // Queue timeline sync after the thumbnail seek so it restores the playhead
-  // only after the midpoint frame has been captured.
   syncTimelineToRust();
 };
 
@@ -457,6 +446,19 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
           : '';
     if (sourceId && data.name) {
       const durationSec = parseMediaDuration(data.durationSec ?? data.dur, 4);
+      const thumbnails = Array.isArray(data.thumbnails)
+        ? data.thumbnails
+            .filter((entry: unknown) =>
+              typeof entry === 'object' &&
+              entry !== null &&
+              typeof (entry as { ms?: unknown }).ms === 'number' &&
+              typeof (entry as { dataUrl?: unknown }).dataUrl === 'string',
+            )
+            .map((entry: { ms: number; dataUrl: string }) => ({
+              ms: entry.ms,
+              dataUrl: entry.dataUrl,
+            }))
+        : [];
       const materialized = await materializeMediaPayload({
         app: 'iklippa',
         kind: 'video',
@@ -466,6 +468,7 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
         isReal: Boolean(data.isReal),
         ...(data.picId ? { picId: Number(data.picId) } : {}),
         ...(typeof data.thumbDataUrl === 'string' ? { thumbDataUrl: data.thumbDataUrl } : {}),
+        ...(thumbnails.length > 0 ? { thumbnails } : {}),
         ...(typeof data.remoteUrl === 'string' ? { remoteUrl: data.remoteUrl } : {}),
         ...(typeof data.thumbnailUrl === 'string' ? { thumbnailUrl: data.thumbnailUrl } : {}),
         ...(typeof data.provider === 'string' ? { provider: data.provider } : {}),
@@ -473,6 +476,14 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
         ...(typeof data.mimeType === 'string' ? { mimeType: data.mimeType } : {}),
       });
       window.saveSnapshot();
+      const clipThumbnails = materialized.thumbnails?.length
+        ? materialized.thumbnails
+        : materialized.thumbDataUrl
+          ? [{
+              ms: Math.round(materialized.durationSec * 500),
+              dataUrl: materialized.thumbDataUrl,
+            }]
+          : undefined;
       window.IKState.addVideoClip(
         materialized.sourceId,
         0,
@@ -481,14 +492,7 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
           name: materialized.name,
           isReal: materialized.isReal,
           picId: materialized.picId || 0,
-          ...(materialized.thumbDataUrl
-            ? {
-                thumbnails: [{
-                  ms: Math.round(materialized.durationSec * 500),
-                  dataUrl: materialized.thumbDataUrl,
-                }],
-              }
-            : {}),
+          ...(clipThumbnails ? { thumbnails: clipThumbnails } : {}),
         },
       );
       window.IKState.computeDuration();

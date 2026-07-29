@@ -555,6 +555,19 @@ function parseMediaDragPayload(dataTransfer: DataTransfer | null): MediaDragPayl
           ? `stock_${data.id}`
           : '';
     if (!sourceId || typeof data.name !== 'string') return null;
+    const thumbnails = Array.isArray(data.thumbnails)
+      ? data.thumbnails
+          .filter((entry: unknown) =>
+            typeof entry === 'object' &&
+            entry !== null &&
+            typeof (entry as { ms?: unknown }).ms === 'number' &&
+            typeof (entry as { dataUrl?: unknown }).dataUrl === 'string',
+          )
+          .map((entry: { ms: number; dataUrl: string }) => ({
+            ms: entry.ms,
+            dataUrl: entry.dataUrl,
+          }))
+      : [];
 
     return {
       app: 'iklippa',
@@ -569,6 +582,8 @@ function parseMediaDragPayload(dataTransfer: DataTransfer | null): MediaDragPayl
       ),
       isReal: Boolean(data.isReal),
       ...(data.picId ? { picId: Number(data.picId) } : {}),
+      ...(typeof data.thumbDataUrl === 'string' ? { thumbDataUrl: data.thumbDataUrl } : {}),
+      ...(thumbnails.length > 0 ? { thumbnails } : {}),
       ...(typeof data.remoteUrl === 'string' ? { remoteUrl: data.remoteUrl } : {}),
       ...(typeof data.thumbnailUrl === 'string' ? { thumbnailUrl: data.thumbnailUrl } : {}),
       ...(typeof data.provider === 'string' ? { provider: data.provider } : {}),
@@ -692,19 +707,20 @@ function initTimelineDrop() {
     const snapped = cursorPx <= 24 ? 0 : applySnap(rawUs, null, tw);
     const startUs = Math.max(0, snapped !== null ? snapped : rawUs);
     const endUs = startUs + Math.round(data.durationSec * 1_000_000);
+    const thumbnails = data.thumbnails?.length
+      ? data.thumbnails
+      : data.thumbDataUrl
+        ? [{
+            ms: Math.round(data.durationSec * 500),
+            dataUrl: data.thumbDataUrl,
+          }]
+        : undefined;
     saveSnapshot();
     const clip = IKState.addClip(trackId, data.sourceId, startUs, endUs, {
       name: data.name,
       isReal: data.isReal,
       picId: data.picId || 0,
-      ...(data.thumbDataUrl
-        ? {
-            thumbnails: [{
-              ms: Math.round(data.durationSec * 500),
-              dataUrl: data.thumbDataUrl,
-            }],
-          }
-        : {}),
+      ...(thumbnails ? { thumbnails } : {}),
     });
     if (!clip) return;
     showToast(
