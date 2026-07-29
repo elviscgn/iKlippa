@@ -151,3 +151,32 @@ export function pickPosterThumbnail(
       : closest,
   );
 }
+
+export function buildClipThumbnailStrip(
+  thumbnails: ThumbnailEntry[],
+  sourceStartUs: number,
+  sourceEndUs: number,
+  count: number,
+): ThumbnailEntry[] {
+  if (thumbnails.length === 0 || count <= 0) return [];
+  const sorted = thumbnails
+    .filter((thumbnail) => Number.isFinite(thumbnail.ms) && thumbnail.dataUrl.length > 0)
+    .slice()
+    .sort((a, b) => a.ms - b.ms);
+  if (sorted.length === 0) return [];
+
+  const startMs = Math.max(0, sourceStartUs / 1_000);
+  const endMs = Math.max(startMs, sourceEndUs / 1_000);
+  const spanMs = endMs - startMs;
+
+  return Array.from({ length: count }, (_, index) => {
+    const targetMs = spanMs > 0
+      ? startMs + ((index + 0.5) / count) * spanMs
+      : startMs;
+    return sorted.reduce((closest, thumbnail) =>
+      Math.abs(thumbnail.ms - targetMs) < Math.abs(closest.ms - targetMs)
+        ? thumbnail
+        : closest,
+    );
+  });
+}

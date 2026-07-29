@@ -31,6 +31,7 @@ import {
   materializeMediaPayload,
   parseMediaDuration,
 } from './mediaPool';
+import { buildClipThumbnailStrip } from '../media/videoThumbnails';
 
 declare global {
   interface Window {
@@ -269,10 +270,15 @@ export function renderClips() {
         if (meta?.isReal && meta?.thumbnails && meta.thumbnails.length > 0) {
           const w = parseFloat(el.style.left || '0') + ((clip.timeline_end_us - clip.timeline_start_us) / 1_000_000 / dur) * tw;
           const count = Math.max(1, Math.floor(Math.max(1, parseFloat(el.style.width) || tw) / 60));
+          const strip = buildClipThumbnailStrip(
+            meta.thumbnails,
+            clip.source_start_us,
+            clip.source_end_us,
+            count,
+          );
           let thumbs = '<div class="tl-clip-thumbs">';
-          for (let j = 0; j < count; j++) {
-            const idx = Math.min(Math.floor((j / count) * meta.thumbnails.length), meta.thumbnails.length - 1);
-            thumbs += `<img src="${meta.thumbnails[idx].dataUrl}" draggable="false">`;
+          for (const thumbnail of strip) {
+            thumbs += `<img src="${thumbnail.dataUrl}" draggable="false">`;
           }
           thumbs += '</div>';
           el.innerHTML = `${thumbs}<span class="tl-clip-label">${safeDisplayName}</span>`;
@@ -832,10 +838,15 @@ function renderClipsLegacy(IKState: any) {
     if (group.video) {
       if (group.video.isReal && group.video.thumbnails?.length > 0) {
         const count = Math.max(1, Math.floor(w / 60));
+        const strip = buildClipThumbnailStrip(
+          group.video.thumbnails,
+          group.video.source_start_us,
+          group.video.source_end_us,
+          count,
+        );
         let thumbs = '<div class="tl-clip-thumbs">';
-        for (let j = 0; j < count; j++) {
-          const idx = Math.min(Math.floor((j / count) * group.video.thumbnails.length), group.video.thumbnails.length - 1);
-          thumbs += `<img src="${group.video.thumbnails[idx].dataUrl}" draggable="false">`;
+        for (const thumbnail of strip) {
+          thumbs += `<img src="${thumbnail.dataUrl}" draggable="false">`;
         }
         thumbs += '</div>';
         content += `${thumbs}<span class="tl-clip-label">${escapeHtml(group.video.name)}</span>`;

@@ -9,6 +9,11 @@ interface ContentRange {
   endUs: number;
 }
 
+const SILENCE_HANDLE_US = 85_000;
+const MIN_SILENCE_REMOVAL_US = 180_000;
+const MIN_RETAINED_CONTENT_US = 700_000;
+const MAX_SILENCE_CUTS_PER_CLIP = 8;
+
 function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -32,13 +37,37 @@ function removableSilenceRanges(
   sourceStartUs: number,
   sourceEndUs: number,
 ): ContentRange[] {
-  const handleUs = 85_000;
-  return silence
+  const normalized = silence
     .map((region) => ({
-      startUs: Math.max(sourceStartUs, Math.round(region.startSec * 1_000_000) + handleUs),
-      endUs: Math.min(sourceEndUs, Math.round(region.endSec * 1_000_000) - handleUs),
+      startUs: Math.max(
+        sourceStartUs,
+        Math.round(region.startSec * 1_000_000) + SILENCE_HANDLE_US,
+      ),
+      endUs: Math.min(
+        sourceEndUs,
+        Math.round(region.endSec * 1_000_000) - SILENCE_HANDLE_US,
+      ),
     }))
-    .filter((region) => region.endUs - region.startUs >= 180_000)
+    .filter((region) => region.endUs - region.startUs >= MIN_SILENCE_REMOVAL_US)
+    .sort((a, b) => a.startUs - b.startUs);
+
+  const merged: ContentRange[] = [];
+  for (const region of normalized) {
+    const previous = merged.at(-1);
+    if (
+      previous &&
+      region.startUs - previous.endUs < MIN_RETAINED_CONTENT_US
+    ) {
+      previous.endUs = Math.max(previous.endUs, region.endUs);
+    } else {
+      merged.push({ ...region });
+    }
+  }
+  if (merged.length <= MAX_SILENCE_CUTS_PER_CLIP) return merged;
+  return merged
+    .slice()
+    .sort((a, b) => (b.endUs - b.startUs) - (a.endUs - a.startUs))
+    .slice(0, MAX_SILENCE_CUTS_PER_CLIP)
     .sort((a, b) => a.startUs - b.startUs);
 }
 
@@ -54,7 +83,16 @@ function contentRangesAroundSilence(
     cursor = Math.max(cursor, region.endUs);
   }
   if (cursor < sourceEndUs) content.push({ startUs: cursor, endUs: sourceEndUs });
-  return content.filter((range) => range.endUs - range.startUs >= 120_000);
+  const retained = content.filter(
+    (range) => range.endUs - range.startUs >= MIN_RETAINED_CONTENT_US,
+  );
+  if (retained.length > 0) return retained;
+  const longest = content
+    .slice()
+    .sort((a, b) => (b.endUs - b.startUs) - (a.endUs - a.startUs))[0];
+  return longest && longest.endUs - longest.startUs >= 120_000
+    ? [longest]
+    : [];
 }
 
 function copyClipProperties(source: any, target: any): void {
