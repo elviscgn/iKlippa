@@ -465,6 +465,7 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
         durationSec,
         isReal: Boolean(data.isReal),
         ...(data.picId ? { picId: Number(data.picId) } : {}),
+        ...(typeof data.thumbDataUrl === 'string' ? { thumbDataUrl: data.thumbDataUrl } : {}),
         ...(typeof data.remoteUrl === 'string' ? { remoteUrl: data.remoteUrl } : {}),
         ...(typeof data.thumbnailUrl === 'string' ? { thumbnailUrl: data.thumbnailUrl } : {}),
         ...(typeof data.provider === 'string' ? { provider: data.provider } : {}),
@@ -480,6 +481,14 @@ canvasWrapper.addEventListener('drop', async (e: DragEvent) => {
           name: materialized.name,
           isReal: materialized.isReal,
           picId: materialized.picId || 0,
+          ...(materialized.thumbDataUrl
+            ? {
+                thumbnails: [{
+                  ms: Math.round(materialized.durationSec * 500),
+                  dataUrl: materialized.thumbDataUrl,
+                }],
+              }
+            : {}),
         },
       );
       window.IKState.computeDuration();

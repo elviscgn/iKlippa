@@ -356,6 +356,32 @@ describe('seekTo (Tier 2 - adapter ports)', () => {
     );
     expect(versionCalls.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('waits for the mapped source frame when a clip is trimmed', () => {
+    (globalThis as any).window.IKState = {
+      isReady: () => true,
+      getAllVideoClips: () => [{
+        id: 1,
+        source_id: 'trimmed-source',
+        timeline_start_us: 0,
+        timeline_end_us: 5_000_000,
+        source_start_us: 10_000_000,
+        source_end_us: 20_000_000,
+        speed: 1.5,
+      }],
+    };
+
+    seekTo(1000);
+
+    expect(mockWorker.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'seek',
+        ms: 11_500,
+        sourceId: 'trimmed-source',
+      }),
+    );
+    expect(__TEST_HOOKS__.seekTargetMs).toBe(11_500);
+  });
 });
 
 describe('setColorGrade (Tier 2 - adapter ports)', () => {
@@ -851,6 +877,7 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
     __TEST_HOOKS__.canvas = { width: 1920, height: 1080, toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,x') } as any;
     __TEST_HOOKS__.ctx = { putImageData: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), clearRect: vi.fn() } as any;
     __TEST_HOOKS__.pendingFrames = new Map();
+    __TEST_HOOKS__.pendingFramesBySource = new Map();
     __TEST_HOOKS__.videoDurationMs = 10000;
     __TEST_HOOKS__.isPlaying = false;
     __TEST_HOOKS__.playheadMs = 0;
@@ -902,6 +929,37 @@ describe('paintFrameAtTime (Tier 2 - via handleWorkerMessage)', () => {
       0,
       0,
     );
+  });
+
+  it('paints the first matching frame while paused without a pending seek', () => {
+    stubIKState({
+      isReady: () => true,
+      getAllVideoClips: () => [
+        {
+          id: 1,
+          source_id: 'source-a',
+          timeline_start_us: 0,
+          timeline_end_us: 5000000,
+          source_start_us: 0,
+          source_end_us: 5000000,
+          speed: 1,
+        },
+      ],
+      getVideoClips: () => [],
+    });
+
+    handleWorkerMessage({
+      data: {
+        type: 'frame',
+        sourceId: 'source-a',
+        ms: 0,
+        gradeMs: 2,
+        buffer: new ArrayBuffer(100),
+      },
+    } as MessageEvent);
+
+    const ctx = __TEST_HOOKS__.ctx as any;
+    expect(ctx.putImageData).toHaveBeenCalledWith(expect.any(Object), 0, 0);
   });
 
   it('skips painting when clip exists but no matching frame found', () => {

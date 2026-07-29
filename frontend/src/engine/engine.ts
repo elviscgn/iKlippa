@@ -523,6 +523,15 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
       pendingResumeAfterSeek = false;
       startPlayback({ fromSeek: true }).catch((e) => emitLocal('UNHANDLED_REJECTION', e, { fatal: false }));
     }
+  } else if (!isPlaying) {
+    const mapped = mapTimelineToSource(playheadMs);
+    if (
+      mapped &&
+      mapped.sourceId === msg.sourceId &&
+      Math.abs(msg.ms - mapped.sourceMs) <= 100
+    ) {
+      paintFrameAtTime(playheadMs);
+    }
   }
 }
 
