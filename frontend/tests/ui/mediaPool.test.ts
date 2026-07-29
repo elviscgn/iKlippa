@@ -273,6 +273,12 @@ describe('renderMedia – dragstart handlers', () => {
   });
 
   it('real footage item sets drag data with sourceId', async () => {
+    (mockMediaPool.footage[0]! as typeof mockMediaPool.footage[number] & {
+      thumbnails: Array<{ ms: number; dataUrl: string }>;
+    }).thumbnails = [
+      { ms: 500, dataUrl: 'data:image/jpeg;base64,first' },
+      { ms: 2500, dataUrl: 'data:image/jpeg;base64,second' },
+    ];
     await renderMedia('footage');
     const item = document.querySelector('.media-item') as HTMLElement;
     expect(item).not.toBeNull();
@@ -283,6 +289,10 @@ describe('renderMedia – dragstart handlers', () => {
       'text/plain',
       expect.stringContaining('sourceId')
     );
+    const serialized = mockDataTransfer.setData.mock.calls.find(
+      ([type]) => type === 'text/plain',
+    )?.[1];
+    expect(JSON.parse(serialized).thumbnails).toHaveLength(2);
   });
 
   it('stock item sets drag data with picId', async () => {

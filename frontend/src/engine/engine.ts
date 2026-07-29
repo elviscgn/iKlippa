@@ -523,6 +523,15 @@ function handleWorkerFrame(msg: Extract<WorkerIncomingMessage, { type: 'frame' }
       pendingResumeAfterSeek = false;
       startPlayback({ fromSeek: true }).catch((e) => emitLocal('UNHANDLED_REJECTION', e, { fatal: false }));
     }
+  } else if (!isPlaying) {
+    const mapped = mapTimelineToSource(playheadMs);
+    if (
+      mapped &&
+      mapped.sourceId === msg.sourceId &&
+      Math.abs(msg.ms - mapped.sourceMs) <= 100
+    ) {
+      paintFrameAtTime(playheadMs);
+    }
   }
 }
 
@@ -754,6 +763,28 @@ export interface ImportedMediaSource {
   height: number;
 }
 
+function getTrackSamples(mp4: MP4BoxFile, trackId: number): MP4Sample[] {
+  const track = mp4.getTrackById(trackId) as unknown as {
+    samples?: Array<Partial<MP4Sample>>;
+  };
+  return (track.samples ?? [])
+    .filter((sample) =>
+      Number.isFinite(sample.cts) &&
+      Number.isFinite(sample.duration) &&
+      Number.isFinite(sample.timescale) &&
+      Number.isFinite(sample.offset) &&
+      Number.isFinite(sample.size),
+    )
+    .map((sample) => ({
+      cts: sample.cts!,
+      duration: sample.duration!,
+      timescale: sample.timescale!,
+      is_sync: Boolean(sample.is_sync),
+      offset: sample.offset!,
+      size: sample.size!,
+    }));
+}
+
 export async function importFile(
   file: File,
   preferredSourceId?: string,
@@ -794,8 +825,6 @@ export async function importFile(
     let audioTrackInfo: MP4BoxAudioTrack | null = null;
     let codecConfigResult: (VideoDecoderConfig & { description?: ArrayBuffer }) | null = null;
     let audioConfigResult: AudioDecoderConfig | null = null;
-    const samplesArray: MP4Sample[] = [];
-    const audioSamplesArray: MP4Sample[] = [];
 
     mp4.onReady = (info: MP4BoxInfo) => {
       const track = info.videoTracks[0];
@@ -812,7 +841,6 @@ export async function importFile(
         codedHeight: track.track_height,
         description: getDecoderDescription(mp4, track),
       };
-      mp4.setExtractionOptions(track.id, null, { nbSamples: Infinity });
       if (aTrack) {
         const audioDesc = getAudioDescription(mp4, aTrack);
         audioConfigResult = {
@@ -821,14 +849,7 @@ export async function importFile(
           numberOfChannels: aTrack.audio.channel_count,
           ...(audioDesc ? { description: audioDesc } : {}),
         };
-        mp4.setExtractionOptions(aTrack.id, null, { nbSamples: Infinity });
       }
-      mp4.start();
-    };
-
-    mp4.onSamples = (id: number, _user: unknown, s: MP4Sample[]) => {
-      if (trackInfo && id === trackInfo.id) samplesArray.push(...s);
-      else if (audioTrackInfo && id === audioTrackInfo.id) audioSamplesArray.push(...s);
     };
 
     mp4.onError = (e: string) => reject(new Error('MP4Box error: ' + e));
@@ -839,14 +860,22 @@ export async function importFile(
       if (offset >= file.size) {
         mp4.flush();
         if (trackInfo && codecConfigResult) {
+          const videoSamples = getTrackSamples(mp4, trackInfo.id);
+          const audioSamples = audioTrackInfo
+            ? getTrackSamples(mp4, audioTrackInfo.id)
+            : [];
+          if (videoSamples.length === 0) {
+            reject(new Error('No decodable video samples found in this MP4'));
+            return;
+          }
           let durationSec = (trackInfo as MP4BoxVideoTrack & { duration: number; timescale: number }).duration /
             (trackInfo as MP4BoxVideoTrack & { duration: number; timescale: number }).timescale;
-          if (durationSec === 0 && samplesArray.length > 0) {
-            const last = samplesArray[samplesArray.length - 1]!;
+          if (durationSec === 0) {
+            const last = videoSamples[videoSamples.length - 1]!;
             durationSec = (last.cts + last.duration) / last.timescale;
           }
-          if (durationSec === 0 && audioSamplesArray.length > 0) {
-            const last = audioSamplesArray[audioSamplesArray.length - 1]!;
+          if (durationSec === 0 && audioSamples.length > 0) {
+            const last = audioSamples[audioSamples.length - 1]!;
             durationSec = (last.cts + last.duration) / last.timescale;
           }
           resolve({
@@ -854,9 +883,9 @@ export async function importFile(
             width: trackInfo.track_width,
             height: trackInfo.track_height,
             durationMs: Math.round(durationSec * 1000),
-            samples: samplesArray,
+            samples: videoSamples,
             audioConfig: audioConfigResult,
-            audioSamples: audioSamplesArray,
+            audioSamples,
             audioConfigVersion,
           });
         } else {
@@ -1430,13 +1459,17 @@ export async function seekTo(ms: number): Promise<void> {
   // Preserve across rapid seeks (scrubbing): once set, stays true until frame arrives or pause.
   pendingResumeAfterSeek = pendingResumeAfterSeek || wasPlaying;
 
-  seekTargetMs = ms;
+  const mapRes = mapTimelineToSource(ms);
+  const sourceTargetMs = mapRes ? mapRes.sourceMs : ms;
+  // Worker frames are timestamped in source time, which can differ from the
+  // timeline after a trim. Match the incoming frame against the source target.
+  seekTargetMs = sourceTargetMs;
   if (seekPaintTimeout) clearTimeout(seekPaintTimeout);
   seekPaintTimeout = setTimeout(() => {
     if (seekTargetMs >= 0) {
       warn(
         'seek',
-        `fallback timeout fired — no frame reached ${ms.toFixed(0)}ms within 2000ms`,
+        `fallback timeout fired — no frame reached source ${sourceTargetMs.toFixed(0)}ms within 2000ms`,
       );
       seekTargetMs = -1;
       pendingResumeAfterSeek = false;
@@ -1454,8 +1487,6 @@ export async function seekTo(ms: number): Promise<void> {
   pendingAudio.clear();
   audioConfigVersion++;
   worker!.postMessage({ type: 'set_audio_version', version: audioConfigVersion });
-  const mapRes = mapTimelineToSource(ms);
-  const sourceTargetMs = mapRes ? mapRes.sourceMs : ms;
   const sourceId = mapRes ? mapRes.sourceId : undefined;
   seekGeneration++;
   worker!.postMessage({ type: 'seek', ms: sourceTargetMs, sourceId, seekId: seekGeneration });
@@ -1777,8 +1808,15 @@ export function syncTimelineToRust(): void {
     // match against in stage_frame_broadcast.
     const mapRes = mapTimelineToSource(playheadMs);
     if (mapRes) {
-      seekGeneration++;
-      worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId, seekId: seekGeneration });
+      if (!isPlaying) {
+        // The load seek already gave JS a raw frame, so paint it immediately
+        // instead of leaving the canvas black while the compositor re-seeds.
+        paintFrameAtTime(playheadMs);
+        void seekTo(playheadMs);
+      } else {
+        seekGeneration++;
+        worker!.postMessage({ type: 'seek', ms: mapRes.sourceMs, sourceId: mapRes.sourceId, seekId: seekGeneration });
+      }
     }
   });
 }

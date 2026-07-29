@@ -1,0 +1,112 @@
+import type { ThumbnailEntry } from '../state/types';
+
+const MIN_THUMBNAILS = 6;
+const MAX_THUMBNAILS = 20;
+const THUMBNAIL_INTERVAL_MS = 3_000;
+const THUMBNAIL_WIDTH = 160;
+const SEEK_TIMEOUT_MS = 4_000;
+
+export function buildThumbnailTimes(durationMs: number): number[] {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return [];
+  const count = Math.min(
+    MAX_THUMBNAILS,
+    Math.max(MIN_THUMBNAILS, Math.ceil(durationMs / THUMBNAIL_INTERVAL_MS)),
+  );
+  return Array.from({ length: count }, (_, index) =>
+    Math.min(
+      Math.max(0, durationMs - 1),
+      Math.round(((index + 0.5) / count) * durationMs),
+    ),
+  );
+}
+
+function waitForEvent(
+  target: HTMLMediaElement,
+  eventName: 'loadedmetadata' | 'seeked',
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`Video thumbnail ${eventName} timed out`));
+    }, SEEK_TIMEOUT_MS);
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      target.removeEventListener(eventName, onReady);
+      target.removeEventListener('error', onError);
+    };
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('The browser could not decode this video for thumbnails'));
+    };
+    target.addEventListener(eventName, onReady, { once: true });
+    target.addEventListener('error', onError, { once: true });
+  });
+}
+
+async function seekVideo(video: HTMLVideoElement, timeSec: number): Promise<void> {
+  const ready = waitForEvent(video, 'seeked');
+  video.currentTime = timeSec;
+  await ready;
+}
+
+export async function generateVideoThumbnails(
+  file: File,
+  durationMs: number,
+): Promise<ThumbnailEntry[]> {
+  const video = document.createElement('video');
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) return [];
+
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const metadataReady = waitForEvent(video, 'loadedmetadata');
+    video.src = objectUrl;
+    video.load();
+    await metadataReady;
+
+    const resolvedDurationMs = Number.isFinite(video.duration) && video.duration > 0
+      ? Math.round(video.duration * 1_000)
+      : durationMs;
+    const width = video.videoWidth || THUMBNAIL_WIDTH;
+    const height = video.videoHeight || Math.round(THUMBNAIL_WIDTH * 9 / 16);
+    canvas.width = THUMBNAIL_WIDTH;
+    canvas.height = Math.max(1, Math.round(THUMBNAIL_WIDTH * height / width));
+
+    const thumbnails: ThumbnailEntry[] = [];
+    for (const targetMs of buildThumbnailTimes(resolvedDurationMs)) {
+      await seekVideo(video, targetMs / 1_000);
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      thumbnails.push({
+        ms: targetMs,
+        dataUrl: canvas.toDataURL('image/jpeg', 0.58),
+      });
+    }
+    return thumbnails;
+  } finally {
+    video.removeAttribute('src');
+    video.load();
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export function pickPosterThumbnail(
+  thumbnails: ThumbnailEntry[],
+  durationMs: number,
+): ThumbnailEntry | null {
+  if (thumbnails.length === 0) return null;
+  const midpointMs = durationMs / 2;
+  return thumbnails.reduce((closest, thumbnail) =>
+    Math.abs(thumbnail.ms - midpointMs) < Math.abs(closest.ms - midpointMs)
+      ? thumbnail
+      : closest,
+  );
+}

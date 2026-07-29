@@ -6,6 +6,7 @@ import {
   searchStockVideos,
 } from '../api/stock';
 import { importFile, registerExternalAudio } from '../engine/engine';
+import type { ThumbnailEntry } from '../state/types';
 
 export const MEDIA_DRAG_MIME = 'application/x-iklippa-media';
 export const MEDIA_DRAG_KIND_MIME = {
@@ -23,6 +24,8 @@ export interface MediaDragPayload {
   durationSec: number;
   isReal: boolean;
   picId?: number;
+  thumbDataUrl?: string;
+  thumbnails?: ThumbnailEntry[];
   remoteUrl?: string;
   thumbnailUrl?: string;
   provider?: string;
@@ -63,6 +66,10 @@ function createDragPayload(item: any, kind: MediaDragKind): MediaDragPayload {
     durationSec: parseMediaDuration(item.dur, 4),
     isReal,
     ...(item.picId ? { picId: item.picId } : {}),
+    ...(item.thumbDataUrl ? { thumbDataUrl: item.thumbDataUrl } : {}),
+    ...(Array.isArray(item.thumbnails) && item.thumbnails.length > 0
+      ? { thumbnails: item.thumbnails }
+      : {}),
     ...(item.remoteUrl ? { remoteUrl: item.remoteUrl } : {}),
     ...(item.thumbnailUrl ? { thumbnailUrl: item.thumbnailUrl } : {}),
     ...(item.provider ? { provider: item.provider } : {}),
@@ -152,6 +159,14 @@ async function insertAtPlayhead(sourcePayload: MediaDragPayload) {
 
   const playheadUs = Math.round((S.time || 0) * 1_000_000);
   const endUs = playheadUs + Math.round(payload.durationSec * 1_000_000);
+  const thumbnails = payload.thumbnails?.length
+    ? payload.thumbnails
+    : payload.thumbDataUrl
+      ? [{
+          ms: Math.round(payload.durationSec * 500),
+          dataUrl: payload.thumbDataUrl,
+        }]
+      : undefined;
   (window as any).saveSnapshot?.();
   const clip = IKState.addClip(
     track.id,
@@ -162,6 +177,7 @@ async function insertAtPlayhead(sourcePayload: MediaDragPayload) {
       name: payload.name,
       isReal: payload.isReal,
       picId: payload.picId || 0,
+      ...(thumbnails ? { thumbnails } : {}),
     },
   );
   if (!clip) return;
