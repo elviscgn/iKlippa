@@ -2,7 +2,7 @@
 
 This document records how the iKlippa team used IBM Bob while building the project. It focuses on the work Bob helped with and the results that can be checked in the repository.
 
-Bob was used as a development partner. The team chose the product direction, reviewed the plans, tested the editor in a real browser, and decided which suggestions to keep.
+Bob was our primary development partner throughout the project. It helped define the overall architecture, plan the multi-language work, implement features, and debug problems. The team chose the product direction, reviewed the plans, tested the editor in a real browser, and decided which suggestions to keep.
 
 ## What we asked Bob to help with
 
@@ -213,7 +213,7 @@ IBM Bob helped the team move from an ambitious browser-editor idea to an impleme
 
 The team remained responsible for the product decisions, technical review, browser testing, and final implementation.
 
-## Backend & ML Generative AI Usage
+## Backend & ML Generative AI Usage (Mphele)
 
 To support the Go/Python microservice architecture, we heavily utilized Bob to architect the system and draft the initial scripts.
 
@@ -233,3 +233,28 @@ We prompted Bob to create a pipeline for loading our CSV data and training an XG
 ### 4. FastAPI Orchestration
 Once our individual Python scripts were ready, Bob helped us structure the FastAPI wrapper so the Go API gateway could consume them via REST endpoints.
 ![Bob FastAPI](images/bob-fastapi.png)
+
+## Frontend Engine & Editor Usage (Elvis)
+
+The frontend was built with vanilla JS, HTML, and a Rust/WASM media engine. Bob was our primary development partner throughout the build: it shaped the frontend architecture (timeline model, engine/worker separation, decode pipeline), planned the work, implemented features, and debugged the browser-based editor as a real-time coding partner inside VS Code.
+
+### 1. Plan Scaffolding & Task Tracking
+Bob read the `plan.md` file and helped track progress across 12 frontend tasks, from the Rust data model refactor to the Phase 1 QA pass. It listed files, reviewed recent changes, and kept the plan aligned with what was actually implemented.
+![Bob Plan Scaffolding](images/bob-e-plan-scaffholding.png)
+
+### 2. Engine Implementation & Audio Scheduling
+Bob worked directly inside `engine.js`, editing the `handleWorkerMessage` function to fix audio scheduling logic. It produced diffs that removed broken clip-gating filters and restored correct audio playback.
+![Bob Engine](images/bob-e-engine.png)
+![Bob Implement](images/bob-e-implement.png)
+
+### 3. Bug Fixing: Thumbnail & Audio
+Bob diagnosed two separate bugs: thumbnails not rendering after import, and audio being silently dropped. It traced the root cause to a coordinate-space mismatch, comparing source-file offsets against timeline positions, and replaced the flawed logic with a correct implementation.
+![Bob Bug Fixing](images/bob-e-bug-fixing.png)
+
+### 4. Debugging: Root Cause Analysis
+When audio fell behind or broke up, Bob dug into the codebase and identified that `data.ms` from the audio worker was a raw decoded PCM position, not a timeline timestamp. It explained why the old `hasActiveClip` check always returned false and proposed the simplest correct fix: always schedule audio when `isPlaying`.
+![Bob Debugging](images/bob-e-debugging.png)
+
+### 5. Audio Feature Context
+Bob helped reason about the full audio pipeline, from decode worker to main-thread scheduling, and clarified how the audio track, video clips, and timeline positions interact. This context was essential for fixing the silent-drop bug without breaking other features.
+![Bob Audio Features](images/bob-e-audio-features.png)
