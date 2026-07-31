@@ -50,10 +50,6 @@ export function toggleOfflineMode(): boolean {
 }
 
 export const picUrl = (id: number | string, w: number, h: number) => {
-  if (!isOfflineMode()) {
-    return `https://picsum.photos/id/${id}/${w}/${h}`;
-  }
-
   const seed = String(id).split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
   const hueA = seed % 360;
   const hueB = (hueA + 42) % 360;

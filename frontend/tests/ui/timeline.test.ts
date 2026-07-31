@@ -255,7 +255,7 @@ describe('renderClips', () => {
     };
     window.lucide = { createIcons: vi.fn() };
     renderClips();
-    expect(document.getElementById('lane-v1')!.innerHTML).toContain('picsum');
+    expect(document.getElementById('lane-v1')!.innerHTML).toContain('data:image/svg+xml');
   });
 
   it('renders a clip with no picId (name only fallback)', () => {

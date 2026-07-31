@@ -3,12 +3,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { picUrl, showToast } from '../../src/ui/utils';
 
 describe('picUrl', () => {
-  it('generates a picsum URL with given id and dimensions', () => {
-    expect(picUrl(42, 200, 100)).toBe('https://picsum.photos/id/42/200/100');
+  it('generates a local SVG placeholder with given id and dimensions', () => {
+    expect(picUrl(42, 200, 100)).toMatch(/^data:image\/svg\+xml/);
   });
 
   it('works with string id', () => {
-    expect(picUrl('10', 400, 300)).toBe('https://picsum.photos/id/10/400/300');
+    expect(picUrl('10', 400, 300)).toMatch(/^data:image\/svg\+xml/);
   });
 });
 
