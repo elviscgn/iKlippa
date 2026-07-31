@@ -1,5 +1,5 @@
 const SHELL_CACHE = 'iklippa-shell-v1';
-const CORE_ASSETS = ['/', '/index.html', '/logo.png', '/favicon.png'];
+const CORE_ASSETS = ['/', '/editor.html', '/logo.png', '/favicon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -41,7 +41,10 @@ self.addEventListener('fetch', (event) => {
         const cached = await caches.match(request);
         if (cached) return cached;
         if (request.mode === 'navigate') {
-          return (await caches.match('/index.html')) || Response.error();
+          const shell = new URL(request.url).pathname.includes('editor')
+            ? '/editor.html'
+            : '/index.html';
+          return (await caches.match(shell)) || Response.error();
         }
         return Response.error();
       }),
