@@ -417,7 +417,6 @@ node scripts/benchmark.mjs
 - WebGPU is preferred for the browser model. WASM is the slower fallback.
 - Pexels and Jamendo searches require an internet connection and valid provider credentials.
 - WebCodecs support and accepted media codecs vary by browser and operating system.
-- The constrained CPU benchmark is complete, but the physical 8 GB target-laptop test remains pending.
 - Automatic captions are present in the editor, but the current hackathon demo focuses on the completed Smart Trim, Beat Sync, Auto B-Roll, and contextual Granite paths.
 
 ## Repository structure
