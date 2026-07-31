@@ -1,0 +1,16 @@
+{
+  "name": "iklippa-engine",
+  "type": "module",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "files": [
+    "iklippa_engine_bg.wasm",
+    "iklippa_engine.js",
+    "iklippa_engine.d.ts"
+  ],
+  "main": "iklippa_engine.js",
+  "types": "iklippa_engine.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
