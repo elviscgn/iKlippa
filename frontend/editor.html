@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iKlippa Studio — Professional NLE</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <!-- CSS is imported by main.ts via Vite, but keep this for dev fallback -->
+    <link rel="stylesheet" href="styles.css" />
+    <!-- ES module entry point — imports state.ts + engine.ts via Vite -->
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <div id="app">
+      <!-- TOP NAV -->
+      <nav class="topnav">
+        <div class="topnav-left">
+          <img src="/logo.png" alt="iKlippa" class="topnav-logo" />
+          <div class="topnav-actions">
+            <button
+              class="nav-btn"
+              onclick="window.undo()"
+              title="Undo (Ctrl+Z)"
+            >
+              <i data-lucide="undo-2"></i>
+            </button>
+            <button
+              class="nav-btn"
+              onclick="window.redo()"
+              title="Redo (Ctrl+Shift+Z)"
+            >
+              <i data-lucide="redo-2"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="topnav-center">
+          <button class="tool-btn active" id="t-select" title="Select Tool (V)">
+            <i data-lucide="mouse-pointer-2"></i>
+          </button>
+          <button class="tool-btn" id="t-text" title="Text Overlay (T)">
+            <i data-lucide="type"></i>
+          </button>
+          <button class="tool-btn" id="t-effects" title="Color Grade (C)">
+            <i data-lucide="sparkles"></i>
+          </button>
+        </div>
+
+        <div class="topnav-right">
+          <span class="status-badge"
+            ><i data-lucide="cloud-lightning"></i> All changes saved</span
+          >
+          <button
+            class="mode-toggle"
+            id="mode-toggle"
+            onclick="toggleOfflineMode()"
+            title="Toggle offline mode"
+            aria-pressed="false"
+          >
+            <i data-lucide="cloud" id="mode-icon"></i>
+            <span id="mode-label">Online</span>
+          </button>
+          <button class="nav-btn" onclick="saveProject()" title="Save Project (.iklippa)">
+            <i data-lucide="save"></i>
+          </button>
+          <button class="nav-btn" onclick="openProject()" title="Open Project">
+            <i data-lucide="folder-open"></i>
+          </button>
+          <button class="btn-export" onclick="handleExport()">
+            <i data-lucide="download"></i> Export
+          </button>
+        </div>
+      </nav>
+
+      <div class="workspace">
+        <div class="workspace-upper">
+          <!-- LEFT: MEDIA -->
+          <aside class="panel-left">
+            <div class="panel-header">
+              Project Media
+              <button onclick="document.getElementById('file-input').click()">
+                <i data-lucide="plus"></i> Import
+              </button>
+            </div>
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input
+                id="media-search"
+                type="search"
+                aria-label="Search project and stock media"
+                placeholder="Search project media..."
+                autocomplete="off"
+              />
+            </div>
+            <div class="media-tabs" id="media-tabs">
+              <div class="media-tab active" data-tab="footage">Footage</div>
+              <div class="media-tab" data-tab="audio">Audio</div>
+              <div class="media-tab accent" data-tab="stock">
+                <i data-lucide="sparkles"></i> AI Stock
+              </div>
+            </div>
+            <div class="stock-subtabs" id="stock-subtabs">
+              <button class="stock-subtab active" data-sub="video">
+                Videos
+              </button>
+              <button class="stock-subtab" data-sub="music">Music</button>
+            </div>
+            <div class="media-content">
+              <div class="media-grid" id="media-grid"></div>
+              <div
+                class="media-list"
+                id="media-list"
+                style="display: none"
+              ></div>
+            </div>
+          </aside>
+
+          <!-- CENTER: CANVAS -->
+          <section class="panel-center">
+            <div class="canvas-wrapper" id="canvas-wrapper">
+              <div
+                class="canvas-frame"
+                id="canvas-frame"
+                style="aspect-ratio: 16/9"
+              >
+                <!-- AR Selector -->
+                <div class="ar-selector">
+                  <button class="ar-btn" id="ar-btn">
+                    <i data-lucide="monitor" id="ar-icon"></i>
+                    <span id="ar-label">16:9</span>
+                    <i data-lucide="chevron-down"></i>
+                  </button>
+                  <div class="ar-menu" id="ar-menu">
+                    <div
+                      class="ar-option active"
+                      data-ar="16/9"
+                      data-label="16:9 Landscape"
+                      data-icon="monitor"
+                    >
+                      <i data-lucide="monitor"></i> 16:9 Landscape
+                    </div>
+                    <div
+                      class="ar-option"
+                      data-ar="9/16"
+                      data-label="9:16 Vertical"
+                      data-icon="smartphone"
+                    >
+                      <i data-lucide="smartphone"></i> 9:16 Vertical
+                    </div>
+                    <div
+                      class="ar-option"
+                      data-ar="1/1"
+                      data-label="1:1 Square"
+                      data-icon="square"
+                    >
+                      <i data-lucide="square"></i> 1:1 Square
+                    </div>
+                    <div
+                      class="ar-option"
+                      data-ar="4/5"
+                      data-label="4:5 Portrait"
+                      data-icon="crop"
+                    >
+                      <i data-lucide="crop"></i> 4:5 Portrait
+                    </div>
+                  </div>
+                </div>
+
+                <canvas
+                  id="canvas-img"
+                  style="
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
+                    background: #000;
+                    display: block;
+                  "
+                ></canvas>
+
+                <div
+                  id="drop-overlay"
+                  style="
+                    display: none;
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(13, 148, 136, 0.18);
+                    border: 2px dashed var(--accent-primary);
+                    border-radius: var(--radius-md);
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: var(--accent-primary);
+                    pointer-events: none;
+                    z-index: 20;
+                  "
+                >
+                  Drop video to import
+                </div>
+
+                <div
+                  id="buffering-spinner"
+                  style="
+                    display: none;
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(0, 0, 0, 0.45);
+                    border-radius: var(--radius-md);
+                    align-items: center;
+                    justify-content: center;
+                    flex-direction: column;
+                    gap: 10px;
+                    z-index: 25;
+                    pointer-events: none;
+                  "
+                >
+                  <div class="spinner"></div>
+                  <span style="color: #fff; font-size: 12px; font-weight: 600;">Buffering...</span>
+                </div>
+
+                <input
+                  type="file"
+                  id="file-input"
+                  accept="video/*"
+                  style="display: none"
+                />
+                <input
+                  type="file"
+                  id="project-file-input"
+                  accept=".iklippa,.json"
+                  style="display: none"
+                />
+                <div class="canvas-timecode" id="timecode">00:00:00:00</div>
+                <canvas
+                  class="canvas-caption-overlay"
+                  id="caption-overlay"
+                ></canvas>
+              </div>
+            </div>
+
+            <!-- Performance Score Badge -->
+            <div
+              class="score-badge"
+              id="score-badge"
+              onclick="window.iklippaScore && window.iklippaScore()"
+              title="Click to print full report in console"
+            >
+              <i data-lucide="activity"></i>
+              Score: <span class="score-value" id="score-value">—</span>
+            </div>
+
+            <!-- Floating Command Bar -->
+            <div class="fcb-container">
+              <div class="floating-command-bar" id="fcb">
+                <div class="fcb-expanded" id="fcb-expanded">
+                  <i
+                    data-lucide="sparkles"
+                    style="color: var(--accent-primary); cursor: pointer"
+                    id="fcb-sparkle-1"
+                    onclick="triggerSparkle(this)"
+                  ></i>
+                  <div style="position: relative">
+                    <input
+                      type="text"
+                      class="fcb-input"
+                      id="ai-cmd"
+                      placeholder="Quick command or ask Granite..."
+                      autocomplete="off"
+                    />
+                    <div class="ac-menu" id="ac-menu"></div>
+                  </div>
+                  <button class="fcb-send" id="ai-cmd-send" onclick="submitCmd()">
+                    <i data-lucide="arrow-up"></i>
+                  </button>
+                  <div class="fcb-divider"></div>
+                  <div class="fcb-transport">
+                    <button
+                      class="fcb-btn"
+                      onclick="skipTime(-2)"
+                      title="Back 2s"
+                    >
+                      <i data-lucide="skip-back"></i>
+                    </button>
+                    <button class="fcb-btn play" onclick="togglePlay()">
+                      <i
+                        data-lucide="play"
+                        class="icon-play"
+                        style="fill: currentColor"
+                      ></i>
+                    </button>
+                    <button
+                      class="fcb-btn"
+                      onclick="skipTime(2)"
+                      title="Forward 2s"
+                    >
+                      <i data-lucide="skip-forward"></i>
+                    </button>
+                  </div>
+                  <button
+                    class="fcb-collapse"
+                    onclick="toggleFcb()"
+                    title="Collapse"
+                  >
+                    <i data-lucide="minimize-2"></i>
+                  </button>
+                </div>
+                <div class="fcb-collapsed" id="fcb-collapsed">
+                  <button class="fcb-btn" onclick="skipTime(-2)">
+                    <i data-lucide="skip-back"></i>
+                  </button>
+                  <button
+                    class="fcb-btn play play-collapsed"
+                    onclick="togglePlay()"
+                  >
+                    <i
+                      data-lucide="play"
+                      class="icon-play"
+                      style="fill: currentColor"
+                    ></i>
+                  </button>
+                  <button class="fcb-btn" onclick="skipTime(2)">
+                    <i data-lucide="skip-forward"></i>
+                  </button>
+                  <div class="fcb-divider" style="margin: 0 4px"></div>
+                  <button class="fcb-expand" onclick="toggleFcb()">
+                    <i data-lucide="sparkles"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- RIGHT: CAPTION EDITOR + AI COPILOT -->
+          <aside class="panel-right" id="panel-right">
+            <div class="caption-editor" id="caption-editor" style="display:none;">
+              <div class="caption-editor-header">
+                <h4><i data-lucide="type"></i> Caption Editor</h4>
+                <button class="caption-close" id="caption-close">&times;</button>
+              </div>
+              <div class="caption-editor-body">
+                <textarea id="caption-text-input" class="caption-text-input" placeholder="Enter caption text..." rows="2"></textarea>
+                <div class="caption-controls">
+                  <div class="caption-control-row">
+                    <label>Position</label>
+                    <select id="caption-position">
+                      <option value="lowerthird">Lower Third</option>
+                      <option value="center">Center</option>
+                      <option value="top">Top</option>
+                    </select>
+                  </div>
+                  <div class="caption-control-row">
+                    <label>Size <span id="caption-size-val">4%</span></label>
+                    <input type="range" id="caption-size" min="2" max="10" value="4" step="0.5" />
+                  </div>
+                  <div class="caption-control-row">
+                    <label>Colour</label>
+                    <input type="color" id="caption-colour" value="#ffffff" />
+                  </div>
+                  <div class="caption-control-row">
+                    <label>BG Opacity</label>
+                    <input type="range" id="caption-bg-opacity" min="0" max="100" value="30" />
+                  </div>
+                </div>
+                <button class="caption-delete-btn" id="caption-delete">Delete Caption</button>
+              </div>
+            </div>
+            <div class="copilot-header">
+              <span class="copilot-mark"><i data-lucide="bot"></i></span>
+              <div class="copilot-heading">
+                <span class="copilot-title">AI Director</span>
+                <span class="copilot-subtitle">Understands your current edit</span>
+              </div>
+              <span class="ibm-tag" id="granite-header-status" data-phase="idle">
+                <span class="ibm-status-dot"></span>
+                <span id="granite-header-label">Granite</span>
+              </span>
+            </div>
+            <div class="ai-tabs" role="tablist" aria-label="AI Director views">
+              <button class="ai-tab active" data-target="tab-chat" role="tab" aria-selected="true">
+                <i data-lucide="message-square"></i><span>Chat</span>
+              </button>
+              <button class="ai-tab" data-target="tab-script" role="tab" aria-selected="false">
+                <i data-lucide="scroll-text"></i><span>Script</span>
+              </button>
+              <button class="ai-tab" data-target="tab-brand" role="tab" aria-selected="false">
+                <i data-lucide="swatch-book"></i><span>Brand</span>
+              </button>
+            </div>
+            <div class="copilot-body" id="copilot-body">
+              <div id="tab-chat">
+                <div class="insight-box" id="insight-box">
+                  <button
+                    type="button"
+                    class="insight-close"
+                    title="Hide cut score"
+                    aria-label="Hide cut score"
+                    onclick="
+                      document.getElementById('insight-box').style.display =
+                        'none'
+                    "
+                  >
+                    <i data-lucide="x"></i>
+                  </button>
+                  <div class="insight-top">
+                    <span class="insight-label">
+                      <i data-lucide="activity"></i>
+                      <span class="insight-title">Cut score</span>
+                    </span>
+                    <span class="insight-score" id="insight-score">76</span>
+                  </div>
+                  <div class="insight-bar-bg">
+                    <div
+                      class="insight-bar-fill"
+                      id="insight-bar"
+                      style="width: 76%"
+                    ></div>
+                  </div>
+                </div>
+
+                <div class="chat-log" id="chat-log">
+                  <div class="chat-msg ai intro">
+                    <span class="chat-intro-mark"><i data-lucide="sparkles"></i></span>
+                    <div class="chat-intro-title">Your edit, in context.</div>
+                    <div class="chat-body">Ask about pacing, clips, captions, or your next cut.</div>
+                    <div class="chat-starters">
+                      <button type="button" data-granite-prompt="Review the pacing of my current cut.">
+                        Review pacing
+                      </button>
+                      <button type="button" data-granite-prompt="What should I improve in this edit?">
+                        Suggest improvements
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="ai-actions-wrap">
+                  <div class="ai-actions-heading">
+                    <span>Quick edits</span>
+                    <span>Run locally</span>
+                  </div>
+                  <div class="ai-actions-scroll">
+                    <button
+                      class="ai-action"
+                      onclick="applyAiAction('silence')"
+                    >
+                      <div class="ai-action-icon">
+                        <i data-lucide="scissors"></i>
+                      </div>
+                      <div class="ai-action-text">
+                        <h4>Trim</h4>
+                        <p>Remove dead air</p>
+                      </div>
+                    </button>
+                    <button class="ai-action" onclick="applyAiAction('sync')">
+                      <div
+                        class="ai-action-icon"
+                        style="
+                          color: #f43f5e;
+                          background: rgba(244, 63, 94, 0.15);
+                        "
+                      >
+                        <i data-lucide="music"></i>
+                      </div>
+                      <div class="ai-action-text">
+                        <h4>Beat sync</h4>
+                        <p>Snap cuts to Amapiano drops</p>
+                      </div>
+                    </button>
+                    <button
+                      class="ai-action"
+                      onclick="applyAiAction('captions')"
+                    >
+                      <div
+                        class="ai-action-icon"
+                        style="
+                          color: #3b82f6;
+                          background: rgba(59, 130, 246, 0.15);
+                        "
+                      >
+                        <i data-lucide="captions"></i>
+                      </div>
+                      <div class="ai-action-text">
+                        <h4>Captions</h4>
+                        <p>Create synced subtitles</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              <div id="tab-script">
+                <div class="project-brief-card" id="project-brief-card" hidden>
+                  <div class="project-brief-heading">
+                    <i data-lucide="sparkles"></i>
+                    <span>Edit brief</span>
+                  </div>
+                  <p id="project-brief-summary"></p>
+                  <div class="project-brief-keywords" id="project-brief-keywords"></div>
+                </div>
+                <textarea
+                  id="project-script-input"
+                  class="script-area"
+                  placeholder="Paste your script here to auto-generate subtitles or find contextual stock footage..."
+                ></textarea>
+                <button
+                  class="btn-primary"
+                  onclick="showToast('Analyzing script parameters...', 'check')"
+                >
+                  Analyze Script
+                </button>
+              </div>
+
+              <div id="tab-brand">
+                <div class="brand-group">
+                  <label>Primary Brand Color</label>
+                  <div class="color-picker" id="editor-color-picker">
+                    <div
+                      class="color-swatch"
+                      style="background: #0d9488; border-color: white"
+                      data-color="#0d9488"
+                      data-glow="rgba(13,148,136,0.2)"
+                    ></div>
+                    <div
+                      class="color-swatch"
+                      style="background: #e11d48"
+                      data-color="#e11d48"
+                      data-glow="rgba(225,29,72,0.2)"
+                    ></div>
+                    <div
+                      class="color-swatch"
+                      style="background: #2563eb"
+                      data-color="#2563eb"
+                      data-glow="rgba(37,99,235,0.2)"
+                    ></div>
+                    <div
+                      class="color-swatch"
+                      style="background: #d97706"
+                      data-color="#d97706"
+                      data-glow="rgba(217,119,6,0.2)"
+                    ></div>
+                  </div>
+                </div>
+                <div class="brand-group">
+                  <label>Caption Font</label
+                  ><input
+                    id="project-caption-font"
+                    type="text"
+                    class="brand-input"
+                    value="Plus Jakarta Sans"
+                  />
+                </div>
+                <div class="brand-group">
+                  <label>Brand Name</label
+                  ><input
+                    id="project-brand-name"
+                    type="text"
+                    class="brand-input"
+                    value="Vibrant City Studio"
+                  />
+                </div>
+                <div class="brand-group">
+                  <label>Brand Guidelines</label>
+                  <textarea
+                    id="project-brand-guidelines"
+                    class="brand-input brand-textarea"
+                    placeholder="Tone, audience, visual rules..."
+                  ></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="chat-composer" id="chat-composer">
+              <div class="chat-composer-row">
+                <i data-lucide="sparkles" class="chat-composer-icon"></i>
+                <input
+                  type="text"
+                  class="chat-composer-input"
+                  id="chat-mini-cmd"
+                  placeholder="Ask about this edit..."
+                  autocomplete="off"
+                  aria-label="Ask Granite about the current edit"
+                />
+                <button
+                  class="chat-composer-send"
+                  id="chat-mini-send"
+                  type="button"
+                  title="Send to Granite"
+                  aria-label="Send to Granite"
+                >
+                  <i data-lucide="arrow-up"></i>
+                </button>
+              </div>
+              <div class="chat-composer-meta">
+                <span id="granite-provider-label"><i data-lucide="cloud"></i> Online Granite</span>
+                <span>Enter to send</span>
+              </div>
+            </div>
+
+            <!-- PER-CLIP COLOUR GRADE PANEL -->
+            <div class="grade-panel" id="grade-panel" style="display:none;">
+              <div class="grade-header">
+                <i data-lucide="sparkles" style="color:var(--accent-primary);"></i>
+                <span id="grade-clip-label">Select a clip to grade</span>
+              </div>
+              <div class="grade-sliders">
+                <div class="grade-row">
+                  <label>Exposure</label>
+                  <input type="range" data-grade="exposure" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Contrast</label>
+                  <input type="range" data-grade="contrast" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Saturation</label>
+                  <input type="range" data-grade="saturation" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Temperature</label>
+                  <input type="range" data-grade="temperature" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Tint</label>
+                  <input type="range" data-grade="tint" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Highlights</label>
+                  <input type="range" data-grade="highlights" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Shadows</label>
+                  <input type="range" data-grade="shadows" min="-100" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Vignette</label>
+                  <input type="range" data-grade="vignette" min="0" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+                <div class="grade-row">
+                  <label>Grain</label>
+                  <input type="range" data-grade="grain" min="0" max="100" value="0" step="1">
+                  <span class="grade-val">0</span>
+                </div>
+              </div>
+              <button class="grade-reset-btn" id="grade-reset-btn" onclick="resetGrade()">
+                <i data-lucide="sliders-horizontal"></i> Reset Grade
+              </button>
+            </div>
+            <!-- LUT PANEL -->
+            <div class="lut-panel" id="lut-panel" style="display:none;">
+              <div class="grade-header" style="border-top:1px solid var(--border-subtle);padding-top:10px;">
+                <i data-lucide="palette" style="color:var(--accent-primary);"></i>
+                <span>3D LUT</span>
+              </div>
+              <div class="grade-sliders">
+                <div class="grade-row" style="flex-wrap:wrap;gap:4px;">
+                  <label style="width:100%;">Preset</label>
+                  <select id="lut-select" style="flex:1;min-width:0;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:4px;color:var(--text-primary);font-size:11px;padding:4px;">
+                    <option value="">None</option>
+                  </select>
+                  <button id="import-lut-btn" class="tl-zoom-btn" style="padding:2px 6px;font-size:10px;width:auto;">
+                    <i data-lucide="upload"></i> .cube
+                  </button>
+                </div>
+                <div class="grade-row">
+                  <label>Intensity <span id="lut-intensity-val">100%</span></label>
+                  <input type="range" id="lut-intensity" min="0" max="100" value="100" step="1">
+                </div>
+                <div class="grade-row" id="lut-status-row" style="display:none;font-size:10px;color:var(--text-muted);">
+                  <span id="lut-status">No LUT loaded</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="panel-timeline">
+          <div class="tl-toolbar">
+            <div class="tl-toolbar-left">
+              <div class="tl-heading">
+                <span class="tl-heading-icon"><i data-lucide="panel-bottom"></i></span>
+                <div>
+                  <span class="tl-section-label">Timeline</span>
+                  <span class="tl-summary" id="tl-summary">No clips · 00:00</span>
+                </div>
+              </div>
+              <div class="tl-tools" id="tl-tools">
+                <button class="tl-tool active" data-tool="select" title="Select clips (V)">
+                  <i data-lucide="mouse-pointer-2"></i>
+                  <span>Select</span>
+                </button>
+                <button class="tl-tool" data-tool="split" title="Split a clip (B)">
+                  <i data-lucide="scissors"></i>
+                  <span>Split</span>
+                </button>
+              </div>
+            </div>
+            <div class="tl-toolbar-right">
+              <div class="tl-add-controls" aria-label="Add timeline track">
+                <button class="tl-zoom-btn" id="add-video-track" title="Add video track">
+                  <i data-lucide="film"></i><span class="tl-button-label">Video</span>
+                </button>
+                <button class="tl-zoom-btn" id="add-audio-track" title="Add audio track">
+                  <i data-lucide="audio-waveform"></i><span class="tl-button-label">Audio</span>
+                </button>
+                <button class="tl-zoom-btn" id="add-caption-track" title="Add caption track">
+                  <i data-lucide="captions"></i><span class="tl-button-label">Caption</span>
+                </button>
+              </div>
+              <div class="tl-zoom-controls" aria-label="Timeline zoom">
+                <button class="tl-zoom-btn" id="zoom-out" title="Zoom out"><i data-lucide="minus"></i></button>
+                <button class="tl-zoom-btn tl-fit-btn" id="zoom-fit" title="Fit timeline">Fit</button>
+              <span class="tl-zoom-text" id="zoom-text">100%</span>
+                <button class="tl-zoom-btn" id="zoom-in" title="Zoom in"><i data-lucide="plus"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="tl-resize-handle" id="tl-resize-handle"></div>
+
+          <div class="tl-body" id="tl-body">
+            <div class="tl-ruler-wrapper">
+              <div class="tl-gutter"></div>
+              <div class="tl-ruler" id="tl-ruler"></div>
+            </div>
+            <div class="tl-tracks" id="tl-tracks">
+              <div class="track ai-track">
+                <div class="track-gutter">
+                  <div class="track-icons">
+                    <i data-lucide="sparkles"></i>
+                  </div>
+                </div>
+                <div class="track-lane" id="lane-ai"></div>
+              </div>
+            </div>
+            <div class="playhead" id="ph-tracks" style="left: 100px">
+              <div class="playhead-knob"></div>
+              <span class="playhead-time" id="playhead-time">00:00:00</span>
+            </div>
+            <div class="snap-guide" id="snap-guide"></div>
+          </div>
+      </div>
+    </div>
+
+    <div class="toast-container" id="toast-box"></div>
+
+    <!-- Export Modal -->
+    <div class="export-modal-overlay" id="export-modal" style="display:none;">
+      <div class="export-modal">
+        <button class="export-modal-close" onclick="document.getElementById('export-modal').style.display='none'" title="Close">
+          <i data-lucide="x"></i>
+        </button>
+        <i data-lucide="film" style="color:var(--accent-primary);width:28px;height:28px;margin-bottom:8px;"></i>
+        <h3>Exporting Video</h3>
+        <div class="export-bar-bg">
+          <div class="export-bar-fill" id="export-bar-fill" style="width:0%;"></div>
+        </div>
+        <div class="export-bar-info">
+          <span id="export-pct">0%</span>
+          <span id="export-stage">Preparing…</span>
+        </div>
+        <span class="export-eta" id="export-eta">Estimating…</span>
+      </div>
+    </div>
+  </body>
+</html>
