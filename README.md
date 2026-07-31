@@ -27,10 +27,10 @@ iKlippa helps creators turn raw footage into a finished cut without needing an e
 <table>
   <tr>
     <td width="50%">
-      <img src="docs/images/landing-hero.jpg" alt="iKlippa landing page">
+      <img src="docs/images/landing-hero.png" alt="iKlippa landing page">
     </td>
     <td width="50%">
-      <img src="docs/images/landing-ai-director.jpg" alt="iKlippa AI Director">
+      <img src="docs/images/landing-ai-director.png" alt="iKlippa AI Director">
     </td>
   </tr>
   <tr>
