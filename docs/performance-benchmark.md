@@ -125,7 +125,7 @@ The final validation should repeat the same workflow on:
 - 8 GB RAM;
 - a dual-core or entry-level quad-core processor;
 - integrated graphics;
-- current Chrome or Edge;
+- current Chrome (151.0.7922.71/.72) or Edge;
 - a 1280x720 H.264 source;
 - a 1920x1080 H.264 source;
 - one-track and two-track timelines.
